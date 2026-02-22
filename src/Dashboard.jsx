@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { db, auth} from "src/firebase";
+import { db, auth} from "./firebase";
 import "./Dashboard.css";
 import dilgLogo from "./assets/dilg-po.png";
 import dilgSeal from "./assets/dilg-ph.png";
 import { FiFilter, FiTrash2, FiSettings, FiLogOut, FiFileText } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
-import { ref, push, onValue, set } from "firebase/database";
+import { ref, push, onValue, set } from "./firebase/database";
 
 
 
