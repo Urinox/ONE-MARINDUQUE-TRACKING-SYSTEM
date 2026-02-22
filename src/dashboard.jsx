@@ -21,7 +21,6 @@ export default function Dashboard() {
   const displayName = user?.email || "User";
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
-  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwmZ1NOars_ltKaDpFbU0G6vIyLi2RqlLp325OtCbI0VpSkBW2WE9mVEzziyZKKAllf/exec";
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileData, setProfileData] = useState({
     name: "",
@@ -117,11 +116,6 @@ const handleAddRecord = async () => {
   try {
     const newRef = push(ref(db, `encode/${auth.currentUser.uid}`)); // user-specific
     await set(newRef, newEntry); // Realtime Database push
-    await fetch(GOOGLE_SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updatedRecord),
-    });
     
     alert("Saved successfully!");
     setShowModal(false);
