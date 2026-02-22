@@ -39,7 +39,7 @@ body {
 
 .sidebar-header img {
   align-items: center;
-  margin-left: 5%;     /* vertical centering */
+  margin-left: 6%;     /* vertical centering */
 }
 
 .cyan {
@@ -58,7 +58,7 @@ body {
   height: 1px;
   background-color: rgba(255, 255, 255, 5);
   margin: 11px;
-  margin-left:-10%;
+  margin-left:-8%;
 }
 
 .toggle-btn {
