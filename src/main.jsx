@@ -1,10 +1,10 @@
 import { StrictMode, useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import "./index.css";
-import App from "./App.jsx";
-import Dashboard from "./Dashboard.jsx";
-import Loader from "./Loader.jsx";
+import "src/index.css";
+import App from "src/App.jsx";
+import Dashboard from "src/Dashboard.jsx";
+import Loader from "src/Loader.jsx";
 
 function Root() {
   const [loading, setLoading] = useState(true);
