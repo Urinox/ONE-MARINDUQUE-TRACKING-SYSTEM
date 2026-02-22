@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import "./app.css";
 import dilgLogo from "./assets/dilg-po.png";
 import dilgSeal from "./assets/dilg-ph.png";
-import { auth } from "src/firebase";
+import { auth } from "./firebase";
 import { useEffect } from "react";
 import { 
   signInWithEmailAndPassword, 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { db, auth} from "src/firebase";
+import { db, auth} from "./firebase";
 import "./dashboard.css";
 import dilgLogo from "./assets/dilg-po.png";
 import dilgSeal from "./assets/dilg-ph.png";
