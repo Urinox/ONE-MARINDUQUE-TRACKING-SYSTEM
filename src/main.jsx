@@ -1,7 +1,7 @@
 import { StrictMode, useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import "src/index.css";
+import "./index.css";
 import App from "src/App.jsx";
 import Dashboard from "src/Dashboard.jsx";
 import Loader from "src/Loader.jsx";

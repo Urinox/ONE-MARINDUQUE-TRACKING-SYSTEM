@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { db, auth} from "src/firebase";
-import "src/Dashboard.css";
+import "./Dashboard.css";
 import dilgLogo from "src/assets/dilg-po.png";
 import dilgSeal from "src/assets/dilg-ph.png";
 import { FiFilter, FiTrash2, FiSettings, FiLogOut, FiFileText } from "react-icons/fi";
