@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import "./app.css";
 import dilgLogo from "./assets/dilg-po.png";
 import dilgSeal from "./assets/dilg-ph.png";
-import { auth } from "./firebase";
+import { auth } from "src/firebase";
 import { useEffect } from "react";
 import { 
   signInWithEmailAndPassword, 
@@ -20,8 +20,10 @@ export default function App() {
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
+  const [showRegPassword, setShowRegPassword] = useState(false);
   const [sendingLink, setSendingLink] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  
   const navigate = useNavigate();
 
   const [userId, setUserId] = useState("");
@@ -174,10 +176,10 @@ const handleEmailLogin = async (email) => {
             }}
           >
         <div className="form-group">
-          <label>User ID</label>
+          <label>Email</label>
           <input
             type="text"
-            placeholder="User ID"
+            placeholder="Email"
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
           />
@@ -274,10 +276,10 @@ const handleEmailLogin = async (email) => {
                 }}
               >
               <div className="register-form">
-                <label>User ID</label>
+                <label>Email</label>
                 <input
-                  type="User ID"
-                  placeholder="User ID"
+                  type="email"
+                  placeholder="Email"
                   value={regEmail}
                   onChange={(e) => setRegEmail(e.target.value)}
                 />
@@ -285,12 +287,21 @@ const handleEmailLogin = async (email) => {
 
               <div className="register-form">
                 <label>Password</label>
-                <input
-                  type="password"
-                  placeholder="Password"
-                  value={regPassword}
-                  onChange={(e) => setRegPassword(e.target.value)}
-                />
+                <div className="password-wrapper">
+                  <input
+                    type={showRegPassword ? "text" : "password"}
+                    placeholder="Password"
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                  />
+                  <span
+                    className="eye"
+                    onClick={() => setShowRegPassword(!showRegPassword)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    {showRegPassword ? "⌣" : "👁"}
+                  </span>
+                </div>
               </div>
 
               <button

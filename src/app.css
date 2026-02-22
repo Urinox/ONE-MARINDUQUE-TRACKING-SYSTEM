@@ -7,9 +7,8 @@
 
 .app-container {
   display: flex;
-  height: 100vh;
-  width: 100vw;
-  overflow: hidden;
+  min-height: 100vh;
+  width: 100%;
 }
 
 /* Left Panel */
@@ -27,24 +26,25 @@
 }
 
 .logo-top {
-  position: absolute;
-  top: 5%;
-  left: 15%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 5px; /* normal spacing */
 }
 
 .top-logo {
-  width: 140px;
-  max-width: 100%;
+  width: 150px;
+  height: auto;
 }
 
 .title {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
-    margin-top: 80px;
-  margin-bottom: 20px;
+  margin: 0 0 30px 0; /* remove margin-top */
   text-align: center;
   line-height: 1.4;
 }
+
 
 .cyan {
   color: #ABBAFF; /* or #00ffff */
@@ -141,18 +141,19 @@
 
 /* Right Panel */
 .right-panel {
-  width: 60%;
+  flex: 1;
   background: #f5c400;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 40px;
 }
 
 .seal {
-  width: 550px;
-  max-width: 100%;
+  width: 80%;
+  max-width: 550px;
+  height: auto;
 }
-
 
 
 
@@ -298,4 +299,33 @@
   background-color: #888 !important;
   cursor: not-allowed;
   color: #ccc !important;
+}
+
+@media (max-width: 1024px) {
+  .left-panel {
+    flex: 0 0 350px;
+    padding: 30px;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-container {
+    flex-direction: column;
+  }
+
+  .left-panel {
+    flex: none;
+    width: 100%;
+    max-width: 100%;
+    box-shadow: none;
+  }
+
+  .right-panel {
+    width: 100%;
+    padding: 20px;
+  }
+
+  .seal {
+    width: 60%;
+  }
 }

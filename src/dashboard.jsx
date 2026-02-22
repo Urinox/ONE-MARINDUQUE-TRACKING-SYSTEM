@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { db, auth} from "./firebase";
+import { db, auth} from "src/firebase";
 import "./dashboard.css";
 import dilgLogo from "./assets/dilg-po.png";
 import dilgSeal from "./assets/dilg-ph.png";
-import { FiFilter, FiTrash2, FiSettings, FiLogOut, FiFileText } from "react-icons/fi";
+import { FiFilter, FiRotateCcw, FiSettings, FiLogOut, FiFileText } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { ref, push, onValue, set } from "firebase/database";
 
@@ -221,7 +221,7 @@ const handleSignOut = () => {
                 <FiFilter style={{ marginRight: "10px", verticalAlign: "middle" }} />
                 FILTER
                 <button className="clear-icon-btn" onClick={clearFilters} aria-label="Clear Filters">
-                <FiTrash2 />
+                <FiRotateCcw />
               </button>
               </p>
   
@@ -545,35 +545,40 @@ const handleSignOut = () => {
               )}
               <div className="page-buttons">
                 {/* LEFT ARROW */}
-                <button
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(currentPage - 1)}
-                >
+                  <button
+                    disabled={filteredData.length === 0 || currentPage === 1}
+                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  >
                   ◀
                 </button>
 
                 {/* PAGE INPUT */}
-                <input
-                  max={totalPages}
-                  value={currentPage}
-                  onChange={(e) => {
-                    let value = Number(e.target.value);
+                  <input
+                    max={totalPages || 1}
+                    value={filteredData.length === 0 ? 0 : currentPage}
+                    disabled={filteredData.length === 0}
+                    onChange={(e) => {
+                      if (filteredData.length === 0) return;
 
-                    if (value < 1) value = 1;
-                    if (value > totalPages) value = totalPages;
+                      let value = Number(e.target.value);
 
-                    setCurrentPage(value);
-                  }}
-                  className="page-input"
-                />
+                      if (value < 1) value = 1;
+                      if (value > totalPages) value = totalPages;
+
+                      setCurrentPage(value);
+                    }}
+                    className="page-input"
+                  />
 
                 <span>of {totalPages}</span>
 
                 {/* RIGHT ARROW */}
-                <button
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage(currentPage + 1)}
-                >
+                  <button
+                    disabled={filteredData.length === 0 || currentPage === totalPages}
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                    }
+                  >
                   ▶
                 </button>
               </div>
