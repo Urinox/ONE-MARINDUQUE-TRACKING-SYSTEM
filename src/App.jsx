@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "./App.css";
+import "./app.css";
 import dilgLogo from "./assets/dilg-po.png";
 import dilgSeal from "./assets/dilg-ph.png";
 import { auth } from "./firebase";
