@@ -1,0 +1,10 @@
+=========[HOW TO RUN LOCALLY]=========
+1. Open the Terminal
+2. Type "npm run dev"
+
+=========[HOW TO RUN IN GITHUB x VERCEL]=========
+1. Open your terminal or Git Bash, then run: "git clone https://github.com/Urinox/ONE-MARINDUQUE-TRACKING-SYSTEM.git"
+2. Type "cd ONE-MARINDUQUE-TRACKING-SYSTEM"
+3. Type "git add ."
+4. Type "git commit -m "Describe your changes here""
+4. Type "git push origin main"
