@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { db, auth} from "src/firebase";
 import "./Dashboard.css";
-import dilgLogo from "src/assets/dilg-po.png";
-import dilgSeal from "src/assets/dilg-ph.png";
+import dilgLogo from "./assets/dilg-po.png";
+import dilgSeal from "./assets/dilg-ph.png";
 import { FiFilter, FiTrash2, FiSettings, FiLogOut, FiFileText } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { ref, push, onValue, set } from "firebase/database";
