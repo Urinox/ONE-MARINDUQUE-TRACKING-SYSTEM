@@ -64,7 +64,7 @@ useEffect(() => {
   const [newRecord, setNewRecord] = useState({
     form: "",
     year: "",
-    city: ""
+    municipality: ""
   });
   const [filters, setFilters] = useState({
     municipality: "",
@@ -107,11 +107,11 @@ const handleImageUpload = (e) => {
 };
 
 const handleAddRecord = async () => {
-  if (!newRecord.form || !newRecord.year || !newRecord.city) return alert("Please complete all fields.");
+  if (!newRecord.form || !newRecord.year || !newRecord.municipality) return alert("Please complete all fields.");
 
   const nextId = data.length > 0 ? Math.max(...data.map(d => d.id)) + 1 : 1;
   const today = new Date().toLocaleDateString("en-US", { day: "2-digit", month: "long", year: "numeric" });
-  const newEntry = { id: nextId, lgu: "M", municipality: newRecord.city, form: newRecord.form, year: newRecord.year, status: "Draft", submission: today, deadline: "-" };
+  const newEntry = { id: nextId, lgu: "M", municipality: newRecord.municipality, form: newRecord.form, year: newRecord.year, status: "Draft", submission: today, deadline: "-" };
 
   try {
     const newRef = push(ref(db, `encode/${auth.currentUser.uid}`)); // user-specific
@@ -119,7 +119,7 @@ const handleAddRecord = async () => {
     
     alert("Saved successfully!");
     setShowModal(false);
-    setNewRecord({ form: "", year: "", city: "" });
+    setNewRecord({ form: "", year: "", municipality: "" });
   } catch (error) {
     console.error(error);
     alert("Write failed: " + error.message);
@@ -166,7 +166,7 @@ const handleAddRecord = async () => {
       (!filters.year || item.year === filters.year) &&
       (!filters.status || item.status === filters.status) &&
       (item.municipality.toLowerCase().includes(search.toLowerCase()) ||
-        item.form.toLowerCase().includes(search.toLowerCase()))
+        item.form.toLowerCase().includes(search.  toLowerCase()))
     );
   });
 
@@ -479,11 +479,25 @@ const handleSignOut = () => {
             </div>
           </div>
 
-          <div className="action-bar">
-          <button className="encode-btn" onClick={() => setShowModal(true)}>
-            Encode
-          </button>
-          </div>
+<div className="action-bar">
+  <button className="encode-btn" onClick={() => setShowModal(true)}>
+
+    {/* Pencil Icon */}
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+    >
+      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3
+      17.25zm18-11.5a1.003 1.003 0 0 0 0-1.42l-2.34-2.34
+      a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75
+      1.84-1.82z"/>
+    </svg>
+    Encode
+  </button>
+</div>
 
           {/* Table */}
           <div className="table-box">
@@ -493,7 +507,7 @@ const handleSignOut = () => {
                 <tr>
                   <th>#</th>
                   <th>LGU TYPE</th>
-                  <th>CITY/MUNICIPALITY</th>
+                  <th>MUNICIPALITY</th>
                   <th>FORM</th>
                   <th>YEAR</th>
                   <th>STATUS</th>
@@ -636,15 +650,15 @@ const handleSignOut = () => {
                   </select>
                 </div>
 
-                {/* City Dropdown */}
+                {/* municipality Dropdown */}
                 <div className="modal-field">
-                  <label>City:</label>
+                  <label>Municipality:</label>
                   <select 
-                      value={newRecord.city}
+                      value={newRecord.municipality}
                       onChange={(e) =>
-                      setNewRecord({ ...newRecord, city: e.target.value })
+                      setNewRecord({ ...newRecord, municipality: e.target.value })
                     }>
-                    <option value="">Select City</option>
+                    <option value="">Select municipality</option>
                     <option>Boac (Capital)</option>
                     <option>Gasan</option>
                     <option>Mogpog</option>
@@ -656,7 +670,7 @@ const handleSignOut = () => {
 
                 {/* Footer Button */}
                 <div className="modal-footer">
-                  <button className="proceed-btn" onClick={handleAddRecord}>
+                  <button className="proceed-btn"  onClick={() => navigate("/encode")}>
                     Proceed ➜
                   </button>
                 </div>

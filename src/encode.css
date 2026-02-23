@@ -10,7 +10,7 @@ body {
 
 /* Sidebar */
 .sidebar {
-  width: 220px;
+  width: 250px;
   background: #03073d;
   color: white;
   padding: 15px;
@@ -28,15 +28,15 @@ body {
   overflow: hidden;
 }
 
-.sidebar-header {
+.encodesidebar-header {
   font-size: 14px;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 7px;
   margin-left: 30px;
 }
 
 
-.sidebar-header img {
+.encodesidebar-header img {
   align-items: center;
   margin-left: 5%;     /* vertical centering */
 }
@@ -57,7 +57,7 @@ body {
   height: 1px;
   background-color: rgba(255, 255, 255, 5);
   margin: 11px;
-  margin-left:-5%;
+  margin-left:-10%;
 }
 
 .toggle-btn {
@@ -240,27 +240,26 @@ body {
   margin: 0 auto; /* same side spacing as table-box */
 }
 
-.encode-btn {
-  background: #b00000;
+.savechanges-btn {
+  background: #006736;
   color: white;
   border: none;
-  padding: 8px 20px;
+  padding: 8px 30px;
   font-size: 14px;
   border-radius: 5px;
   cursor: pointer;
+  font-weight: 600;
 
-  display: inline-flex;   /* align icon and text */
-  align-items: center;    /* vertical center */
-  gap: 8px;               /* space between icon and text */
+  /* ADD THESE */
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;              /* space between icon and text */
 }
 
-.encode-btn:hover {
-  background: #d20000;
+.savechanges-btn:hover {
+  background: #145b2f;
 }
 
-.encode-btn svg {
-  display: block;
-}
 
 .table-box {
   background: white;
@@ -272,7 +271,7 @@ body {
   border-top: #03073d solid 10px;
   display: flex;
   flex-direction: column;
-  min-height: 100px;  
+  min-height: 60px;  
   border-radius: 5px;
 }
 
@@ -375,74 +374,29 @@ th, td {
   font-weight: bold;
 }
 
-.filter-btn {
-  display: flex;
-  justify-content: space-between; /* pushes arrow to the right */
-  align-items: center;
-  cursor: pointer;
-  padding: 10px; /* controls highlight height */
+.sidebar-menu{
+  margin-top:5px;
 }
 
-.filter-btn:hover {
+.sidebar-item{
+  padding:8.5px;
+  border-radius: 5px;
+  font-size:13.5px;
+  cursor:pointer;
+  margin-left:3%; 
+  font-weight: 600;
+}
+
+.sidebar-item:hover{
   background:#f4f4f442;
 }
 
-.filter-title {
-  display: flex;
-  align-items: center;
-  font-weight: bold;
-  font-size: 16px;
-  color: white;
-  user-select: none;
-  margin-bottom:2%;
-  margin-top: -8%;
-}
-
-.filter-item {
-  font-size: 14px;
-  margin: 0px 0;
-  cursor: pointer;
-  margin-left: 10%;
-}
-
-.arrow {
-  font-size: 12px;
-  margin-left: 8px;
-  color: white;
-}
-
-
-.filter-title-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-}
-
-
-.filter-title-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-left: 10%;  /* same as your filter-item */
-  margin-right: 10%; /* symmetrical */
-  margin-bottom: 10px;
-}
-
-.clear-icon-btn {
-  background: none;
-  border: none;
-  color: #ffffff;
-  cursor: pointer;
-  font-size: 18px;
-  display: flex;
-  align-items: center;
-  transition: color 0.2s ease;
-  margin-left: 55%;
+.sidebar-item.active{
+  background:#6c6f8a;
 }
 
 .clear-icon-btn:hover {
-  color: rgb(141, 141, 141);
+  color: white;
 }
 
 
@@ -486,32 +440,31 @@ th, td {
   padding-bottom: 10px;
 }
 
-.sidebar-btn {
+.encodeback-btn {
   display: flex;           /* use flex for alignment */
   align-items: center;     /* vertically center icon & text */
   gap: 8px;                /* space between icon and text */
-  padding: 10px 15px;
-  width: 100%;
-  border: none;
-  background: none;
+  padding: 5px 20px;
+  margin-left: 3%;
+  width: 50%;
+  border-radius: 5px;
+  background: #006736;
   cursor: pointer;
   font-size: 14px;
+  font-weight: bold;
   color: #fff;
   transition: background 0.2s;
+    border: none;              /* ⭐ remove border */
+  outline: none;             /* ⭐ remove focus outline */
+  box-shadow: none;          /* ⭐ remove shadow */
+  appearance: none;          /* ⭐ remove browser style */
+  -webkit-appearance: none;  /* ⭐ Chrome fix */
 }
 
-.sidebar-btn:hover {
-  background-color: #f4f4f442;
-  border-radius: 5px;
+.encodeback-btn:hover {
+  background-color:#006735bd;
 }
 
-.signout-btn {
-  background: #03073d;
-}
-
-.signout-btn:hover {
-  background-color: #f4f4f442;
-}
 
 
 /* ADD NEW RECORD MODAL */
@@ -588,25 +541,6 @@ th, td {
   justify-content: flex-end;
   margin-top: 10px;
 }
-
-.proceed-btn {
-  background: #1b6e3a;
-  color: white;
-  border: none;
-  padding: 8px 20px;
-  font-size: 14px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.proceed-btn:hover {
-  background: #145b2f;
-}
-
-
-
-
 
 /* PROFILE MODAL (Exact Encode Replica with Profile Fields) */
 
@@ -777,4 +711,404 @@ th, td {
 
 .profile-btn.signout:hover {
   background: #ff9c9c;
+}
+
+
+.btn-new {
+  background-color: #b00000;
+  color: white;
+  border: none;
+  padding: 6px 15px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  float: left; 
+}
+
+.btn-new:hover {
+  background-color: #600202;
+}
+
+
+/* ============================= */
+/* NEW INDICATOR MODAL (EXACT UI) */
+/* ============================= */
+
+.indicator-modal {
+  width: 800px;
+  background: #fafafa;
+  border-radius: 20px;
+  height: 480px;                /* fills the space in table-box */
+  display: flex;
+  flex-direction: column;
+  max-height: 85vh; 
+}
+
+/* HEADER */
+.indicator-header {
+  background: #081a4b;
+  color: white;
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.indicator-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: bold;
+}
+
+.plus-icon {
+  font-size: 18px;
+}
+
+.indicator-header .close-x {
+  font-size: 20px;
+  cursor: pointer;
+}
+
+/* BODY */
+.indicator-body {
+  padding: 25px;
+  overflow-y: auto;
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  scrollbar-gutter: stable;
+
+}
+.indicator-footer {
+  padding: 8px 25px;
+  background: white;
+  position: relative;
+  z-index: 2;
+}
+/* SECTION TITLE */
+.indicator-section h4,
+.sub-section h4 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  font-weight: bold;
+  color: #111;
+  text-align: left;
+}
+
+/* INDICATOR ROW */
+.indicator-row {
+  display: flex;
+  gap: 0;
+}
+
+.indicator-row input {
+  flex: 1;
+  height: 40px;
+  border: 2px solid #00000062;
+  background: #d3dbff;
+  padding: 10px;
+  font-size: 12px;
+  outline: none;
+  font-weight: 500;
+}
+
+.indicator-row select {
+  width: 200px;
+  height: 40px;
+  border: 2px solid #00000062;
+  background: #ffffff;
+  font-size: 14px;
+  padding: 0 10px;
+}
+
+/* SUB SECTION */
+.sub-section {
+  margin-top: 30px;
+}
+
+/* SUB CARD 
+.sub-card {
+  background: #d9d9d9;
+  padding: 15px;
+  border: 1px solid #c5c5c5;
+  margin-bottom: 15px;
+}
+
+/* SUB HEADER */
+.sub-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.sub-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sub-header input {
+  height: 40px;
+  border: 2px solid #00000062;
+  background: #fff6f6;
+  padding: 10px;
+  font-size: 12px;
+  outline: none;
+  font-weight: 500;
+}
+
+.sub-left input[type="text"] {
+  height: 40px;
+  width: 102.5%;
+}
+
+
+
+
+
+/* VERIFICATION */
+.verification {
+  margin-top: 15px;
+  font-size: 14px;
+  color: black;
+}
+
+/* NEW SUB BUTTON */
+.new-sub-btn {
+  background: #b00000;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 3px;
+  float: left;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 600;
+  margin-left: 3.5%;
+}
+
+/* BUTTON ROW (both buttons same line) */
+.indicator-button-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;   /* closer to add option */
+}
+
+.new-sub-btn:hover {
+  background: #600202;
+}
+
+.subplus-icon {
+  font-size: 20px;
+  font-weight: bold;
+  margin-right: 3px;
+}
+
+
+.add-indicator-btn {
+  background: #006736;
+  color: white;
+  border: none;
+  padding: 10px 40px;
+  font-weight: bold;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-left: 50%;
+}
+
+.add-indicator-btn:hover {
+  background: #145b2f;
+}
+
+
+/* Keep sub-header normal flex */
+.sub-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+/* Title field */
+.sub-header input[type="text"]:first-child {
+  flex: 1;
+}
+
+/* Select stays right */
+.sub-header select {
+  width: 200px;
+}
+
+/* Date goes under title ONLY */
+.sub-header .date-field {
+  width: 25%;
+  min-width: 180px;   /* prevents it from becoming too small */
+  height: 39px;
+  border: 1px solid #00000062;
+  padding: 0 10px;
+  background: white;
+  font-size: 14px;
+  margin-top: -2%;
+}
+
+/* Make parent relative so absolute works properly */
+.sub-card {
+  position: relative;
+  min-height: 180px;
+}
+
+
+/* MULTIPLE CHOICE — same position as date */
+.multiple-wrapper {
+  margin-top: -7px;
+  width: 140.5%;
+  background: rgb(255, 255, 255);
+  outline: black solid 1px;
+}
+/* Each choice row */
+.choice-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+}
+
+/* SMALLER RADIO CIRCLES */
+.choice-row input[type="radio"] {
+  transform: scale(1.2);   /* makes circle smaller */
+  margin: 0;
+}
+
+/* Choice text input */
+.choice-row input[type="text"] {
+  flex: 1;
+  height: 30px;
+  padding: 4px 6px;
+  border: 1px solid #ffffff;
+  font-size: 12px;
+  background-color: white;
+}
+
+
+
+/* Make button content align properly */
+.add-choice-btn {
+  background: transparent;
+  border: none;
+  color: #000000af;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 12px;
+  margin-top: -3px;
+  display: flex;          /* ⭐ align items horizontally */
+  align-items: center;    /* ⭐ vertical alignment */
+  gap: 6px;               /* ⭐ space between radio & text */
+  padding: 0;
+  margin-left: 12px;
+}
+
+/* Smaller radio for add option */
+.add-radio {
+  transform: scale(1.2);
+  margin: 0;
+}
+
+.remove-choice-btn {
+  background: #ffffff;
+  color: rgb(0, 0, 0);
+  border: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  transition: 0.2s;
+  margin-right: 5px;
+}
+
+
+.sub-header select {
+  width: 200px;
+  height: 39px;
+  border: 2px solid #00000062;
+  background: #ffffff;
+  font-size: 14px;
+  padding: 0 10px;
+}
+
+
+/* SMALLER CHECKBOX (same scale as radio) */
+.choice-row input[type="checkbox"] {
+  transform: scale(1.2);
+  margin: 0;
+}
+
+.add-radio[type="checkbox"] {
+  transform: scale(1.2);
+}
+
+
+/* SHORT ANSWER FIELD (same placement style as multiple wrapper) */
+.short-wrapper {
+  margin-top: -7px;
+  width: 140.5%;
+  background: white;
+  outline: black solid 1px;
+  padding: 8px;
+}
+
+.short-field {
+  width: 100%;
+  min-height: 50px;
+  border: none;
+  resize: vertical;
+  font-size: 13px;
+  outline: none;
+  background: white;
+}
+
+
+
+/* INTEGER FIELD (same style as short & multiple) */
+.integer-wrapper {
+  margin-top: -7px;
+  width: 140.5%;
+  background: white;
+  outline: black solid 1px;
+  padding: 8px;
+}
+
+.integer-field {
+  width: 100%;
+  height: 35px;
+  border: none;
+  font-size: 13px;
+  outline: none;
+  background: white;
+}
+
+
+/* ============================= */
+/* MODE OF VERIFICATION DESIGN */
+/* ============================= */
+
+.verification {
+  margin-top: -10px;
+  padding: 10px 12px;
+  width: 140.5%;
+  background: #ffffff;
+  border: 1px solid #00000040;
+  font-size: 14px;
+  text-align: left;
+  margin-bottom: 10%;
 }
