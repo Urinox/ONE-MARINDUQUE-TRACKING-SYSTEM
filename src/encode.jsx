@@ -22,6 +22,29 @@ export default function Encode() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [subFieldType, setSubFieldType] = useState("");
   const [choices, setChoices] = useState([]);
+
+  const initialMainIndicators = [
+    {
+      id: 1,
+      title: "",
+      fieldType: "",
+      choices: [],
+      verification: "",
+    },
+  ];
+
+  const initialSubIndicators = [
+    {
+      id: 1,
+      title: "",
+      fieldType: "",
+      choices: [],
+      verification: "",
+    },
+  ];
+  const [mainIndicators, setMainIndicators] = useState(initialMainIndicators);
+  const [subIndicators, setSubIndicators] = useState(initialSubIndicators);
+
   const [editProfileData, setEditProfileData] = useState({
   name: "",
   email: displayName,
@@ -49,6 +72,30 @@ const addMainIndicator = () => {
     },
   ]);
 };
+
+const handleAddIndicator = async () => {
+  if (!auth.currentUser) return;
+
+  try {
+    const encodeRef = ref(db, `encode/${auth.currentUser.uid}`);
+
+    await push(encodeRef, {
+      mainIndicators,
+      subIndicators,
+      createdAt: Date.now(),
+    });
+
+    // Reset modal
+    setMainIndicators(initialMainIndicators);
+    setSubIndicators(initialSubIndicators);
+    setShowModal(false);
+
+  } catch (error) {
+    console.error("Error saving indicator:", error);
+  }
+};
+
+
 
 // Update Main Indicator
 const updateMainIndicator = (id, field, value) => {
@@ -131,15 +178,8 @@ useEffect(() => {
 }, []);
 
 
-const [mainIndicators, setMainIndicators] = useState([
-  {
-    id: 1,
-    title: "",
-    fieldType: "",
-    choices: [],
-    verification: "",
-  },
-]);
+
+
 
 
 const handleSaveProfile = async () => {
@@ -189,18 +229,6 @@ const handleSignOut = () => {
 };
 
 
-
-// State for all sub-indicators
-  const [subIndicators, setSubIndicators] = useState([
-    {
-      id: 1,
-      title: "",
-      fieldType: "",
-      choices: [],
-      verification: "",
-    },
-  ]);
-
   // Handler to add a new blank sub-indicator
   const addSubIndicator = () => {
     setSubIndicators((prev) => [
@@ -214,6 +242,8 @@ const handleSignOut = () => {
       },
     ]);
   };
+
+
 
   // Handler to update a sub-indicator property by id
   const updateSubIndicator = (id, field, value) => {
@@ -515,7 +545,16 @@ const handleSignOut = () => {
           <span className="plus-icon">＋</span>
           <span>NEW INDICATOR</span>
         </div>
-        <span className="close-x" onClick={() => setShowModal(false)}>✕</span>
+          <span
+            className="close-x"
+            onClick={() => {
+              setMainIndicators(initialMainIndicators);
+              setSubIndicators(initialSubIndicators);
+              setShowModal(false);
+            }}
+          >
+            ✕
+          </span>
       </div>
       {/* BODY */}
       <div className="indicator-body">
@@ -819,9 +858,20 @@ const handleSignOut = () => {
           </div>
         )}
 
-        <div className="verification">
-          <strong>Mode of Verification:</strong>
-        </div>
+            <div className="verification-row">
+              <label className="verification-label">
+                Mode of Verification:
+              </label>
+
+              <input
+                type="text"
+                className="verification-input"
+                value={sub.verification}
+                onChange={(e) =>
+                  updateSubIndicator(sub.id, "verification", e.target.value)
+                }
+              />
+            </div>
       </div>
 
       {/* RIGHT SIDE SELECT */}
@@ -852,9 +902,12 @@ const handleSignOut = () => {
               <span className="subplus-icon">＋</span>
               New Sub-Indicator
             </button>
-          <button className="add-indicator-btn">
-            ADD
-          </button>
+              <button 
+                className="add-indicator-btn"
+                onClick={handleAddIndicator}
+              >
+                ADD
+              </button>
         </div>
       </div>
     </div>
@@ -892,9 +945,62 @@ const handleSignOut = () => {
     New Indicator
   </button>
 
-  <div className="scrollable-content">
+<div className="scrollable-content">
 
-  </div>
+  {data.length === 0 && (
+    <p style={{ textAlign: "center" }}>No indicators added yet.</p>
+  )}
+
+  {data.map((record) => (
+    <div key={record.firebaseKey} className="indicator-display-card">
+
+      {/* MAIN INDICATORS */}
+      {record.mainIndicators?.map((main, index) => (
+        <div key={index} className="display-main">
+          <h4>{main.title}</h4>
+
+          {main.fieldType === "multiple" && (
+            <ul>
+              {main.choices.map((choice, i) => (
+                <li key={i}>{choice}</li>
+              ))}
+            </ul>
+          )}
+
+          {main.fieldType === "checkbox" && (
+            <ul>
+              {main.choices.map((choice, i) => (
+                <li key={i}>{choice}</li>
+              ))}
+            </ul>
+          )}
+
+        </div>
+      ))}
+
+      {/* SUB INDICATORS */}
+      {record.subIndicators?.map((sub, index) => (
+        <div key={index} className="display-sub">
+          <strong>{sub.title}</strong>
+          <p>Verification: {sub.verification}</p>
+
+          {sub.fieldType === "multiple" && (
+            <ul>
+              {sub.choices.map((choice, i) => (
+                <li key={i}>{choice}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ))}
+
+      <hr />
+    </div>
+  ))}
+</div>
+
+
+
 </div>
         </div>
         </div>
