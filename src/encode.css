@@ -1297,3 +1297,15 @@ th, td {
   outline: none;
   background-color: white;
 }
+
+
+.main-header .date-field {
+  width: 25%;
+  min-width: 180px;   /* prevents it from becoming too small */
+  height: 39px;
+  border: 1px solid #00000062;
+  padding: 0 10px;
+  background: white;
+  font-size: 14px;
+  margin-top: -2%;
+}
