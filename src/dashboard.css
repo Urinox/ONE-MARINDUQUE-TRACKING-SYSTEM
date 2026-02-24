@@ -113,19 +113,15 @@ body {
 .topbar-left {
   display: flex;
   flex-direction: column;
-  gap: 5x;
+  gap: 5x;  
 }
-
-.topbar-left h2 {
-  margin: 0;
-  font-size: 20px;
+.topbar .topbar-left h2 {
+  font-size: 24px;
+    margin: 0;
   font-weight: bold;
 }
 
-.topbar-left p {
-  margin: 0;
-  font-size: 12px;
-}
+
 
 .top-right {
   margin-left: auto;    /* pushes profile to the far right */
@@ -248,7 +244,7 @@ body {
   font-size: 14px;
   border-radius: 5px;
   cursor: pointer;
-
+  font-weight: 600;
   display: inline-flex;   /* align icon and text */
   align-items: center;    /* vertical center */
   gap: 8px;               /* space between icon and text */

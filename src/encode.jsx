@@ -22,12 +22,81 @@ export default function Encode() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [subFieldType, setSubFieldType] = useState("");
   const [choices, setChoices] = useState([]);
+  const [editProfileData, setEditProfileData] = useState({
+  name: "",
+  email: displayName,
+  image: ""
+});
   const [profileData, setProfileData] = useState({
     name: "",
     email: displayName,
     image: ""
   });
   const [data, setData] = useState([]);
+
+
+
+  // Add Main Indicator
+const addMainIndicator = () => {
+  setMainIndicators((prev) => [
+    ...prev,
+    {
+      id: prev.length + 1,
+      title: "",
+      fieldType: "",
+      choices: [],
+      verification: "",
+    },
+  ]);
+};
+
+// Update Main Indicator
+const updateMainIndicator = (id, field, value) => {
+  setMainIndicators((prev) =>
+    prev.map((main) =>
+      main.id === id ? { ...main, [field]: value } : main
+    )
+  );
+};
+
+// Update Main Choices
+const updateMainChoice = (mainId, index, value) => {
+  setMainIndicators((prev) =>
+    prev.map((main) => {
+      if (main.id === mainId) {
+        const updatedChoices = [...main.choices];
+        updatedChoices[index] = value;
+        return { ...main, choices: updatedChoices };
+      }
+      return main;
+    })
+  );
+};
+
+// Add Main Choice
+const addMainChoice = (mainId) => {
+  setMainIndicators((prev) =>
+    prev.map((main) =>
+      main.id === mainId
+        ? { ...main, choices: [...main.choices, ""] }
+        : main
+    )
+  );
+};
+
+// Remove Main Choice
+const removeMainChoice = (mainId, index) => {
+  setMainIndicators((prev) =>
+    prev.map((main) => {
+      if (main.id === mainId) {
+        const filtered = main.choices.filter((_, i) => i !== index);
+        return { ...main, choices: filtered };
+      }
+      return main;
+    })
+  );
+};
+
 useEffect(() => {
   if (!auth.currentUser) return;
 
@@ -62,6 +131,17 @@ useEffect(() => {
 }, []);
 
 
+const [mainIndicators, setMainIndicators] = useState([
+  {
+    id: 1,
+    title: "",
+    fieldType: "",
+    choices: [],
+    verification: "",
+  },
+]);
+
+
 const handleSaveProfile = async () => {
   if (!auth.currentUser) return;
 
@@ -69,9 +149,11 @@ const handleSaveProfile = async () => {
     setSavingProfile(true);
 
     await set(ref(db, `profiles/${auth.currentUser.uid}`), {
-      ...profileData,
-      email: auth.currentUser.email // force correct email
+      ...editProfileData,
+      email: auth.currentUser.email
     });
+
+setProfileData(editProfileData); // update visible profile
 
     alert("Profile updated successfully!");
     setShowEditProfileModal(false);
@@ -89,7 +171,7 @@ const handleImageUpload = (e) => {
 
   const reader = new FileReader();
   reader.onloadend = () => {
-    setProfileData({ ...profileData, image: reader.result });
+    setEditProfileData({ ...editProfileData, image: reader.result });
   };
   reader.readAsDataURL(file);
 };
@@ -266,12 +348,9 @@ const handleSignOut = () => {
               {sidebarOpen ? "☰" : "✖"}
             </button>
             <div className="topbar-left">
-                <h2>Provincial Assessment</h2>
-                <p>
-                  To proceed to encoding, kindly click the <b>“Encode”</b> button.
-                </p>
-                <p>A modal will show up afterwards select the appropriate details.
-                </p>
+            <div className="topbar-left">
+                  <h2>Provincial Assessment</h2>
+                </div>
               </div>
 
               <div className="top-right">
@@ -330,6 +409,7 @@ const handleSignOut = () => {
             className="profile-btn"
             onClick={() => {
               setShowProfileModal(false);
+              setEditProfileData(profileData); // copy saved data
               setShowEditProfileModal(true);
             }}
           >
@@ -356,7 +436,10 @@ const handleSignOut = () => {
         <h3>Edit Profile</h3>
           <span
             className="close-x"
-            onClick={() => !savingProfile && profileData.name && setShowEditProfileModal(false)}
+            onClick={() => {
+              setEditProfileData(profileData); // reset changes
+              setShowEditProfileModal(false);  // close modal
+            }}
           >
             ✕
           </span>
@@ -370,14 +453,14 @@ const handleSignOut = () => {
           <input type="file" accept="image/*" onChange={handleImageUpload} />
         </div>
 
-        {profileData.image && (
+        {editProfileData.image && (
           <div className="profile-preview">
-            <img src={profileData.image} alt="Preview" />
+            <img src={editProfileData.image} alt="Preview" />
             <button
               type="button"
               className="remove-photo-btn"
               onClick={() =>
-                setProfileData({ ...profileData, image: "" })
+                setEditProfileData({ ...editProfileData, image: "" })
               }
             >
               Remove
@@ -390,9 +473,9 @@ const handleSignOut = () => {
           <label>Name:</label>
           <input
             type="text"
-            value={profileData.name}
+            value={editProfileData.name}
             onChange={(e) =>
-              setProfileData({ ...profileData, name: e.target.value })
+              setEditProfileData({ ...editProfileData, name: e.target.value })
             }
           />
         </div>
@@ -412,7 +495,7 @@ const handleSignOut = () => {
           <button
             className="save-profile-btn"
             onClick={handleSaveProfile}
-            disabled={savingProfile || !profileData.name.trim()}
+            disabled={savingProfile || !editProfileData.name.trim()}
           >
             {savingProfile ? "Saving..." : "Save Changes"}
           </button>
@@ -441,23 +524,180 @@ const handleSignOut = () => {
         <div className="indicator-section">
           <h4>INDICATOR</h4>
 
-          <div className="indicator-row">
-            <input type="text" placeholder="Title here . . . ." />
+{mainIndicators.map((main) => (
+  <div key={main.id} className="main-card">
 
-          <select defaultValue="" required>
-            <option value="" disabled hidden>
-              Choose field
-            </option>
-            <option value="integer">Integer/Value</option>
-            <option value="short">Short Answer</option>
-            <option value="multiple">Multiple Choice</option>
-            <option value="checkbox">Checkboxes</option>
-            <option value="date">Date</option>
-          </select>
+    <div className="main-header">
+
+      {/* LEFT COLUMN */}
+      <div className="main-left">
+
+        {/* TITLE */}
+        <input
+          type="text"
+          placeholder="Title here . . . ."
+          value={main.title}
+          onChange={(e) =>
+            updateMainIndicator(main.id, "title", e.target.value)
+          }
+        />
+
+
+        {/* DATE */}
+        {main.fieldType === "date" && (
+          <input
+            type="date"
+            className="date-field"
+            onChange={(e) =>
+              updateMainIndicator(main.id, "value", e.target.value)
+            }
+          />
+        )}
+
+
+        {/* MULTIPLE */}
+        {main.fieldType === "multiple" && (
+          <div className="multiple-wrapper">
+
+            {main.choices.map((choice, index) => (
+
+              <div key={index} className="choice-row">
+
+                <input type="radio" disabled />
+
+                <input
+                  type="text"
+                  placeholder="Enter choice"
+                  value={choice}
+                  onChange={(e) =>
+                    updateMainChoice(main.id, index, e.target.value)
+                  }
+                />
+
+                <button
+                  type="button"
+                  className="remove-choice-btn"
+                  onClick={() => removeMainChoice(main.id, index)}
+                >
+                  ✕
+                </button>
+
+              </div>
+
+            ))}
+
+
+            <button
+              type="button"
+              className="add-choice-btn"
+              onClick={() => addMainChoice(main.id)}
+            >
+              <input type="radio" disabled className="add-radio"/>
+              <span>+ Add Option</span>
+            </button>
+
           </div>
+        )}
+
+
+        {/* CHECKBOX */}
+        {main.fieldType === "checkbox" && (
+
+          <div className="multiple-wrapper">
+
+            {main.choices.map((choice, index) => (
+
+              <div key={index} className="choice-row">
+
+                <input type="checkbox" disabled />
+
+                <input
+                  type="text"
+                  placeholder="Enter choice"
+                  value={choice}
+                  onChange={(e) =>
+                    updateMainChoice(main.id, index, e.target.value)
+                  }
+                />
+
+                <button
+                  type="button"
+                  className="remove-choice-btn"
+                  onClick={() => removeMainChoice(main.id, index)}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+
+
+            <button
+              type="button"
+              className="add-choice-btn"
+              onClick={() => addMainChoice(main.id)}
+            >
+              <input type="checkbox" disabled className="add-radio"/>
+              <span>+ Add Option</span>
+            </button>
+          </div>
+        )}
+
+
+        {/* SHORT */}
+        {main.fieldType === "short" && (
+          <div className="short-wrapper">
+            <textarea
+              className="short-field"
+              placeholder="Empty Field"
+            />
+          </div>
+        )}
+
+        {/* INTEGER */}
+        {main.fieldType === "integer" && (
+          <div className="integer-wrapper">
+            <input
+              type="number"
+              className="integer-field"
+              placeholder="Empty Field"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT SELECT */}
+      <select
+        value={main.fieldType}
+        onChange={(e) =>
+          updateMainIndicator(main.id, "fieldType", e.target.value)
+        }
+      >
+
+        <option value="" disabled hidden>
+          Choose field
+        </option>
+        <option value="integer">
+          Integer/Value
+        </option>
+        <option value="short">
+          Short Answer
+        </option>
+        <option value="multiple">
+          Multiple Choice
+        </option>
+        <option value="checkbox">
+          Checkboxes
+        </option>
+        <option value="date">
+          Date
+        </option>
+      </select>
+    </div>
+  </div>
+))}
         </div>
 
-        {/* SUB INDICATOR SECTION */}
+        {/* main INDICATOR SECTION */}
         <div className="sub-section">
           <h4>SUB-INDICATOR/S</h4>
 
@@ -527,7 +767,6 @@ const handleSignOut = () => {
 
         {sub.fieldType === "checkbox" && (
           <div className="multiple-wrapper">
-
             {sub.choices.map((choice, index) => (
               <div key={index} className="choice-row">
                 <input type="checkbox" disabled />
@@ -621,10 +860,6 @@ const handleSignOut = () => {
     </div>
   </div>
 )}
-
-
-
-
             </div>
           </div>
 
@@ -646,11 +881,19 @@ const handleSignOut = () => {
           </div>
 
           {/* Table */}
-<div className="table-box">
-  <div className="table-header">
-    <button className="btn-new" onClick={() => setShowModal(true)}>
-      <span style={{ fontSize: "16px", fontWeight: "bold" }}>＋</span> New Indicator
-    </button>
+<div className="encodetable-box">
+  <div className="encodetable-header">
+    <h3 className="table-title">
+      Financial Administration and Sustainability
+    </h3>
+  </div>
+  <button className="btn-new" onClick={() => setShowModal(true)}>
+    <span style={{ fontSize: "20px", fontWeight: "bold" }}>＋</span>
+    New Indicator
+  </button>
+
+  <div className="scrollable-content">
+
   </div>
 </div>
         </div>

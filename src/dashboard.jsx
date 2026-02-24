@@ -21,6 +21,11 @@ export default function Dashboard() {
   const displayName = user?.email || "User";
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [editProfileData, setEditProfileData] = useState({
+  name: "",
+  email: displayName,
+  image: ""
+});
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileData, setProfileData] = useState({
     name: "",
@@ -62,13 +67,11 @@ useEffect(() => {
   });
 }, []);
   const [newRecord, setNewRecord] = useState({
-    form: "",
     year: "",
     municipality: ""
   });
   const [filters, setFilters] = useState({
     municipality: "",
-    form: "",
     year: "",
     status: "",
   });
@@ -81,9 +84,11 @@ const handleSaveProfile = async () => {
     setSavingProfile(true);
 
     await set(ref(db, `profiles/${auth.currentUser.uid}`), {
-      ...profileData,
-      email: auth.currentUser.email // force correct email
+      ...editProfileData,
+      email: auth.currentUser.email
     });
+
+setProfileData(editProfileData); // update visible profile
 
     alert("Profile updated successfully!");
     setShowEditProfileModal(false);
@@ -101,17 +106,17 @@ const handleImageUpload = (e) => {
 
   const reader = new FileReader();
   reader.onloadend = () => {
-    setProfileData({ ...profileData, image: reader.result });
+    setEditProfileData({ ...editProfileData, image: reader.result });
   };
   reader.readAsDataURL(file);
 };
 
 const handleAddRecord = async () => {
-  if (!newRecord.form || !newRecord.year || !newRecord.municipality) return alert("Please complete all fields.");
+  if (!newRecord.year || !newRecord.municipality) return alert("Please complete all fields.");
 
   const nextId = data.length > 0 ? Math.max(...data.map(d => d.id)) + 1 : 1;
   const today = new Date().toLocaleDateString("en-US", { day: "2-digit", month: "long", year: "numeric" });
-  const newEntry = { id: nextId, lgu: "M", municipality: newRecord.municipality, form: newRecord.form, year: newRecord.year, status: "Draft", submission: today, deadline: "-" };
+  const newEntry = { id: nextId, lgu: "M", municipality: newRecord.municipality, year: newRecord.year, status: "Draft", submission: today, deadline: "-" };
 
   try {
     const newRef = push(ref(db, `encode/${auth.currentUser.uid}`)); // user-specific
@@ -119,7 +124,7 @@ const handleAddRecord = async () => {
     
     alert("Saved successfully!");
     setShowModal(false);
-    setNewRecord({ form: "", year: "", municipality: "" });
+    setNewRecord({ year: "", municipality: "" });
   } catch (error) {
     console.error(error);
     alert("Write failed: " + error.message);
@@ -140,8 +145,8 @@ const handleAddRecord = async () => {
 
   const municipalities = ["Boac", "Mogpog", "Sta. Cruz", "Torrijos", "Buenavista", "Gasan"];
   const forms = ["LGU Profile", "Regional Assessment"];
-  const years = ["2021","2022", "2023", "2024", "2025"];
-  const statuses = ["Submitted", "Draft"];
+  const years = ["2021","2022", "2023", "2024", "2025", "2026"];
+  const statuses = ["Verified", "Draft", "Incomplete"];
 
   const updateFilter = (type, value) => {
     setFilters({ ...filters, [type]: value });
@@ -152,7 +157,6 @@ const handleAddRecord = async () => {
   const clearFilters = () => {
     setFilters({
       municipality: "",
-      form: "",
       year: "",
       status: "",
     });
@@ -162,11 +166,10 @@ const handleAddRecord = async () => {
   const filteredData = data.filter((item) => {
     return (
       (!filters.municipality || item.municipality === filters.municipality) &&
-      (!filters.form || item.form === filters.form) &&
       (!filters.year || item.year === filters.year) &&
       (!filters.status || item.status === filters.status) &&
       (item.municipality.toLowerCase().includes(search.toLowerCase()) ||
-        item.form.toLowerCase().includes(search.  toLowerCase()))
+        item.year.toLowerCase().includes(search.toLowerCase()))
     );
   });
 
@@ -251,21 +254,6 @@ const handleSignOut = () => {
               <div className="filter-item">
                 <div
                   className="filter-btn"
-                  onClick={() =>
-                    setOpenDropdown(openDropdown === "form" ? null : "form")
-                  }
-                >
-                  Form {filters.form && `: ${filters.form}`}
-                  <span className="arrow" style={{ pointerEvents: "none" }}>
-                    {openDropdown === "form" ? "▲" : "▼"}
-                  </span>
-                </div>
-                {openDropdown === "form" && renderDropdown("form", forms)}
-              </div>
-
-              <div className="filter-item">
-                <div
-                  className="filter-btn"
                   onClick={() => setOpenDropdown(openDropdown === "year" ? null : "year")}
                 >
                   Year {filters.year && `: ${filters.year}`}
@@ -316,11 +304,6 @@ const handleSignOut = () => {
             </button>
             <div className="topbar-left">
                 <h2>Provincial Assessment</h2>
-                <p>
-                  To proceed to encoding, kindly click the <b>“Encode”</b> button.
-                </p>
-                <p>A modal will show up afterwards select the appropriate details.
-                </p>
               </div>
 
               <div className="top-right">
@@ -407,7 +390,10 @@ const handleSignOut = () => {
         <h3>Edit Profile</h3>
           <span
             className="close-x"
-            onClick={() => !savingProfile && profileData.name && setShowEditProfileModal(false)}
+            onClick={() => {
+              setEditProfileData(profileData); // reset changes
+              setShowEditProfileModal(false);  // close modal
+            }}
           >
             ✕
           </span>
@@ -421,14 +407,14 @@ const handleSignOut = () => {
           <input type="file" accept="image/*" onChange={handleImageUpload} />
         </div>
 
-        {profileData.image && (
+        {editProfileData.image && (
           <div className="profile-preview">
-            <img src={profileData.image} alt="Preview" />
+            <img src={editProfileData.image} alt="Preview" />
             <button
               type="button"
               className="remove-photo-btn"
               onClick={() =>
-                setProfileData({ ...profileData, image: "" })
+                setEditProfileData({ ...editProfileData, image: "" })
               }
             >
               Remove
@@ -441,9 +427,9 @@ const handleSignOut = () => {
           <label>Name:</label>
           <input
             type="text"
-            value={profileData.name}
+            value={editProfileData.name}
             onChange={(e) =>
-              setProfileData({ ...profileData, name: e.target.value })
+              setEditProfileData({ ...editProfileData, name: e.target.value })
             }
           />
         </div>
@@ -463,7 +449,7 @@ const handleSignOut = () => {
           <button
             className="save-profile-btn"
             onClick={handleSaveProfile}
-            disabled={savingProfile || !profileData.name.trim()}
+            disabled={savingProfile || !editProfileData.name.trim()}
           >
             {savingProfile ? "Saving..." : "Save Changes"}
           </button>
@@ -495,7 +481,7 @@ const handleSignOut = () => {
       a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75
       1.84-1.82z"/>
     </svg>
-    Encode
+    Create
   </button>
 </div>
 
@@ -508,7 +494,6 @@ const handleSignOut = () => {
                   <th>#</th>
                   <th>LGU TYPE</th>
                   <th>MUNICIPALITY</th>
-                  <th>FORM</th>
                   <th>YEAR</th>
                   <th>STATUS</th>
                   <th>Submission</th>
@@ -522,7 +507,6 @@ const handleSignOut = () => {
                     <td>{item.id}</td>
                     <td>{item.lgu}</td>
                     <td>{item.municipality}</td>
-                    <td>{item.form}</td>
                     <td>{item.year}</td>
                     <td>
                       <span className={`status ${item.status.toLowerCase()}`}>
@@ -618,21 +602,6 @@ const handleSignOut = () => {
 
               {/* Body */}
               <div className="modal-body">
-
-                {/* Form Dropdown */}
-                <div className="modal-field">
-                  <label>Form:</label>
-                  <select
-                        value={newRecord.form}
-                        onChange={(e) =>
-                        setNewRecord({ ...newRecord, form: e.target.value })
-                      }>
-                    <option value="">Select Form</option>
-                    <option>LGU Profile</option>
-                    <option>Regional Assessment</option>
-                  </select>
-                </div>
-
                 {/* Year Dropdown */}
                 <div className="modal-field">
                   <label>Year:</label>
@@ -658,7 +627,7 @@ const handleSignOut = () => {
                       onChange={(e) =>
                       setNewRecord({ ...newRecord, municipality: e.target.value })
                     }>
-                    <option value="">Select municipality</option>
+                    <option value="">Select Municipality</option>
                     <option>Boac (Capital)</option>
                     <option>Gasan</option>
                     <option>Mogpog</option>
