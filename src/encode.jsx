@@ -26,6 +26,7 @@ export default function Encode() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [subFieldType, setSubFieldType] = useState("");
   const [choices, setChoices] = useState([]);
+  const [activeItem, setActiveItem] = useState(""); 
   const [formError, setFormError] = useState("");
 
   const initialMainIndicators = [
@@ -409,58 +410,90 @@ const isIndicatorValid = () => {
           </div>
 
 
-                {sidebarOpen && (
-                <>
-                    <button className="encodeback-btn" onClick={() => navigate("/dashboard")}>
-                    ⬅ BACK
-                    </button>
+{sidebarOpen && (
+  <>
+    <button
+      className="encodeback-btn"
+      onClick={() => navigate("/dashboard")}
+    >
+      ⬅ BACK
+    </button>
 
-                    <div className="sidebar-menu">
+    <div className="sidebar-menu">
 
-                    <div className="sidebar-item">
-                        Financial Administration and Sustainability
-                    </div>
+      <div
+        className={`sidebar-item ${activeItem === "Financial Administration and Sustainability" ? "active" : ""}`}
+        onClick={() => setActiveItem("Financial Administration and Sustainability")}
+      >
+        Financial Administration and Sustainability
+      </div>
 
-                    <div className="sidebar-item">
-                        Disaster Preparedness
-                    </div>
+      <div
+        className={`sidebar-item ${activeItem === "Disaster Preparedness" ? "active" : ""}`}
+        onClick={() => setActiveItem("Disaster Preparedness")}
+      >
+        Disaster Preparedness
+      </div>
 
-                    <div className="sidebar-item">
-                        Social Protection and Sensitivity
-                    </div>
+      <div
+        className={`sidebar-item ${activeItem === "Social Protection and Sensitivity" ? "active" : ""}`}
+        onClick={() => setActiveItem("Social Protection and Sensitivity")}
+      >
+        Social Protection and Sensitivity
+      </div>
 
-                    <div className="sidebar-item">
-                        Health Compliance and Responsiveness
-                    </div>
+      <div
+        className={`sidebar-item ${activeItem === "Health Compliance and Responsiveness" ? "active" : ""}`}
+        onClick={() => setActiveItem("Health Compliance and Responsiveness")}
+      >
+        Health Compliance and Responsiveness
+      </div>
 
-                    <div className="sidebar-item">
-                        Sustainable Education
-                    </div>
+      <div
+        className={`sidebar-item ${activeItem === "Sustainable Education" ? "active" : ""}`}
+        onClick={() => setActiveItem("Sustainable Education")}
+      >
+        Sustainable Education
+      </div>
 
-                    <div className="sidebar-item">
-                        Business-Friendliness and Competitiveness
-                    </div>
+      <div
+        className={`sidebar-item ${activeItem === "Business-Friendliness and Competitiveness" ? "active" : ""}`}
+        onClick={() => setActiveItem("Business-Friendliness and Competitiveness")}
+      >
+        Business-Friendliness and Competitiveness
+      </div>
 
-                    <div className="sidebar-item">
-                        Safety, Peace and Order
-                    </div>
+      <div
+        className={`sidebar-item ${activeItem === "Safety, Peace and Order" ? "active" : ""}`}
+        onClick={() => setActiveItem("Safety, Peace and Order")}
+      >
+        Safety, Peace and Order
+      </div>
 
-                    <div className="sidebar-item">
-                        Environmental Management
-                    </div>
+      <div
+        className={`sidebar-item ${activeItem === "Environmental Management" ? "active" : ""}`}
+        onClick={() => setActiveItem("Environmental Management")}
+      >
+        Environmental Management
+      </div>
 
-                    <div className="sidebar-item">
-                        Tourism, Heritage Development, Culture and Arts
-                    </div>
+      <div
+        className={`sidebar-item ${activeItem === "Tourism, Heritage Development, Culture and Arts" ? "active" : ""}`}
+        onClick={() => setActiveItem("Tourism, Heritage Development, Culture and Arts")}
+      >
+        Tourism, Heritage Development, Culture and Arts
+      </div>
 
-                    <div className="sidebar-item">
-                        Youth Development
-                    </div>
+      <div
+        className={`sidebar-item ${activeItem === "Youth Development" ? "active" : ""}`}
+        onClick={() => setActiveItem("Youth Development")}
+      >
+        Youth Development
+      </div>
 
-                    </div>
-
-                </>
-                )}
+    </div>
+  </>
+)}
         </div>
 
 
