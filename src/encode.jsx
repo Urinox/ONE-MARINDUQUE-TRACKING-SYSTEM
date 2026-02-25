@@ -3,25 +3,30 @@ import { db, auth} from "./firebase";
 import "./encode.css";
 import dilgLogo from "./assets/dilg-po.png";
 import dilgSeal from "./assets/dilg-ph.png";
-import { FiSave } from "react-icons/fi";
+import { FiSave, FiTrash2 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { ref, push, onValue, set } from "firebase/database";
 
 
 
 export default function Encode() {
+
+
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [isSavingIndicator, setIsSavingIndicator] = useState(false);
   const user = auth.currentUser;
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const displayName = user?.email || "User";
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [subFieldType, setSubFieldType] = useState("");
   const [choices, setChoices] = useState([]);
+  const [formError, setFormError] = useState("");
 
   const initialMainIndicators = [
     {
@@ -59,6 +64,10 @@ export default function Encode() {
 
 
 
+
+
+  
+
   // Add Main Indicator
 const addMainIndicator = () => {
   setMainIndicators((prev) => [
@@ -73,25 +82,70 @@ const addMainIndicator = () => {
   ]);
 };
 
-const handleAddIndicator = async () => {
+// Open modal to edit a specific record
+const handleEditRecord = (record) => {
+  setMainIndicators(record.mainIndicators || []);
+  setSubIndicators(record.subIndicators || []);
+  setShowModal(true);
+
+  // Store the Firebase key of the record being edited
+  setEditRecordKey(record.firebaseKey);
+};
+
+// Delete a record
+const handleDeleteRecord = async (firebaseKey) => {
   if (!auth.currentUser) return;
+  const confirmDelete = window.confirm("Are you sure you want to delete this indicator?");
+  if (!confirmDelete) return;
 
   try {
+    const recordRef = ref(db, `encode/${auth.currentUser.uid}/${firebaseKey}`);
+    await set(recordRef, null); // deletes the record
+    setData((prev) => prev.filter((item) => item.firebaseKey !== firebaseKey));
+  } catch (error) {
+    console.error("Error deleting record:", error);
+    alert("Failed to delete record");
+  }
+};
+
+// Track which record is being edited
+const [editRecordKey, setEditRecordKey] = useState(null);
+
+
+const handleAddIndicator = async () => {
+  if (!auth.currentUser || isSavingIndicator) return;
+
+  try {
+    setIsSavingIndicator(true);
+
     const encodeRef = ref(db, `encode/${auth.currentUser.uid}`);
 
-    await push(encodeRef, {
-      mainIndicators,
-      subIndicators,
-      createdAt: Date.now(),
-    });
+    if (editRecordKey) {
+      // Overwrite existing record
+      await set(ref(db, `encode/${auth.currentUser.uid}/${editRecordKey}`), {
+        mainIndicators,
+        subIndicators,
+        createdAt: Date.now(),
+      });
+    } else {
+      // Push new record
+      await push(encodeRef, {
+        mainIndicators,
+        subIndicators,
+        createdAt: Date.now(),
+      });
+    }
 
-    // Reset modal
     setMainIndicators(initialMainIndicators);
     setSubIndicators(initialSubIndicators);
     setShowModal(false);
+    setShowSaveConfirm(false);
+    setEditRecordKey(null);
 
   } catch (error) {
     console.error("Error saving indicator:", error);
+  } finally {
+    setIsSavingIndicator(false);
   }
 };
 
@@ -177,7 +231,23 @@ useEffect(() => {
   });
 }, []);
 
+const handleSaveChanges = async () => {
+  if (!auth.currentUser || isSavingIndicator) return;
 
+  try {
+    setIsSavingIndicator(true);
+
+    const dataRef = ref(db, `encode/${auth.currentUser.uid}`);
+
+    await set(dataRef, data);
+
+    setShowSaveConfirm(false);
+  } catch (error) {
+    console.error("Error saving changes:", error);
+  } finally {
+    setIsSavingIndicator(false);
+  }
+};
 
 
 
@@ -293,6 +363,33 @@ const handleSignOut = () => {
       })
     );
   };
+
+const isIndicatorValid = () => {
+  const validateField = (indicator) => {
+    if (!indicator.title.trim()) return false;
+    if (!indicator.fieldType) return false;
+
+    if (
+      indicator.fieldType === "multiple" ||
+      indicator.fieldType === "checkbox"
+    ) {
+      if (!indicator.choices.length) return false;
+
+      const hasEmptyChoice = indicator.choices.some(
+        (choice) => !choice.trim()
+      );
+
+      if (hasEmptyChoice) return false;
+    }
+
+    return true;
+  };
+
+  const mainValid = mainIndicators.every(validateField);
+  const subValid = subIndicators.every(validateField);
+
+  return mainValid && subValid;
+};
 
   return (
     <div className="dashboard-scale">
@@ -702,14 +799,39 @@ const handleSignOut = () => {
             />
           </div>
         )}
+
+                    <div className="mainverification-row">
+              <label className="mainverification-label">
+                Mode of Verification:
+              </label>
+
+              <input
+                type="text"
+                className="mainverification-input"
+                value={main.verification}
+                onChange={(e) =>
+                  updateMainIndicator(main.id, "verification", e.target.value)
+                }
+              />
+            </div>
       </div>
 
       {/* RIGHT SELECT */}
       <select
         value={main.fieldType}
-        onChange={(e) =>
-          updateMainIndicator(main.id, "fieldType", e.target.value)
-        }
+          onChange={(e) => {
+            const newType = e.target.value;
+
+            updateMainIndicator(main.id, "fieldType", newType);
+
+            if (newType !== "multiple" && newType !== "checkbox") {
+              updateMainIndicator(main.id, "choices", []);
+            }
+
+            if (newType !== "date") {
+              updateMainIndicator(main.id, "value", "");
+            }
+          }}
       >
 
         <option value="" disabled hidden>
@@ -877,9 +999,19 @@ const handleSignOut = () => {
       {/* RIGHT SIDE SELECT */}
       <select
         value={sub.fieldType}
-        onChange={(e) =>
-          updateSubIndicator(sub.id, "fieldType", e.target.value)
-        }
+          onChange={(e) => {
+            const newType = e.target.value;
+
+            updateSubIndicator(sub.id, "fieldType", newType);
+
+            if (newType !== "multiple" && newType !== "checkbox") {
+              updateSubIndicator(sub.id, "choices", []);
+            }
+
+            if (newType !== "date") {
+              updateSubIndicator(sub.id, "value", "");
+            }
+          }}
       >
         <option value="" disabled hidden>
           Choose field
@@ -895,7 +1027,11 @@ const handleSignOut = () => {
   </div>
 ))}
         </div>
-
+        {formError && (
+          <div style={{ color: "red", marginBottom: "10px" }}>
+            {formError}
+          </div>
+        )}
         {/* FOOTER */}
         <div className="indicator-footer">
             <button className="new-sub-btn" onClick={addSubIndicator}>
@@ -905,6 +1041,11 @@ const handleSignOut = () => {
               <button 
                 className="add-indicator-btn"
                 onClick={handleAddIndicator}
+                disabled={!isIndicatorValid()}
+                style={{
+                  opacity: !isIndicatorValid() ? 0.5 : 1,
+                  cursor: !isIndicatorValid() ? "not-allowed" : "pointer"
+                }}
               >
                 ADD
               </button>
@@ -913,11 +1054,38 @@ const handleSignOut = () => {
     </div>
   </div>
 )}
+
+{showSaveConfirm && (
+  <div className="modal-overlay">
+    <div className="confirm-modal">
+      <h3>Save changes?</h3>
+      <div className="confirm-buttons">
+        <button
+          className="discard-btn"
+          onClick={() => setShowSaveConfirm(false)}
+        >
+          Discard
+        </button>
+
+          <button
+            className="confirm-btn"
+            disabled={isSavingIndicator}
+            onClick={handleSaveChanges}
+          >
+            {isSavingIndicator ? "Saving..." : "Yes"}
+          </button>
+      </div>
+    </div>
+  </div>
+)}
             </div>
           </div>
 
           <div className="action-bar">
-          <button className="savechanges-btn" onClick={() => setShowModal(true)}>
+          <button 
+            className="savechanges-btn" 
+            onClick={() => setShowSaveConfirm(true)}
+          >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="18"
@@ -940,10 +1108,6 @@ const handleSignOut = () => {
       Financial Administration and Sustainability
     </h3>
   </div>
-  <button className="btn-new" onClick={() => setShowModal(true)}>
-    <span style={{ fontSize: "20px", fontWeight: "bold" }}>＋</span>
-    New Indicator
-  </button>
 
 <div className="scrollable-content">
 
@@ -952,53 +1116,143 @@ const handleSignOut = () => {
   )}
 
   {data.map((record) => (
-    <div key={record.firebaseKey} className="indicator-display-card">
+    <div key={record.firebaseKey} className="reference-wrapper">
 
-      {/* MAIN INDICATORS */}
-      {record.mainIndicators?.map((main, index) => (
-        <div key={index} className="display-main">
-          <h4>{main.title}</h4>
+{record.mainIndicators?.map((main, index) => (
+  <div key={index} className="reference-wrapper">
+    <div className="reference-row">
+      {/* LEFT COLUMN */}
+      <div className="reference-label">{main.title}</div>
 
-          {main.fieldType === "multiple" && (
-            <ul>
-              {main.choices.map((choice, i) => (
-                <li key={i}>{choice}</li>
-              ))}
-            </ul>
+      {/* RIGHT COLUMN */}
+      <div className="mainreference-field with-buttons">
+        <div className="field-content">
+          {main.fieldType === "multiple" &&
+            main.choices.map((choice, i) => (
+              <div key={i}>
+                <input type="radio" disabled /> {choice || <span style={{ fontStyle: "italic", color: "gray" }}>Empty Option</span>}
+              </div>
+            ))}
+
+          {main.fieldType === "checkbox" &&
+            main.choices.map((choice, i) => (
+              <div key={i}>
+                <input type="checkbox" disabled /> {choice || <span style={{ fontStyle: "italic", color: "gray" }}>Empty Option</span>}
+              </div>
+            ))}
+
+          {main.fieldType === "short" && (
+            <span style={{ fontStyle: "italic", color: "gray" }}>Empty Field</span>
           )}
 
-          {main.fieldType === "checkbox" && (
-            <ul>
-              {main.choices.map((choice, i) => (
-                <li key={i}>{choice}</li>
-              ))}
-            </ul>
+          {main.fieldType === "integer" && (
+            <span style={{ fontStyle: "italic", color: "gray" }}>Empty Field</span>
           )}
 
+          {main.fieldType === "date" && (
+            <span style={{ fontStyle: "italic", color: "gray" }}>
+              {main.value
+                ? new Date(main.value).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })
+                : "Empty Field"}
+            </span>
+          )}
         </div>
-      ))}
 
-      {/* SUB INDICATORS */}
-      {record.subIndicators?.map((sub, index) => (
-        <div key={index} className="display-sub">
-          <strong>{sub.title}</strong>
-          <p>Verification: {sub.verification}</p>
-
-          {sub.fieldType === "multiple" && (
-            <ul>
-              {sub.choices.map((choice, i) => (
-                <li key={i}>{choice}</li>
-              ))}
-            </ul>
-          )}
+        {/* Buttons inside the same right column */}
+        <div className="record-actions inside-field">
+          <button
+            className="edit-btn"
+            onClick={() => handleEditRecord(record)}
+            aria-label="Edit"
+            title="Edit"
+          >
+            ✎ Edit
+          </button>
+          <button
+            className="delete-btn"
+            onClick={() => handleDeleteRecord(record.firebaseKey)}
+            aria-label="Delete"
+            title="Delete"
+          >
+            <FiTrash2 />
+          </button>
         </div>
-      ))}
+      </div>
+    </div>
 
-      <hr />
+    {main.verification && (
+      <div className="reference-verification-full">
+        <span className="reference-verification-label">Mode of Verification:</span>
+        <span className="reference-verification-value">{main.verification}</span>
+      </div>
+    )}
+  </div>
+))}
+
+{record.subIndicators?.map((sub, index) => (
+  <div key={index} className="reference-wrapper">
+    <div className="reference-row sub-row">
+      <div className="reference-label">{sub.title}</div>
+
+      <div className="reference-field">
+        {sub.fieldType === "multiple" &&
+          sub.choices.map((choice, i) => (
+            <div key={i}>
+              <input type="radio" disabled /> {choice || <span style={{ fontStyle: "italic", color: "gray" }}>Empty Option</span>}
+            </div>
+          ))}
+
+        {sub.fieldType === "checkbox" &&
+          sub.choices.map((choice, i) => (
+            <div key={i}>
+              <input type="checkbox" disabled /> {choice || <span style={{ fontStyle: "italic", color: "gray" }}>Empty Option</span>}
+            </div>
+          ))}
+
+        {sub.fieldType === "short" && (
+          <span style={{ fontStyle: "italic", color: "gray" }}>Empty Field</span>
+        )}
+
+        {sub.fieldType === "integer" && (
+          <span style={{ fontStyle: "italic", color: "gray" }}>Empty Field</span>
+        )}
+
+        {sub.fieldType === "date" && (
+          <span style={{ fontStyle: "italic", color: "gray" }}>
+            {sub.value
+              ? new Date(sub.value).toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })
+              : "Empty Field"}
+          </span>
+        )}
+      </div>
+    </div>
+
+    {sub.verification && (
+      <div className="reference-verification-full">
+        <span className="reference-verification-label">Mode of Verification:</span>
+        <span className="reference-verification-value">{sub.verification}</span>
+      </div>
+    )}
+  </div>
+))}
+
     </div>
   ))}
+
 </div>
 
+  <button className="btn-new" onClick={() => setShowModal(true)}>
+    <span style={{ fontSize: "20px", fontWeight: "bold" }}>＋</span>
+    New Indicator
+  </button>
 
 
 </div>

@@ -54,6 +54,8 @@ useEffect(() => {
   });
 }, []);
 
+
+/*
 useEffect(() => {
   const dataRef = ref(db, `encode/${auth.currentUser.uid}`);
   onValue(dataRef, (snapshot) => {
@@ -66,6 +68,9 @@ useEffect(() => {
     setData(records);
   });
 }, []);
+*/
+
+
   const [newRecord, setNewRecord] = useState({
     year: "",
     municipality: ""
@@ -111,6 +116,9 @@ const handleImageUpload = (e) => {
   reader.readAsDataURL(file);
 };
 
+
+
+/*
 const handleAddRecord = async () => {
   if (!newRecord.year || !newRecord.municipality) return alert("Please complete all fields.");
 
@@ -130,6 +138,10 @@ const handleAddRecord = async () => {
     alert("Write failed: " + error.message);
   }
 };
+*/  
+
+
+
   const handleExport = (item) => {
   console.log("Export:", item);
   };
