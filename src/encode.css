@@ -428,10 +428,6 @@ th, td {
   background:#f4f4f442;
 }
 
-.sidebar-item:hover,
-.sidebar-item.active {
-  background: #f4f4f442; /* same as your hover */
-}
 
 .clear-icon-btn:hover {
   color: white;
