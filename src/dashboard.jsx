@@ -640,7 +640,7 @@ const handleSignOut = () => {
                       return;
                     }
 
-  navigate("/financial", {
+  navigate("/financial-administration-and-sustainability", {
     state: { year: newRecord.year }
   });
 }}>

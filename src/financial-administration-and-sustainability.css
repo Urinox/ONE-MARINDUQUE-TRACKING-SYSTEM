@@ -1717,3 +1717,8 @@ width: 55%;
 .subindicator-delete-btn:hover {
   background-color: #000000;   /* same hover as scrollable delete */
 }
+
+
+.sidebar-item.activated {
+  background-color :#f4f4f442;
+}
