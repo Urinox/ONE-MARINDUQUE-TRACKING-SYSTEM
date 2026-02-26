@@ -3,7 +3,7 @@ import { initializeApp } from "firebase/app";
 import { getAnalytics, isSupported } from "firebase/analytics";
 import { getDatabase } from "firebase/database"; // if using RTDB
 import { getAuth } from "firebase/auth"; // if using auth
-import { getPerformance } from "firebase/performance";
+import { getPerformance, isSupported as perfSupported } from "firebase/performance";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCPS1WHGUN2xVzjscOHtCfZ4qQDN5cMGi8",
@@ -22,9 +22,14 @@ const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);     // Realtime Database
 export const auth = getAuth(app);       // Authentication
 
-// Analytics safe load
-isSupported().then((yes) => {
+// Analytics (only if supported)
+analyticsSupported().then((yes) => {
   if (yes) getAnalytics(app);
+});
+
+// Performance Monitoring (only if supported)
+perfSupported().then((yes) => {
+  if (yes) getPerformance(app);
 });
 
 export default app;
