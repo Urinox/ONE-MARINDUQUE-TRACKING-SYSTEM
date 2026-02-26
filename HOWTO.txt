@@ -3,6 +3,6 @@
 2. Type "npm run dev"
 
 =========[HOW TO RUN IN GITHUB x VERCEL]=========
-1. Type "git add ."
-2. Type "git commit -m "Update""
-3. Type "git push -u origin main"
+1. Type git add .
+2. Type git commit -m "Update"
+3. Type git push -u origin main

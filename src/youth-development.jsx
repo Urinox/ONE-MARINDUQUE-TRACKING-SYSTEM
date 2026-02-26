@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { db, auth} from "./firebase";
-import "./financial-administration-and-sustainability.css";
+import "./youth-development.css";
 import dilgLogo from "./assets/dilg-po.png";
 import dilgSeal from "./assets/dilg-ph.png";
 import { FiSave, FiTrash2 } from "react-icons/fi";
@@ -8,7 +8,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { ref, push, onValue, set } from "firebase/database";
 
 
-export default function FAS() {
+export default function YD() {
 
 
   const navigate = useNavigate();
@@ -141,7 +141,7 @@ const handleDeleteRecord = async (firebaseKey) => {
   try {
     const recordRef = ref(
               db,
-              `financial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment/${firebaseKey}`
+              `youth/${auth.currentUser.uid}/${selectedYear}/youth-development/assessment/${firebaseKey}`
             );
     await set(recordRef, null); // deletes the record
     setData((prev) => prev.filter((item) => item.firebaseKey !== firebaseKey));
@@ -168,14 +168,14 @@ const handleAddIndicator = async () => {
 
         const encodeRef = ref(
             db,
-            `financial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment`
+            `youth/${auth.currentUser.uid}/${selectedYear}/youth-development/assessment`
           );
     if (editRecordKey) {
       // Overwrite existing record
         await set(
           ref(
             db,
-            `financial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment/${editRecordKey}`
+            `youth/${auth.currentUser.uid}/${selectedYear}/youth-development/assessment/${editRecordKey}`
           ),
           {
             mainIndicators,
@@ -285,7 +285,7 @@ useEffect(() => {
 
   const dataRef = ref(
     db,
-    `financial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment`
+    `youth/${auth.currentUser.uid}/${selectedYear}/youth-development/assessment`
   );
 
   onValue(dataRef, (snapshot) => {
@@ -314,7 +314,7 @@ const handleSaveChanges = async () => {
 
     const yearRef = ref(
       db,
-      `financial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment`
+      `youth/${auth.currentUser.uid}/${selectedYear}/youth-development/assessment`
     );
 
     const updatedData = {};
@@ -513,7 +513,7 @@ const isIndicatorValid = () => {
     <div className="sidebar-menu">
 
       <div
-        className={`sidebar-item activated ${activeItem === "Financial Administration and Sustainability" ? "active" : ""}`}
+        className={`sidebar-item ${activeItem === "Financial Administration and Sustainability" ? "active" : ""}`}
         onClick={handleFAS}
       >
         Financial Administration and Sustainability
@@ -576,7 +576,7 @@ const isIndicatorValid = () => {
       </div>
 
       <div
-        className={`sidebar-item ${activeItem === "Youth Development" ? "active" : ""}`}
+        className={`sidebar-item activated ${activeItem === "Youth Development" ? "active" : ""}`}
         onClick={handleYD}
       >
         Youth Development
@@ -1239,10 +1239,10 @@ const isIndicatorValid = () => {
           </div>
 
           {/* Table */}
-<div className="financialtable-box">
-  <div className="financialtable-header">
+<div className="youthtable-box">
+  <div className="youthtable-header">
     <h3 className="table-title">
-      Financial Administration and Sustainability
+      Youth Development
     </h3>
   </div>
 

@@ -261,7 +261,7 @@ body {
 }
 
 
-.financialtable-header {
+.safetytable-header {
   background-color: #03073d;
   color: white;
   padding: 10px;
@@ -298,7 +298,7 @@ body {
 }
 
 
-.financialtable-box {
+.safetytable-box {
   background: white;
   margin: 40px;
   padding: 10px;
@@ -312,7 +312,7 @@ body {
   max-height: 80vh; /* Set the box height to a percentage of the viewport */
 }
 
-.financialtable-wrapper {
+.safetytable-wrapper {
   max-height: 400px;                /* fills the space in table-box */
   overflow-y: auto;         /* vertical scroll if needed */
   overflow-x: auto;         /* horizontal scroll if table is wide */

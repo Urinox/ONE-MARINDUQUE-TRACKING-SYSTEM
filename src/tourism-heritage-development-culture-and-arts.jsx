@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { db, auth} from "./firebase";
-import "./financial-administration-and-sustainability.css";
+import "./tourism-heritage-development-culture-and-arts.css";
 import dilgLogo from "./assets/dilg-po.png";
 import dilgSeal from "./assets/dilg-ph.png";
 import { FiSave, FiTrash2 } from "react-icons/fi";
@@ -8,7 +8,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { ref, push, onValue, set } from "firebase/database";
 
 
-export default function FAS() {
+export default function THDCA() {
 
 
   const navigate = useNavigate();
@@ -141,7 +141,7 @@ const handleDeleteRecord = async (firebaseKey) => {
   try {
     const recordRef = ref(
               db,
-              `financial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment/${firebaseKey}`
+              `tourism/${auth.currentUser.uid}/${selectedYear}/tourism-heritage-development-and-arts/assessment/${firebaseKey}`
             );
     await set(recordRef, null); // deletes the record
     setData((prev) => prev.filter((item) => item.firebaseKey !== firebaseKey));
@@ -168,14 +168,14 @@ const handleAddIndicator = async () => {
 
         const encodeRef = ref(
             db,
-            `financial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment`
+            `tourism/${auth.currentUser.uid}/${selectedYear}/tourism-heritage-development-and-arts/assessment`
           );
     if (editRecordKey) {
       // Overwrite existing record
         await set(
           ref(
             db,
-            `financial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment/${editRecordKey}`
+            `tourism/${auth.currentUser.uid}/${selectedYear}/tourism-heritage-development-and-arts/assessment/${editRecordKey}`
           ),
           {
             mainIndicators,
@@ -285,7 +285,7 @@ useEffect(() => {
 
   const dataRef = ref(
     db,
-    `financial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment`
+    `tourism/${auth.currentUser.uid}/${selectedYear}/tourism-heritage-development-and-arts/assessment`
   );
 
   onValue(dataRef, (snapshot) => {
@@ -314,7 +314,7 @@ const handleSaveChanges = async () => {
 
     const yearRef = ref(
       db,
-      `financial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment`
+      `tourism/${auth.currentUser.uid}/${selectedYear}/tourism-heritage-development-and-arts/assessment`
     );
 
     const updatedData = {};
@@ -513,7 +513,7 @@ const isIndicatorValid = () => {
     <div className="sidebar-menu">
 
       <div
-        className={`sidebar-item activated ${activeItem === "Financial Administration and Sustainability" ? "active" : ""}`}
+        className={`sidebar-item ${activeItem === "Financial Administration and Sustainability" ? "active" : ""}`}
         onClick={handleFAS}
       >
         Financial Administration and Sustainability
@@ -569,7 +569,7 @@ const isIndicatorValid = () => {
       </div>
 
       <div
-        className={`sidebar-item ${activeItem === "Tourism, Heritage Development, Culture and Arts" ? "active" : ""}`}
+        className={`sidebar-item activated ${activeItem === "Tourism, Heritage Development, Culture and Arts" ? "active" : ""}`}
         onClick={handleTHDCA}
       >
         Tourism, Heritage Development, Culture and Arts
@@ -1239,10 +1239,10 @@ const isIndicatorValid = () => {
           </div>
 
           {/* Table */}
-<div className="financialtable-box">
-  <div className="financialtable-header">
+<div className="tourismtable-box">
+  <div className="tourismtable-header">
     <h3 className="table-title">
-      Financial Administration and Sustainability
+      Tourism, Heritage Development, Culture and Arts
     </h3>
   </div>
 

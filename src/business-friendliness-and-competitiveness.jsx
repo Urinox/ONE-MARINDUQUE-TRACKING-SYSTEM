@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { db, auth} from "./firebase";
-import "./financial-administration-and-sustainability.css";
+import "./business-friendliness-and-competitiveness.css";
 import dilgLogo from "./assets/dilg-po.png";
 import dilgSeal from "./assets/dilg-ph.png";
 import { FiSave, FiTrash2 } from "react-icons/fi";
@@ -8,7 +8,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { ref, push, onValue, set } from "firebase/database";
 
 
-export default function FAS() {
+export default function BFC() {
 
 
   const navigate = useNavigate();
@@ -141,7 +141,7 @@ const handleDeleteRecord = async (firebaseKey) => {
   try {
     const recordRef = ref(
               db,
-              `financial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment/${firebaseKey}`
+              `business/${auth.currentUser.uid}/${selectedYear}/business-friendliness-and-competitiveness/assessment/${firebaseKey}`
             );
     await set(recordRef, null); // deletes the record
     setData((prev) => prev.filter((item) => item.firebaseKey !== firebaseKey));
@@ -168,14 +168,14 @@ const handleAddIndicator = async () => {
 
         const encodeRef = ref(
             db,
-            `financial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment`
+            `business/${auth.currentUser.uid}/${selectedYear}/business-friendliness-and-competitiveness/assessment`
           );
     if (editRecordKey) {
       // Overwrite existing record
         await set(
           ref(
             db,
-            `financial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment/${editRecordKey}`
+            `business/${auth.currentUser.uid}/${selectedYear}/business-friendliness-and-competitiveness/assessment/${editRecordKey}`
           ),
           {
             mainIndicators,
@@ -285,7 +285,7 @@ useEffect(() => {
 
   const dataRef = ref(
     db,
-    `financial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment`
+    `business/${auth.currentUser.uid}/${selectedYear}/business-friendliness-and-competitiveness/assessment`
   );
 
   onValue(dataRef, (snapshot) => {
@@ -314,7 +314,7 @@ const handleSaveChanges = async () => {
 
     const yearRef = ref(
       db,
-      `financial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment`
+      `business/${auth.currentUser.uid}/${selectedYear}/business-friendliness-and-competitiveness/assessment`
     );
 
     const updatedData = {};
@@ -513,7 +513,7 @@ const isIndicatorValid = () => {
     <div className="sidebar-menu">
 
       <div
-        className={`sidebar-item activated ${activeItem === "Financial Administration and Sustainability" ? "active" : ""}`}
+        className={`sidebar-item ${activeItem === "Financial Administration and Sustainability" ? "active" : ""}`}
         onClick={handleFAS}
       >
         Financial Administration and Sustainability
@@ -548,7 +548,7 @@ const isIndicatorValid = () => {
       </div>
 
       <div
-        className={`sidebar-item ${activeItem === "Business-Friendliness and Competitiveness" ? "active" : ""}`}
+        className={`sidebar-item activated${activeItem === "Business-Friendliness and Competitiveness" ? "active" : ""}`}
         onClick={handleBFC}
       >
         Business-Friendliness and Competitiveness
@@ -1239,10 +1239,10 @@ const isIndicatorValid = () => {
           </div>
 
           {/* Table */}
-<div className="financialtable-box">
-  <div className="financialtable-header">
+<div className="businesstable-box">
+  <div className="businesstable-header">
     <h3 className="table-title">
-      Financial Administration and Sustainability
+      Business Friendliness and Competitiveness
     </h3>
   </div>
 
