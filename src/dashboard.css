@@ -236,7 +236,7 @@ body {
   margin: 0 auto; /* same side spacing as table-box */
 }
 
-.encode-btn {
+.financial-btn {
   background: #b00000;
   color: white;
   border: none;
@@ -250,11 +250,11 @@ body {
   gap: 8px;               /* space between icon and text */
 }
 
-.encode-btn:hover {
+.financial-btn:hover {
   background: #d20000;
 }
 
-.encode-btn svg {
+.financial-btn svg {
   display: block;
 }
 
@@ -604,7 +604,7 @@ th, td {
 
 
 
-/* PROFILE MODAL (Exact Encode Replica with Profile Fields) */
+/* PROFILE MODAL (Exact financial Replica with Profile Fields) */
 
 .modal-field input[type="text"],
 .modal-field input[type="file"] {
@@ -632,9 +632,9 @@ th, td {
   border: 2px solid #081a4b;
 }
 
-/* Edit Profile Modal tweaks (keeps encode layout intact) */
+/* Edit Profile Modal tweaks (keeps financial layout intact) */
 .add-record-modal.profile-modal {
-  width: 520px; /* same width as encode modal */
+  width: 520px; /* same width as financial modal */
 }
 
 /* Header icon color same */

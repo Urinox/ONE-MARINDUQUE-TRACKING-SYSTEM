@@ -57,7 +57,7 @@ useEffect(() => {
 
 /*
 useEffect(() => {
-  const dataRef = ref(db, `encode/${auth.currentUser.uid}`);
+  const dataRef = ref(db, `financial/${auth.currentUser.uid}`);
   onValue(dataRef, (snapshot) => {
     const records = [];
     let counter = 1; // start IDs from 1
@@ -127,7 +127,7 @@ const handleAddRecord = async () => {
   const newEntry = { id: nextId, lgu: "M", municipality: newRecord.municipality, year: newRecord.year, status: "Draft", submission: today, deadline: "-" };
 
   try {
-    const newRef = push(ref(db, `encode/${auth.currentUser.uid}`)); // user-specific
+    const newRef = push(ref(db, `financial/${auth.currentUser.uid}`)); // user-specific
     await set(newRef, newEntry); // Realtime Database push
     
     alert("Saved successfully!");
@@ -478,7 +478,7 @@ const handleSignOut = () => {
           </div>
 
 <div className="action-bar">
-  <button className="encode-btn" onClick={() => setShowModal(true)}>
+  <button className="financial-btn" onClick={() => setShowModal(true)}>
 
     {/* Pencil Icon */}
     <svg
@@ -631,27 +631,19 @@ const handleSignOut = () => {
                   </select>
                 </div>
 
-                {/* municipality Dropdown */}
-                <div className="modal-field">
-                  <label>Municipality:</label>
-                  <select 
-                      value={newRecord.municipality}
-                      onChange={(e) =>
-                      setNewRecord({ ...newRecord, municipality: e.target.value })
-                    }>
-                    <option value="">Select Municipality</option>
-                    <option>Boac (Capital)</option>
-                    <option>Gasan</option>
-                    <option>Mogpog</option>
-                    <option>Sta. Cruz</option>
-                    <option>Torrijos</option>
-                    <option>Buenavista</option>
-                  </select>
-                </div>
-
                 {/* Footer Button */}
                 <div className="modal-footer">
-                  <button className="proceed-btn"  onClick={() => navigate("/encode")}>
+                  <button className="proceed-btn"
+                    onClick={() => {
+                    if (!newRecord.year) {
+                      alert("Please select a year first.");
+                      return;
+                    }
+
+  navigate("/financial", {
+    state: { year: newRecord.year }
+  });
+}}>
                     Proceed ➜
                   </button>
                 </div>

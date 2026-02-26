@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { db, auth} from "./firebase";
-import "./encode.css";
+import "./financial.css";
 import dilgLogo from "./assets/dilg-po.png";
 import dilgSeal from "./assets/dilg-ph.png";
 import { FiSave, FiTrash2 } from "react-icons/fi";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { ref, push, onValue, set } from "firebase/database";
 
 
-
-export default function Encode() {
+export default function Financial() {
 
 
   const navigate = useNavigate();
@@ -26,9 +25,20 @@ export default function Encode() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [subFieldType, setSubFieldType] = useState("");
   const [choices, setChoices] = useState([]);
+  const location = useLocation();
+  const selectedYear = location.state?.year;
+  
   const [activeItem, setActiveItem] = useState(""); 
   const [formError, setFormError] = useState("");
+  // Remove Main Indicator
+  const removeMainIndicator = (id) => {
+    setMainIndicators((prev) => prev.filter((main) => main.id !== id));
+  };
 
+  // Remove Sub Indicator
+  const removeSubIndicator = (id) => {
+    setSubIndicators((prev) => prev.filter((sub) => sub.id !== id));
+  };
   const initialMainIndicators = [
     {
       id: 1,
@@ -100,7 +110,10 @@ const handleDeleteRecord = async (firebaseKey) => {
   if (!confirmDelete) return;
 
   try {
-    const recordRef = ref(db, `encode/${auth.currentUser.uid}/${firebaseKey}`);
+    const recordRef = ref(
+              db,
+              `fincancial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment/${firebaseKey}`
+            );
     await set(recordRef, null); // deletes the record
     setData((prev) => prev.filter((item) => item.firebaseKey !== firebaseKey));
   } catch (error) {
@@ -119,15 +132,28 @@ const handleAddIndicator = async () => {
   try {
     setIsSavingIndicator(true);
 
-    const encodeRef = ref(db, `encode/${auth.currentUser.uid}`);
+            if (!selectedYear) {
+          alert("No year selected.");
+          return;
+        }
 
+        const encodeRef = ref(
+            db,
+            `fincancial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment`
+          );
     if (editRecordKey) {
       // Overwrite existing record
-      await set(ref(db, `encode/${auth.currentUser.uid}/${editRecordKey}`), {
-        mainIndicators,
-        subIndicators,
-        createdAt: Date.now(),
-      });
+        await set(
+          ref(
+            db,
+            `fincancial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment/${editRecordKey}`
+          ),
+          {
+            mainIndicators,
+            subIndicators,
+            createdAt: Date.now(),
+          }
+        );
     } else {
       // Push new record
       await push(encodeRef, {
@@ -200,6 +226,12 @@ const removeMainChoice = (mainId, index) => {
 };
 
 useEffect(() => {
+  if (!selectedYear) {
+    navigate("/dashboard");
+  }
+}, [selectedYear]);
+
+useEffect(() => {
   if (!auth.currentUser) return;
 
   const profileRef = ref(db, `profiles/${auth.currentUser.uid}`);
@@ -220,37 +252,67 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
-  const dataRef = ref(db, `encode/${auth.currentUser.uid}`);
+  if (!auth.currentUser || !selectedYear) return;
+
+  const dataRef = ref(
+    db,
+    `fincancial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment`
+  );
+
   onValue(dataRef, (snapshot) => {
     const records = [];
-    let counter = 1; // start IDs from 1
+    let counter = 1;
+
     snapshot.forEach((childSnapshot) => {
       const record = childSnapshot.val();
-      records.push({ ...record, id: counter++, firebaseKey: childSnapshot.key });
+      records.push({
+        ...record,
+        id: counter++,
+        firebaseKey: childSnapshot.key,
+      });
     });
+
     setData(records);
   });
-}, []);
+}, [selectedYear]);
+
 
 const handleSaveChanges = async () => {
-  if (!auth.currentUser || isSavingIndicator) return;
+  if (!auth.currentUser || isSavingIndicator || !selectedYear) return;
 
   try {
     setIsSavingIndicator(true);
 
-    const dataRef = ref(db, `encode/${auth.currentUser.uid}`);
+    const yearRef = ref(
+      db,
+      `fincancial/${auth.currentUser.uid}/${selectedYear}/financial-administration-and-sustainability/assessment`
+    );
 
-    await set(dataRef, data);
+    const updatedData = {};
+    data.forEach((item) => {
+      updatedData[item.firebaseKey] = {
+        mainIndicators: item.mainIndicators,
+        subIndicators: item.subIndicators,
+        createdAt: item.createdAt || Date.now(),
+      };
+    });
+
+    // ✅ validation must be INSIDE the function
+    if (Object.keys(updatedData).length === 0) {
+      alert("No indicators to save.");
+      return;
+    }
+
+    await set(yearRef, updatedData);
 
     setShowSaveConfirm(false);
+    alert(`Changes saved for year ${selectedYear}`);
   } catch (error) {
     console.error("Error saving changes:", error);
   } finally {
     setIsSavingIndicator(false);
   }
 };
-
-
 
 
 const handleSaveProfile = async () => {
@@ -495,8 +557,6 @@ const isIndicatorValid = () => {
   </>
 )}
         </div>
-
-
         {/* Main */}
         <div className="main">
           <div className="topbar">
@@ -509,13 +569,17 @@ const isIndicatorValid = () => {
             </button>
             <div className="topbar-left">
             <div className="topbar-left">
-                  <h2>Provincial Assessment</h2>
+                  <h2>
+                    Provincial Assessment
+                    {selectedYear && (
+                      <span style={{ marginLeft: "5px", fontSize: "24px", fontWeight: "bold", color: "#000000" }}>
+                        ({selectedYear})
+                      </span>
+                    )}
+                  </h2>
                 </div>
               </div>
-
-              <div className="top-right">
-
-                
+              <div className="top-right">      
 <div className="profile-container">
     <div
       className="profile"
@@ -542,8 +606,6 @@ const isIndicatorValid = () => {
       <span>{profileData.name || displayName}</span>
     </div>
   </div>
-
-
 {showProfileModal && (
   <div className="modal-overlay">
     <div className="profile-view-modal">
@@ -886,6 +948,13 @@ const isIndicatorValid = () => {
           Date
         </option>
       </select>
+        <button
+          type="button"
+          className="mainindicator-delete-btn"
+          onClick={() => removeMainIndicator(main.id)}
+        >
+          ✕
+        </button>
     </div>
   </div>
 ))}
@@ -1055,7 +1124,13 @@ const isIndicatorValid = () => {
         <option value="checkbox">Checkboxes</option>
         <option value="date">Date</option>
       </select>
-
+        <button
+          type="button"
+          className="subindicator-delete-btn"
+          onClick={() => removeSubIndicator(sub.id)}
+        >
+          ✕
+        </button>
     </div>
   </div>
 ))}
@@ -1276,18 +1351,13 @@ const isIndicatorValid = () => {
     )}
   </div>
 ))}
-
     </div>
   ))}
-
 </div>
-
   <button className="btn-new" onClick={() => setShowModal(true)}>
     <span style={{ fontSize: "20px", fontWeight: "bold" }}>＋</span>
     New Indicator
   </button>
-
-
 </div>
         </div>
         </div>

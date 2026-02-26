@@ -576,7 +576,7 @@ th, td {
   margin-top: 10px;
 }
 
-/* PROFILE MODAL (Exact Encode Replica with Profile Fields) */
+/* PROFILE MODAL (Exact financial Replica with Profile Fields) */
 
 .modal-field input[type="text"],
 .modal-field input[type="file"] {
@@ -604,9 +604,9 @@ th, td {
   border: 2px solid #081a4b;
 }
 
-/* Edit Profile Modal tweaks (keeps encode layout intact) */
+/* Edit Profile Modal tweaks (keeps financial layout intact) */
 .add-record-modal.profile-modal {
-  width: 520px; /* same width as encode modal */
+  width: 520px; /* same width as financial modal */
 }
 
 /* Header icon color same */
@@ -900,12 +900,6 @@ th, td {
 
 
 
-/* VERIFICATION */
-.verification {
-  margin-top: 15px;
-  font-size: 14px;
-  color: black;
-}
 
 /* NEW SUB BUTTON */
 .new-sub-btn {
@@ -1130,7 +1124,7 @@ th, td {
   align-items: center;
   gap: 5px;
   margin-top: -10px;
-  width: 142.6%;
+  width: 145.6%;
   background: white;
   border: 1px solid #00000040;
   padding: 10px 12px;
@@ -1158,7 +1152,7 @@ th, td {
   align-items: center;
   gap: 5px;
   margin-top: -10px;
-  width: 140.6%;
+  width: 143.5%;
   background: white;
   border: 1px solid #00000040;
   padding: 10px 12px;
@@ -1628,6 +1622,8 @@ width: 55%;
   top: 50%;
   transform: translateY(-50%);
   display: flex;
+  align-items: center;
+  margin-left: 10px;
   gap: 6px;
 }
 
@@ -1662,4 +1658,62 @@ width: 55%;
 
 .delete-btn:hover {
   background-color: #000000;
+}
+
+
+
+
+
+
+.main-right-controls,
+.sub-right-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+
+.mainindicator-delete-btn {
+  background-color: #504f4f;   /* dark gray like your scrollable delete */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  height: 36px;
+  margin-left: -10px;           /* space from select/input */
+}
+
+.mainindicator-delete-btn:hover {
+  background-color: #000000;   /* same hover as scrollable delete */
+}
+
+
+.subindicator-delete-btn {
+  background-color: #504f4f;   /* dark gray like your scrollable delete */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  height: 36px;
+  margin-left: -18px;           /* space from select/input */
+}
+
+.subindicator-delete-btn:hover {
+  background-color: #000000;   /* same hover as scrollable delete */
 }

@@ -5,7 +5,7 @@ import "./index.css";
 import App from "src/app.jsx";
 import Dashboard from "src/dashboard.jsx";
 import Loader from "src/loader.jsx";
-import Encode from "src/encode.jsx";
+import Financial from "src/financial.jsx";
 
 function Root() {
   const [loading, setLoading] = useState(true);
@@ -22,7 +22,7 @@ function Root() {
     <Routes>
       <Route path="/login" element={<App />} />
       <Route path="/dashboard" element={<Dashboard />} />
-      <Route path="/encode" element={<Encode />} />
+      <Route path="/financial" element={<Financial />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
