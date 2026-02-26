@@ -54,7 +54,20 @@ useEffect(() => {
   });
 }, []);
 
+useEffect(() => {
+  if (!auth.currentUser) return;
 
+  const yearsRef = ref(db, `years/${auth.currentUser.uid}`);
+
+  onValue(yearsRef, (snapshot) => {
+    if (snapshot.exists()) {
+      setYears(snapshot.val());
+    } else {
+      // initialize default years once
+      set(ref(db, `years/${auth.currentUser.uid}`), years);
+    }
+  });
+}, []);
 /*
 useEffect(() => {
   const dataRef = ref(db, `financial/${auth.currentUser.uid}`);
@@ -157,7 +170,42 @@ const handleAddRecord = async () => {
 
   const municipalities = ["Boac", "Mogpog", "Sta. Cruz", "Torrijos", "Buenavista", "Gasan"];
   const forms = ["LGU Profile", "Regional Assessment"];
-  const years = ["2021","2022", "2023", "2024", "2025", "2026"];
+  const [years, setYears] = useState(["2021","2022","2023","2024","2025","2026"]);
+  
+const handleAddYear = async () => {
+  const newYear = prompt("Enter new year:");
+  if (!newYear) return;
+
+  if (years.includes(newYear)) {
+    alert("Year already exists.");
+    return;
+  }
+
+  const updatedYears = [...years, newYear].sort();
+  setYears(updatedYears);
+
+  if (auth.currentUser) {
+    await set(ref(db, `years/${auth.currentUser.uid}`), updatedYears);
+  }
+};
+
+const handleDeleteYear = async (yearToDelete) => {
+  if (!window.confirm(`Delete year ${yearToDelete}?`)) return;
+
+  const updatedYears = years.filter((y) => y !== yearToDelete);
+  setYears(updatedYears);
+
+  // Persist deletion in Firebase
+  if (auth.currentUser) {
+    await set(ref(db, `years/${auth.currentUser.uid}`), updatedYears);
+  }
+
+  // Reset selected value if deleted
+  if (newRecord.year === yearToDelete) {
+    setNewRecord({ ...newRecord, year: "" });
+  }
+};
+  
   const statuses = ["Verified", "Draft", "Incomplete"];
 
   const updateFilter = (type, value) => {
@@ -615,21 +663,61 @@ const handleSignOut = () => {
               {/* Body */}
               <div className="modal-body">
                 {/* Year Dropdown */}
-                <div className="modal-field">
-                  <label>Year:</label>
-                  <select 
-                      value={newRecord.year}
-                      onChange={(e) =>
-                      setNewRecord({ ...newRecord, year: e.target.value })
-                    }>
-                    <option value="">Select Year</option>
-                    <option>2021</option>
-                    <option>2022</option>
-                    <option>2023</option>
-                    <option>2024</option>
-                    <option>2025</option>
-                  </select>
-                </div>
+<div className="modal-field">
+  <label>Year:</label>
+
+  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+    <select
+     style={{ width: "70%" }}
+      value={newRecord.year}
+      onChange={(e) =>
+        setNewRecord({ ...newRecord, year: e.target.value })
+      }
+    >
+      <option value="">Select Year</option>
+      {years.map((year) => (
+        <option key={year} value={year}>
+          {year}
+        </option>
+      ))}
+    </select>
+
+    {/* Add Year */}
+    <button
+      type="button"
+      onClick={handleAddYear}
+      style={{
+        background: "#081a4b",
+        color: "#fff",
+        border: "none",
+        padding: "10px 10px",
+        borderRadius: "4px",
+        cursor: "pointer",
+        fontSize: "12px"
+      }}
+    >
+      + Add
+    </button>
+
+    {/* Delete Selected Year */}
+    <button
+      type="button"
+      disabled={!newRecord.year}
+      onClick={() => handleDeleteYear(newRecord.year)}
+      style={{
+        background: "transparent",
+        color: "red",
+        border: "1px solid red",
+        padding: "10px 10px",
+        borderRadius: "4px",
+        cursor: newRecord.year ? "pointer" : "not-allowed",
+        fontSize: "12px"
+      }}
+    >
+      Delete
+    </button>
+  </div>
+</div>
 
                 {/* Footer Button */}
                 <div className="modal-footer">

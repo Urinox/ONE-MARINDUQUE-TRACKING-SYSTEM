@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { db, auth} from "./firebase";
-import "./health-compliance-and-responsiveness.css";
+import "./financial-administration-and-sustainability.css";
 import dilgLogo from "./assets/dilg-po.png";
 import dilgSeal from "./assets/dilg-ph.png";
 import { FiSave, FiTrash2 } from "react-icons/fi";
@@ -155,56 +155,34 @@ const handleDeleteRecord = async (firebaseKey) => {
 const [editRecordKey, setEditRecordKey] = useState(null);
 
 
-const handleAddIndicator = async () => {
-  if (!auth.currentUser || isSavingIndicator) return;
+const handleAddIndicator = () => {
+  if (!isIndicatorValid()) return;
 
-  try {
-    setIsSavingIndicator(true);
+  const newRecord = {
+    firebaseKey: editRecordKey || Date.now().toString(), // temporary key
+    mainIndicators,
+    subIndicators,
+    createdAt: Date.now(),
+  };
 
-            if (!selectedYear) {
-          alert("No year selected.");
-          return;
-        }
-
-        const encodeRef = ref(
-            db,
-            `health/${auth.currentUser.uid}/${selectedYear}/health-compliance-and-responsiveness/assessment`
-          );
+  setData((prev) => {
     if (editRecordKey) {
-      // Overwrite existing record
-        await set(
-          ref(
-            db,
-            `health/${auth.currentUser.uid}/${selectedYear}/health-compliance-and-responsiveness/assessment/${editRecordKey}`
-          ),
-          {
-            mainIndicators,
-            subIndicators,
-            createdAt: Date.now(),
-          }
-        );
+      // Update existing local record
+      return prev.map((item) =>
+        item.firebaseKey === editRecordKey ? newRecord : item
+      );
     } else {
-      // Push new record
-      await push(encodeRef, {
-        mainIndicators,
-        subIndicators,
-        createdAt: Date.now(),
-      });
+      // Add new local record
+      return [...prev, newRecord];
     }
+  });
 
-    setMainIndicators(initialMainIndicators);
-    setSubIndicators(initialSubIndicators);
-    setShowModal(false);
-    setShowSaveConfirm(false);
-    setEditRecordKey(null);
-
-  } catch (error) {
-    console.error("Error saving indicator:", error);
-  } finally {
-    setIsSavingIndicator(false);
-  }
+  // Reset form
+  setMainIndicators(initialMainIndicators);
+  setSubIndicators(initialSubIndicators);
+  setShowModal(false);
+  setEditRecordKey(null);
 };
-
 
 
 // Update Main Indicator
@@ -1239,8 +1217,8 @@ const isIndicatorValid = () => {
           </div>
 
           {/* Table */}
-<div className="healthtable-box">
-  <div className="healthtable-header">
+<div className="financialtable-box">
+  <div className="financialtable-header">
     <h3 className="table-title">
       Health Compliance and Responsiveness
     </h3>
@@ -1249,7 +1227,7 @@ const isIndicatorValid = () => {
 <div className="scrollable-content">
 
   {data.length === 0 && (
-    <p style={{ textAlign: "center", marginTop: "30px" }}>No indicators added yet.</p>
+    <p style={{ textAlign: "center", marginTop: "20px" }}>No indicators added yet.</p>
   )}
 
   {data.map((record) => (
