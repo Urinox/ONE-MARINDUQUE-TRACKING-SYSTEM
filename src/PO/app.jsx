@@ -1,21 +1,24 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "./app.css";
-import dilgLogo from "./assets/dilg-po.png";
-import dilgSeal from "./assets/dilg-ph.png";
-import { auth } from "./firebase";
+import "../PO-Css/app.css";
+import dilgLogo from "../assets/dilg-po.png";
+import dilgSeal from "../assets/dilg-ph.png";
+import { auth } from "../firebase";
 import { useEffect } from "react";
+import { getDatabase, ref, get, set } from "firebase/database";
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
   sendSignInLinkToEmail,
   isSignInWithEmailLink,
-  signInWithEmailLink 
+  signInWithEmailLink,
+  sendEmailVerification 
 } from "firebase/auth";
 
 
 export default function App() {
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const db = getDatabase();
   const [emailLogin, setEmailLogin] = useState("");
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [regEmail, setRegEmail] = useState("");
@@ -30,31 +33,32 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleLogin = async () => {
-    if (!userId || !password) {
-      alert("Please enter User ID and Password");
+async function handleLogin(email, password) {
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+
+    // 🚫 Require OTP verification (email verified)
+    if (!user.emailVerified) {
+      alert("Please verify your email (OTP) before logging in.");
       return;
     }
 
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, userId, password);
-      const user = userCredential.user;
-      console.log("Logged in user:", user);
-      localStorage.setItem("loggedIn", "true");
-      navigate("/dashboard");
+    const uid = user.uid;
+    const snapshot = await get(ref(db, `users/${uid}/role`));
+    const role = snapshot.val();
 
-      // Clear login inputs
-      setUserId("");
-      setPassword("");
-    } catch (error) {
-      console.error(error);
-      alert("Login Failed: Wrong User ID/Password" );
-
-      // Reset inputs on failed login
-      setUserId("");
-      setPassword("");
+    if (role === 'admin') {
+      navigate('/dashboard');
+    } else if (role === 'user') {
+      navigate('/lgu-assessment');
+    } else {
+      alert('No access assigned');
     }
-  };
+  } catch (error) {
+    console.error('Login error:', error.message);
+  }
+}
 
 
     useEffect(() => {
@@ -97,40 +101,51 @@ const handleEmailLogin = async (email) => {
   }
 };
 
-  const handleRegister = async (email, password) => {
-    if (!email || !password) {
-      alert("Please enter all registration fields");
-      return;
-    }
+      const handleRegister = async (email, password) => {
+        if (!email || !password) {
+          alert("Please enter all registration fields");
+          return;
+        }
 
-    try {
-      // Attempt to create a new user
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      alert("Registration Successful!");
+        try {
+          // Create user
+          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+          const user = userCredential.user;
 
-      // Reset registration inputs
-      setRegEmail("");
-      setRegPassword("");
-    } catch (error) {
-      console.error(error);
+          // 🔐 Send OTP-style verification email
+          await sendEmailVerification(user);
 
-      if (error.code === "auth/email-already-in-use") {
-        // Email already exists
-        alert("Registration Failed: This email is already registered. Please login instead.");
-      } else if (error.code === "auth/invalid-email") {
-        alert("Registration Failed: Invalid Email");
-      } else if (error.code === "auth/weak-password") {
-        alert("Registration Failed: Password is too weak");
-      } else {
-        alert("Registration Failed: No record found for the provided email");
-      }
+          // Save role
+          await set(ref(db, `users/${user.uid}`), {
+            email: email,
+            role: "user"
+          });
 
-      // Reset registration inputs on failure
-      setRegEmail("");
-      setRegPassword("");
-    }
-  };
+          alert("Registration successful! Please verify your email before logging in.");
+          setRegEmail("");
+          setRegPassword("");
+
+        } catch (error) {
+          console.error(error);
+
+          if (error.code === "auth/email-already-in-use") {
+            alert("Registration Failed: Email already registered.");
+          } else if (error.code === "auth/invalid-email") {
+            alert("Invalid Email");
+          } else if (error.code === "auth/weak-password") {
+            alert("Weak Password");
+          } else {
+            alert("Registration Failed");
+          }
+
+          setRegEmail("");
+          setRegPassword("");
+        }
+      };
+
+
+
+
 
   useEffect(() => {
     if (isSignInWithEmailLink(auth, window.location.href)) {
@@ -138,17 +153,19 @@ const handleEmailLogin = async (email) => {
       if (!email) {
         email = window.prompt("Please provide your email for confirmation");
       }
-      signInWithEmailLink(auth, email, window.location.href)
-        .then((result) => {
-          console.log("Logged in via email link:", result.user);
-          window.localStorage.removeItem("emailForSignIn");
-          alert("Login Successful via Email Link!");
-          navigate("/dashboard");
-        })
-        .catch((error) => {
-          console.error(error);
-          alert("Failed to sign in via email link: " + error.message);
-        });
+          signInWithEmailLink(auth, email, window.location.href)
+            .then((result) => {
+              const user = result.user;
+
+              if (!user.emailVerified) {
+                alert("Please verify your email (OTP) first.");
+                return;
+              }
+
+              window.localStorage.removeItem("emailForSignIn");
+              alert("Login Successful via Email Link!");
+              navigate("/dashboard");
+            })
     }
   }, []);
 
@@ -169,12 +186,12 @@ const handleEmailLogin = async (email) => {
           <br />
           TRACKING SYSTEM
         </h1>
-        <form
-            onSubmit={(e) => {
-              e.preventDefault(); // Prevent default page reload
-              handleLogin();       // Trigger login function
-            }}
-          >
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleLogin(userId, password);
+              }}
+            >
         <div className="form-group">
           <label>Email</label>
           <input
@@ -204,7 +221,7 @@ const handleEmailLogin = async (email) => {
           </div>
         </div>
 
-        <button className="login-btn" onClick={handleLogin}>
+        <button className="login-btn" type="submit">
           Log In
         </button>
 </form>

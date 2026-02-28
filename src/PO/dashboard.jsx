@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { db, auth} from "./firebase";
-import "./dashboard.css";
-import dilgLogo from "./assets/dilg-po.png";
-import dilgSeal from "./assets/dilg-ph.png";
+import { db, auth} from "../firebase";
+import "../PO-CSS/dashboard.css";
+import dilgLogo from "../assets/dilg-po.png";
+import dilgSeal from "../assets/dilg-ph.png";
 import { FiFilter, FiRotateCcw, FiSettings, FiLogOut, FiFileText } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { ref, push, onValue, set } from "firebase/database";
@@ -714,7 +714,7 @@ const handleSignOut = () => {
         fontSize: "12px"
       }}
     >
-      Delete
+      Remove
     </button>
   </div>
 </div>

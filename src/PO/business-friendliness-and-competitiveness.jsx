@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { db, auth} from "./firebase";
-import "./financial-administration-and-sustainability.css";
-import dilgLogo from "./assets/dilg-po.png";
-import dilgSeal from "./assets/dilg-ph.png";
+import { db, auth} from "../firebase";
+import "../PO-Css/financial-administration-and-sustainability.css";
+import dilgLogo from "../assets/dilg-po.png";
+import dilgSeal from "../assets/dilg-ph.png";
 import { FiSave, FiTrash2 } from "react-icons/fi";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ref, push, onValue, set } from "firebase/database";

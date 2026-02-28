@@ -3,8 +3,6 @@ import { initializeApp } from "firebase/app";
 import { getAnalytics, isSupported } from "firebase/analytics";
 import { getDatabase } from "firebase/database"; // if using RTDB
 import { getAuth } from "firebase/auth"; // if using auth
-import { getPerformance, isSupported as perfSupported } from "firebase/performance";
-
 const firebaseConfig = {
   apiKey: "AIzaSyCPS1WHGUN2xVzjscOHtCfZ4qQDN5cMGi8",
   authDomain: "one-marinduque-tracking-system.firebaseapp.com",
@@ -22,14 +20,9 @@ const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);     // Realtime Database
 export const auth = getAuth(app);       // Authentication
 
-// Analytics (only if supported)
-analyticsSupported().then((yes) => {
+// Analytics safe load
+isSupported().then((yes) => {
   if (yes) getAnalytics(app);
-});
-
-// Performance Monitoring (only if supported)
-perfSupported().then((yes) => {
-  if (yes) getPerformance(app);
 });
 
 export default app;

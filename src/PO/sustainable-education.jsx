@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { db, auth} from "./firebase";
-import "./financial-administration-and-sustainability.css";
-import dilgLogo from "./assets/dilg-po.png";
-import dilgSeal from "./assets/dilg-ph.png";
+import { db, auth} from "../firebase";
+import "../PO-CSS/financial-administration-and-sustainability.css";
+import dilgLogo from "../assets/dilg-po.png";
+import dilgSeal from "../assets/dilg-ph.png";
 import { FiSave, FiTrash2 } from "react-icons/fi";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ref, push, onValue, set } from "firebase/database";
 
 
-export default function SPO() {
+export default function FAS() {
 
 
   const navigate = useNavigate();
@@ -141,7 +141,7 @@ const handleDeleteRecord = async (firebaseKey) => {
   try {
     const recordRef = ref(
               db,
-              `safety/${auth.currentUser.uid}/${selectedYear}/safety-peace-and-order/assessment/${firebaseKey}`
+              `sustainable/${auth.currentUser.uid}/${selectedYear}/sustainable-education/assessment/${firebaseKey}`
             );
     await set(recordRef, null); // deletes the record
     setData((prev) => prev.filter((item) => item.firebaseKey !== firebaseKey));
@@ -183,6 +183,7 @@ const handleAddIndicator = () => {
   setShowModal(false);
   setEditRecordKey(null);
 };
+
 
 
 // Update Main Indicator
@@ -263,7 +264,7 @@ useEffect(() => {
 
   const dataRef = ref(
     db,
-    `safety/${auth.currentUser.uid}/${selectedYear}/safety-peace-and-order/assessment`
+    `sustainable/${auth.currentUser.uid}/${selectedYear}/sustainable-education/assessment`
   );
 
   onValue(dataRef, (snapshot) => {
@@ -292,7 +293,7 @@ const handleSaveChanges = async () => {
 
     const yearRef = ref(
       db,
-      `safety/${auth.currentUser.uid}/${selectedYear}/safety-peace-and-order/assessment`
+      `sustainable/${auth.currentUser.uid}/${selectedYear}/sustainable-education/assessment`
     );
 
     const updatedData = {};
@@ -519,7 +520,7 @@ const isIndicatorValid = () => {
       </div>
 
       <div
-        className={`sidebar-item ${activeItem === "Sustainable Education" ? "active" : ""}`}
+        className={`sidebar-item activated ${activeItem === "Sustainable Education" ? "active" : ""}`}
         onClick={handleSED}
       >
         Sustainable Education
@@ -533,7 +534,7 @@ const isIndicatorValid = () => {
       </div>
 
       <div
-        className={`sidebar-item activated ${activeItem === "Safety, Peace and Order" ? "active" : ""}`}
+        className={`sidebar-item ${activeItem === "Safety, Peace and Order" ? "active" : ""}`}
         onClick={handleSPO}
       >
         Safety, Peace and Order
@@ -1220,7 +1221,7 @@ const isIndicatorValid = () => {
 <div className="financialtable-box">
   <div className="financialtable-header">
     <h3 className="table-title">
-      Safety, Peace and Order
+      Sustainable Education
     </h3>
   </div>
 

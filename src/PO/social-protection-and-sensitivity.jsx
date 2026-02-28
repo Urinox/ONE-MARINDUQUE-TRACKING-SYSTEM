@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { db, auth} from "./firebase";
-import "./financial-administration-and-sustainability.css";
-import dilgLogo from "./assets/dilg-po.png";
-import dilgSeal from "./assets/dilg-ph.png";
+import { db, auth} from "../firebase";
+import "../PO-CSS/financial-administration-and-sustainability.css";
+import dilgLogo from "../assets/dilg-po.png";
+import dilgSeal from "../assets/dilg-ph.png";
 import { FiSave, FiTrash2 } from "react-icons/fi";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ref, push, onValue, set } from "firebase/database";
 
 
-export default function FAS() {
-
+export default function SPS() {
 
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
@@ -141,7 +140,7 @@ const handleDeleteRecord = async (firebaseKey) => {
   try {
     const recordRef = ref(
               db,
-              `sustainable/${auth.currentUser.uid}/${selectedYear}/sustainable-education/assessment/${firebaseKey}`
+              `social/${auth.currentUser.uid}/${selectedYear}/social-protection-and-sensitivity/assessment/${firebaseKey}`
             );
     await set(recordRef, null); // deletes the record
     setData((prev) => prev.filter((item) => item.firebaseKey !== firebaseKey));
@@ -183,7 +182,6 @@ const handleAddIndicator = () => {
   setShowModal(false);
   setEditRecordKey(null);
 };
-
 
 
 // Update Main Indicator
@@ -264,7 +262,7 @@ useEffect(() => {
 
   const dataRef = ref(
     db,
-    `sustainable/${auth.currentUser.uid}/${selectedYear}/sustainable-education/assessment`
+    `social/${auth.currentUser.uid}/${selectedYear}/social-protection-and-sensitivity/assessment`
   );
 
   onValue(dataRef, (snapshot) => {
@@ -293,7 +291,7 @@ const handleSaveChanges = async () => {
 
     const yearRef = ref(
       db,
-      `sustainable/${auth.currentUser.uid}/${selectedYear}/sustainable-education/assessment`
+      `social/${auth.currentUser.uid}/${selectedYear}/social-protection-and-sensitivity/assessment`
     );
 
     const updatedData = {};
@@ -506,7 +504,7 @@ const isIndicatorValid = () => {
       </div>
 
       <div
-        className={`sidebar-item ${activeItem === "Social Protection and Sensitivity" ? "active" : ""}`}
+        className={`sidebar-item activated ${activeItem === "Social Protection and Sensitivity" ? "active" : ""}`}
         onClick={handleSPS}
       >
         Social Protection and Sensitivity
@@ -520,7 +518,7 @@ const isIndicatorValid = () => {
       </div>
 
       <div
-        className={`sidebar-item activated ${activeItem === "Sustainable Education" ? "active" : ""}`}
+        className={`sidebar-item ${activeItem === "Sustainable Education" ? "active" : ""}`}
         onClick={handleSED}
       >
         Sustainable Education
@@ -1221,7 +1219,7 @@ const isIndicatorValid = () => {
 <div className="financialtable-box">
   <div className="financialtable-header">
     <h3 className="table-title">
-      Sustainable Education
+      Social Protection and Sensitivity
     </h3>
   </div>
 

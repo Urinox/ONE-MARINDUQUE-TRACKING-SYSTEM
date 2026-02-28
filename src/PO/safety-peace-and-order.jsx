@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { db, auth} from "./firebase";
-import "./financial-administration-and-sustainability.css";
-import dilgLogo from "./assets/dilg-po.png";
-import dilgSeal from "./assets/dilg-ph.png";
+import { db, auth} from "../firebase";
+import "../PO-CSS/financial-administration-and-sustainability.css";
+import dilgLogo from "../assets/dilg-po.png";
+import dilgSeal from "../assets/dilg-ph.png";
 import { FiSave, FiTrash2 } from "react-icons/fi";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ref, push, onValue, set } from "firebase/database";
 
 
-export default function EM() {
+export default function SPO() {
 
 
   const navigate = useNavigate();
@@ -141,7 +141,7 @@ const handleDeleteRecord = async (firebaseKey) => {
   try {
     const recordRef = ref(
               db,
-              `environmental/${auth.currentUser.uid}/${selectedYear}/environmental-management/assessment/${firebaseKey}`
+              `safety/${auth.currentUser.uid}/${selectedYear}/safety-peace-and-order/assessment/${firebaseKey}`
             );
     await set(recordRef, null); // deletes the record
     setData((prev) => prev.filter((item) => item.firebaseKey !== firebaseKey));
@@ -263,7 +263,7 @@ useEffect(() => {
 
   const dataRef = ref(
     db,
-    `environmental/${auth.currentUser.uid}/${selectedYear}/environmental-management/assessment`
+    `safety/${auth.currentUser.uid}/${selectedYear}/safety-peace-and-order/assessment`
   );
 
   onValue(dataRef, (snapshot) => {
@@ -292,7 +292,7 @@ const handleSaveChanges = async () => {
 
     const yearRef = ref(
       db,
-      `environmental/${auth.currentUser.uid}/${selectedYear}/environmental-management/assessment`
+      `safety/${auth.currentUser.uid}/${selectedYear}/safety-peace-and-order/assessment`
     );
 
     const updatedData = {};
@@ -533,14 +533,14 @@ const isIndicatorValid = () => {
       </div>
 
       <div
-        className={`sidebar-item ${activeItem === "Safety, Peace and Order" ? "active" : ""}`}
+        className={`sidebar-item activated ${activeItem === "Safety, Peace and Order" ? "active" : ""}`}
         onClick={handleSPO}
       >
         Safety, Peace and Order
       </div>
 
       <div
-        className={`sidebar-item activated ${activeItem === "Environmental Management" ? "active" : ""}`}
+        className={`sidebar-item ${activeItem === "Environmental Management" ? "active" : ""}`}
         onClick={handleEM}
       >
         Environmental Management
@@ -1220,7 +1220,7 @@ const isIndicatorValid = () => {
 <div className="financialtable-box">
   <div className="financialtable-header">
     <h3 className="table-title">
-      Environmental Management
+      Safety, Peace and Order
     </h3>
   </div>
 
