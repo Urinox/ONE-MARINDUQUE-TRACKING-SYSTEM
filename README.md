@@ -1,16 +1,10 @@
-# React + Vite
+# One Marinduque Tracking System
+The Marinduque Provincial Assessment System is a centralized digital platform developed to support the Provincial Assessor’s Office and Local Government Units (LGUs) in efficiently managing property assessments, tax mapping, and valuation records across Marinduque. The system streamlines the assessment process by digitizing property data, improving accuracy, and enabling faster retrieval of assessment and ownership records.
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This system allows assessors to encode, update, and monitor real property information such as land classifications, market values, tax declarations, and ownership history. It provides automated tools for generating assessment reports, notices of valuation, and statistical summaries required for provincial planning and revenue forecasting.
 
-Currently, two official plugins are available:
+With an integrated geospatial component, the platform supports mapping of properties to visualize land distribution, zoning, and assessed values across municipalities and barangays. This helps improve transparency, supports equitable taxation, and strengthens decision-making for land use and development planning.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The Provincial Assessment System also enhances coordination between municipal assessors and the provincial office by maintaining a unified database that ensures consistency of records and minimizes duplication. Role-based access and data security measures are implemented to protect sensitive property information while allowing authorized personnel to perform updates and verifications efficiently.
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Overall, the Marinduque Provincial Assessment System modernizes real property assessment operations, improves revenue administration, and promotes accurate, transparent, and accountable property valuation services for the province.

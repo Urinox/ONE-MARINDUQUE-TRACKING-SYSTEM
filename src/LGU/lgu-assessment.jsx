@@ -79,85 +79,63 @@ useEffect(() => {
 
 
 // Replace your current years useEffect with this debug version:
+// Fetch available years - ONLY from admin user in users/
 useEffect(() => {
   if (!auth.currentUser) return;
 
   const fetchYears = async () => {
     try {
-      console.log("Fetching years...");
+      console.log("Fetching years from admin in users/...");
       
-      // First, try to find an admin
-      const profilesRef = ref(db, "profiles");
-      const profilesSnapshot = await get(profilesRef);
+      // Get all users to find admin
+      const usersRef = ref(db, "users");
+      const usersSnapshot = await get(usersRef);
       
-      if (profilesSnapshot.exists()) {
-        const profiles = profilesSnapshot.val();
-        console.log("Profiles found:", profiles);
+      let adminUid = null;
+      
+      if (usersSnapshot.exists()) {
+        const users = usersSnapshot.val();
+        console.log("All users:", users);
         
-        // Try to find an admin first
-        let targetUid = Object.keys(profiles).find(
-          uid => profiles[uid]?.role === "admin"
+        // Find the admin UID
+        adminUid = Object.keys(users).find(
+          uid => users[uid]?.role === "admin"
         );
         
-        // If no admin found, just use the first user that has years data
-        if (!targetUid) {
-          console.log("No admin found, checking for any user with years...");
-          
-          // Get all years nodes to see which users have years
-          const yearsRootRef = ref(db, "years");
-          const yearsRootSnapshot = await get(yearsRootRef);
-          
-          if (yearsRootSnapshot.exists()) {
-            const yearsData = yearsRootSnapshot.val();
-            console.log("Years root data:", yearsData);
-            
-            // Get the first UID that has years data
-            targetUid = Object.keys(yearsData).find(uid => 
-              yearsData[uid] && Object.keys(yearsData[uid]).length > 0
-            );
-            
-            if (targetUid) {
-              console.log("Found user with years:", targetUid);
-            }
-          }
-        }
+        console.log("Admin UID found in users:", adminUid);
+      }
+      
+      if (adminUid) {
+        // Get years from the admin's node
+        const yearsRef = ref(db, `years/${adminUid}`);
         
-        if (targetUid) {
-          console.log("Using UID:", targetUid);
-          
-          // Get years from that user's node
-          const yearsRef = ref(db, `years/${targetUid}`);
-          
-          onValue(yearsRef, (snapshot) => {
-            if (snapshot.exists()) {
-              const data = snapshot.val();
-              console.log("Raw years data from Firebase:", data);
-              
-              // Handle different data structures
-              let yearsArray = [];
-              
-              if (Array.isArray(data)) {
-                // If data is an array like ["2021", "2022", "2023"]
-                yearsArray = data;
-                console.log("Data is array:", yearsArray);
-              } 
-              else if (typeof data === "object" && data !== null) {
-                // If data is an object like {2021: {...}, 2022: {...}}
-                yearsArray = Object.keys(data);
-                console.log("Data is object, keys:", yearsArray);
-              }
-              
-              console.log("Final years array to display:", yearsArray);
-              setYears(yearsArray);
-            } else {
-              console.log("No years data found for this user");
-              setYears([]);
+        onValue(yearsRef, (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.val();
+            console.log("Admin years data:", data);
+            
+            // Handle different data structures
+            let yearsArray = [];
+            
+            if (Array.isArray(data)) {
+              // If data is an array like ["2021", "2022", "2023"]
+              yearsArray = data;
+            } 
+            else if (typeof data === "object" && data !== null) {
+              // If data is an object like {2021: {...}, 2022: {...}}
+              yearsArray = Object.keys(data);
             }
-          });
-        } else {
-          console.log("No target UID found");
-          setYears([]);
-        }
+            
+            console.log("Final years from admin:", yearsArray);
+            setYears(yearsArray);
+          } else {
+            console.log("No years data found for admin");
+            setYears([]);
+          }
+        });
+      } else {
+        console.log("No admin user found in users");
+        setYears([]);
       }
     } catch (error) {
       console.error("Error fetching years:", error);
@@ -173,68 +151,58 @@ useEffect(() => {
 const [indicators, setIndicators] = useState([]);
 
 
-// Fetch indicators from Firebase
+// Fetch indicators from Firebase - ONLY from admin in users/
 useEffect(() => {
   if (!auth.currentUser || !selectedYearDisplay) return;
 
-  // First, find the admin UID (same logic as years)
   const fetchIndicators = async () => {
     try {
-      // Get all profiles to find admin
-      const profilesRef = ref(db, "profiles");
-      const profilesSnapshot = await get(profilesRef);
+      console.log(`Fetching indicators for year ${selectedYearDisplay} from admin in users/...`);
       
-      if (profilesSnapshot.exists()) {
-        const profiles = profilesSnapshot.val();
+      // Get all users to find admin
+      const usersRef = ref(db, "users");
+      const usersSnapshot = await get(usersRef);
+      
+      let adminUid = null;
+      
+      if (usersSnapshot.exists()) {
+        const users = usersSnapshot.val();
         
-        // Find admin UID (same logic as your years fetch)
-        let adminUid = Object.keys(profiles).find(
-          uid => profiles[uid]?.role === "admin"
+        // Find admin UID
+        adminUid = Object.keys(users).find(
+          uid => users[uid]?.role === "admin"
         );
         
-        if (!adminUid) {
-          // If no admin found, try to find any user with financial data
-          const financialRootRef = ref(db, "financial");
-          const financialRootSnapshot = await get(financialRootRef);
-          
-          if (financialRootSnapshot.exists()) {
-            const financialData = financialRootSnapshot.val();
-            adminUid = Object.keys(financialData).find(uid => 
-              financialData[uid] && financialData[uid][selectedYearDisplay]
-            );
-          }
-        }
+        console.log("Admin UID for indicators:", adminUid);
+      }
+      
+      if (adminUid) {
+        // Reference to the financial indicators for the selected year and category
+        const indicatorsRef = ref(
+          db, 
+          `financial/${adminUid}/${selectedYearDisplay}/financial-administration-and-sustainability/assessment`
+        );
         
-        if (adminUid) {
-          console.log("Using admin UID for indicators:", adminUid);
-          
-          // Reference to the financial indicators for the selected year and category
-          const indicatorsRef = ref(
-            db, 
-            `financial/${adminUid}/${selectedYearDisplay}/financial-administration-and-sustainability/assessment`
-          );
-          
-          onValue(indicatorsRef, (snapshot) => {
-            if (snapshot.exists()) {
-              const data = snapshot.val();
-              console.log("Indicators data:", data);
-              
-              // Convert object to array with keys
-              const indicatorsArray = Object.keys(data).map(key => ({
-                firebaseKey: key,
-                ...data[key]
-              }));
-              
-              setIndicators(indicatorsArray);
-            } else {
-              console.log("No indicators found for this year");
-              setIndicators([]);
-            }
-          });
-        } else {
-          console.log("No admin UID found");
-          setIndicators([]);
-        }
+        onValue(indicatorsRef, (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.val();
+            console.log("Indicators data from admin:", data);
+            
+            // Convert object to array with keys
+            const indicatorsArray = Object.keys(data).map(key => ({
+              firebaseKey: key,
+              ...data[key]
+            }));
+            
+            setIndicators(indicatorsArray);
+          } else {
+            console.log("No indicators found for this year from admin");
+            setIndicators([]);
+          }
+        });
+      } else {
+        console.log("No admin UID found in users");
+        setIndicators([]);
       }
     } catch (error) {
       console.error("Error fetching indicators:", error);
@@ -244,7 +212,6 @@ useEffect(() => {
 
   fetchIndicators();
 }, [selectedYearDisplay]);
-
 
 // Handle answer changes
 const handleAnswerChange = (indicatorKey, mainIndex, field, value) => {
@@ -260,7 +227,7 @@ const handleAnswerChange = (indicatorKey, mainIndex, field, value) => {
   }));
 };
 
-// Save answers to Firebase using user's name
+// Update handleSaveAnswers to use users/ for finding admin
 const handleSaveAnswers = async () => {
   if (!auth.currentUser || !selectedYearDisplay || hasSubmitted) return; // Prevent multiple submissions
   
@@ -272,17 +239,18 @@ const handleSaveAnswers = async () => {
     // Clean the name to be Firebase-compatible (replace dots, etc.)
     const cleanName = userName.replace(/[.#$\[\]]/g, '_');
     
-    // Find admin UID first
-    const profilesRef = ref(db, "profiles");
-    const profilesSnapshot = await get(profilesRef);
+    // Find admin UID from users/
+    const usersRef = ref(db, "users");
+    const usersSnapshot = await get(usersRef);
     
-    if (profilesSnapshot.exists()) {
-      const profiles = profilesSnapshot.val();
-      let adminUid = Object.keys(profiles).find(
-        uid => profiles[uid]?.role === "admin"
+    if (usersSnapshot.exists()) {
+      const users = usersSnapshot.val();
+      let adminUid = Object.keys(users).find(
+        uid => users[uid]?.role === "admin"
       );
       
       if (!adminUid) {
+        // If no admin found, check financial data
         const financialRootRef = ref(db, "financial");
         const financialRootSnapshot = await get(financialRootRef);
         
@@ -295,7 +263,7 @@ const handleSaveAnswers = async () => {
       }
       
       if (adminUid) {
-        // Save user answers using user's NAME instead of UID
+        // Save user answers using user's NAME
         const answersRef = ref(
           db,
           `answers/${selectedYearDisplay}/LGU/${cleanName}`
@@ -314,7 +282,7 @@ const handleSaveAnswers = async () => {
         
         await set(answersRef, answerData);
         
-        // ===== SAVE ATTACHMENTS TO FIREBASE =====
+        // Save attachments to Firebase
         if (Object.keys(attachments).length > 0) {
           const attachmentsRef = ref(
             db,
@@ -760,7 +728,7 @@ const exportAllAreasPDF = async () => {
   }
 };
 
-// Load user's previous answers using user's name
+// Update loadUserAnswers to use users/ for finding admin
 const loadUserAnswers = async () => {
   if (!auth.currentUser || !selectedYearDisplay) return;
   
@@ -769,14 +737,14 @@ const loadUserAnswers = async () => {
     const userName = profileData.name || auth.currentUser.email || "Anonymous";
     const cleanName = userName.replace(/[.#$\[\]]/g, '_');
     
-    // Find admin UID
-    const profilesRef = ref(db, "profiles");
-    const profilesSnapshot = await get(profilesRef);
+    // Find admin UID from users/
+    const usersRef = ref(db, "users");
+    const usersSnapshot = await get(usersRef);
     
-    if (profilesSnapshot.exists()) {
-      const profiles = profilesSnapshot.val();
-      let adminUid = Object.keys(profiles).find(
-        uid => profiles[uid]?.role === "admin"
+    if (usersSnapshot.exists()) {
+      const users = usersSnapshot.val();
+      let adminUid = Object.keys(users).find(
+        uid => users[uid]?.role === "admin"
       );
       
       if (!adminUid) {
@@ -822,7 +790,7 @@ const loadUserAnswers = async () => {
           console.log("No answers in Firebase");
         }
         
-        // ===== LOAD ATTACHMENTS FROM FIREBASE =====
+        // Load attachments from Firebase
         const attachmentsRef = ref(
           db,
           `attachments/${selectedYearDisplay}/LGU/${cleanName}`
