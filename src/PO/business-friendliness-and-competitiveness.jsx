@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { db, auth} from "src/firebase";
-import "src/PO-Css/financial-administration-and-sustainability.css";
+import "src/PO-CSS/financial-administration-and-sustainability.css";
 import dilgLogo from "src/assets/dilg-po.png";
 import dilgSeal from "src/assets/dilg-ph.png";
 import { FiSave, FiTrash2 } from "react-icons/fi";
