@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { db, auth} from "../firebase";
-import styles from "../LGU-CSS/lgu-assessment.module.css";
-import dilgLogo from "../assets/dilg-po.png";
-import dilgSeal from "../assets/dilg-ph.png";
+import { db, auth} from "src/firebase";
+import styles from "src/LGU-CSS/lgu-assessment.module.css";
+import dilgLogo from "src/assets/dilg-po.png";
+import dilgSeal from "src/assets/dilg-ph.png";
 import { FiFilter,FiTrash2 , FiRotateCcw, FiSettings, FiLogOut, FiFileText } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import { ref, push, onValue, set, get } from "firebase/database";

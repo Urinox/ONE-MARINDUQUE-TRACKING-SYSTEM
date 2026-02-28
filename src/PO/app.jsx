@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "../PO-Css/app.css";
-import dilgLogo from "../assets/dilg-po.png";
-import dilgSeal from "../assets/dilg-ph.png";
-import { auth } from "../firebase";
+import "src/PO-Css/app.css";
+import dilgLogo from "src/assets/dilg-po.png";
+import dilgSeal from "src/assets/dilg-ph.png";
+import { auth } from "src/firebase";
 import { useEffect } from "react";
 import { getDatabase, ref, get, set } from "firebase/database";
 import { 
