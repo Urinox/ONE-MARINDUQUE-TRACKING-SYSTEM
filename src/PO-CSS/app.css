@@ -29,6 +29,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  margin-top: -5%;
   margin-bottom: 5px; /* normal spacing */
 }
 
@@ -38,7 +39,7 @@
 }
 
 .title {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
   margin: 0 0 30px 0; /* remove margin-top */
   text-align: center;
@@ -59,7 +60,7 @@
 }
 
 .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 15px;
   display: flex;
   flex-direction: column;
 }
@@ -79,7 +80,7 @@
 
 .form-group input {
   font-size: 15px;
-  padding: 12px;
+  padding: 9px;
   border-radius: 6px;
   border:#ffffff 2px solid;
   outline: none;
@@ -118,6 +119,10 @@
   width: 100%;
 }
 
+.login-btn:hover{
+  background: #d9d9d98f;
+}
+
 .email-btn {
   font-size: 16px;
   margin-top: 15px;
@@ -128,6 +133,9 @@
   font-weight: bold;
   cursor: pointer;
 }
+.email-btn:hover{
+  background: #f5c40082;
+}
 
 .register-text {
   margin-top: 20px;
@@ -136,6 +144,10 @@
 
 .register-text a {
   color: #fff;
+  text-decoration: underline;
+}
+.register-text a :hover {
+  color: #605dff;
   text-decoration: underline;
 }
 
@@ -155,7 +167,20 @@
   height: auto;
 }
 
+.forgot-password {
+  text-align: right;
 
+}
+
+.forgot-password a {
+  color: #ffffff;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.forgot-password a:hover {
+  text-decoration: underline;
+}
 
 .modal-overlay {
   position: fixed;
@@ -301,6 +326,16 @@
   color: #ccc !important;
 }
 
+.email-btn.disabled-btn {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: #cccccc;
+}
+
+.email-btn.disabled-btn:hover {
+  background-color: #cccccc;
+}
+
 @media (max-width: 1024px) {
   .left-panel {
     flex: 0 0 350px;
@@ -329,3 +364,4 @@
     width: 60%;
   }
 }
+

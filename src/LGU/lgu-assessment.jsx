@@ -323,7 +323,7 @@ const exportFinancialPDF = async () => {
     // Title
     doc.setFontSize(18);
     doc.setTextColor(26, 42, 108); // #1a2a6c
-    doc.text("Financial Administration and Sustainability", pageWidth / 2, 20, { align: 'center' });
+    doc.text("Financial, Administration and Sustainability", pageWidth / 2, 20, { align: 'center' });
     
     // Year
     doc.setFontSize(14);
@@ -367,13 +367,31 @@ const exportFinancialPDF = async () => {
           doc.setFont(undefined, 'normal');
           
           let answerText = "";
-          if (main.fieldType === "multiple" || main.fieldType === "checkbox") {
-            if (answer) {
-              answerText = `Answer: ${answer.value}`;
+
+          if (main.fieldType === "checkbox") {
+            // For checkboxes, collect all checked options
+            const checkedOptions = [];
+            
+            if (main.choices && main.choices.length > 0) {
+              main.choices.forEach((choice, i) => {
+                const checkboxKey = `${record.firebaseKey}_${record.mainIndicators.indexOf(main)}_${main.title}_${i}`;
+                const checkboxAnswer = userAnswers[checkboxKey];
+                
+                if (checkboxAnswer && checkboxAnswer.value === true) {
+                  checkedOptions.push(choice);
+                }
+              });
+            }
+            
+            if (checkedOptions.length > 0) {
+              answerText = `Answer: ${checkedOptions.join(", ")}`;
             } else {
               answerText = "Answer: Not answered";
             }
           } else {
+            // For non-checkbox fields (radio, text, etc.)
+            const answerKey = `${record.firebaseKey}_${record.mainIndicators.indexOf(main)}_${main.title}`;
+            const answer = userAnswers[answerKey];
             answerText = `Answer: ${answer?.value || "Not answered"}`;
           }
           
@@ -612,13 +630,31 @@ const exportAllAreasPDF = async () => {
             doc.setFont(undefined, 'normal');
             
             let answerText = "";
-            if (sub.fieldType === "multiple" || sub.fieldType === "checkbox") {
-              if (answer) {
-                answerText = `  Answer: ${answer.value}`;
+
+            if (sub.fieldType === "checkbox") {
+              // For checkboxes, collect all checked options
+              const checkedOptions = [];
+              
+              if (sub.choices && sub.choices.length > 0) {
+                sub.choices.forEach((choice, i) => {
+                  const checkboxKey = `${record.firebaseKey}_sub_${record.subIndicators.indexOf(sub)}_${sub.title}_${i}`;
+                  const checkboxAnswer = userAnswers[checkboxKey];
+                  
+                  if (checkboxAnswer && checkboxAnswer.value === true) {
+                    checkedOptions.push(choice);
+                  }
+                });
+              }
+              
+              if (checkedOptions.length > 0) {
+                answerText = `  Answer: ${checkedOptions.join(", ")}`;
               } else {
                 answerText = "  Answer: Not answered";
               }
             } else {
+              // For non-checkbox fields
+              const answerKey = `${record.firebaseKey}_sub_${record.subIndicators.indexOf(sub)}_${sub.title}`;
+              const answer = userAnswers[answerKey];
               answerText = `  Answer: ${answer?.value || "Not answered"}`;
             }
             
