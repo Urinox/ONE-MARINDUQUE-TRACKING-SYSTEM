@@ -15,7 +15,7 @@ export default function FAS() {
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [showModal, setShowModal] = uzseState(false);
+  const [showModal, setShowModal] = useState(false);
   const [isSavingIndicator, setIsSavingIndicator] = useState(false);
   const user = auth.currentUser;
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
