@@ -534,15 +534,23 @@ useEffect(() => {
 const handleSaveProfile = async () => {
   if (!auth.currentUser) return;
 
+  // Only validate name for PO
+  if (!editProfileData.name?.trim()) {
+    alert("Please enter your name");
+    return;
+  }
+
   try {
     setSavingProfile(true);
 
     await set(ref(db, `profiles/${auth.currentUser.uid}`), {
-      ...editProfileData,
-      email: auth.currentUser.email
+      name: editProfileData.name,
+      email: auth.currentUser.email,
+      image: editProfileData.image || ""
+      // No municipality for PO
     });
 
-setProfileData(editProfileData); // update visible profile
+    setProfileData(editProfileData); // update visible profile
 
     alert("Profile updated successfully!");
     setShowEditProfileModal(false);
@@ -943,15 +951,22 @@ const handleSignOut = () => {
         <h2>{profileData.name || "No Name"}</h2>
         <p className="profile-email">{profileData.email}</p>
         <div className="profile-action-buttons">
-          <button
-            className="profile-btn"
-            onClick={() => {
-              setShowProfileModal(false);
-              setShowEditProfileModal(true);
-            }}
-          >
-            Edit Profile
-          </button>
+<button
+  className="profile-btn"
+  onClick={() => {
+    // Set editProfileData with current profile data BEFORE opening modal
+    setEditProfileData({
+      name: profileData.name || "",
+      email: profileData.email || displayName,
+      image: profileData.image || ""
+      // No municipality field for PO
+    });
+    setShowProfileModal(false);
+    setShowEditProfileModal(true);
+  }}
+>
+  Edit Profile
+</button>
 
           <button
             className="profile-btn signout"
@@ -973,15 +988,20 @@ const handleSignOut = () => {
 
       <div className="modal-header">
         <h3>Edit Profile</h3>
-          <span
-            className="close-x"
-            onClick={() => {
-              setEditProfileData(profileData); // reset changes
-              setShowEditProfileModal(false);  // close modal
-            }}
-          >
-            ✕
-          </span>
+        <span
+          className="close-x"
+          onClick={() => {
+            // Reset to current profile data when closing
+            setEditProfileData({
+              name: profileData.name || "",
+              email: profileData.email || displayName,
+              image: profileData.image || ""
+            });
+            setShowEditProfileModal(false);
+          }}
+        >
+          ✕
+        </span>
       </div>
 
       <div className="modal-body">
@@ -1016,6 +1036,7 @@ const handleSignOut = () => {
             onChange={(e) =>
               setEditProfileData({ ...editProfileData, name: e.target.value })
             }
+            placeholder="Enter your name"
           />
         </div>
 
@@ -1034,7 +1055,7 @@ const handleSignOut = () => {
           <button
             className="save-profile-btn"
             onClick={handleSaveProfile}
-            disabled={savingProfile || !editProfileData.name.trim()}
+            disabled={savingProfile || !editProfileData.name?.trim()}
           >
             {savingProfile ? "Saving..." : "Save Changes"}
           </button>
