@@ -14,6 +14,7 @@ export default function FAS() {
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
+  const [submissionDeadline, setSubmissionDeadline] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [isSavingIndicator, setIsSavingIndicator] = useState(false);
@@ -105,7 +106,21 @@ const handleYD = () => {
 };
 
 
-
+// Save submission deadline to database
+const saveSubmissionDeadline = async () => {
+  if (!auth.currentUser || !selectedYear || !submissionDeadline) return;
+  
+  try {
+    const deadlineRef = ref(
+      db,
+      `financial/${auth.currentUser.uid}/${selectedYear}/metadata/deadline`
+    );
+    await set(deadlineRef, submissionDeadline);
+    console.log("Deadline saved successfully");
+  } catch (error) {
+    console.error("Error saving deadline:", error);
+  }
+};
   
 
   // Add Main Indicator
@@ -284,6 +299,31 @@ useEffect(() => {
   });
 }, [selectedYear]);
 
+// Load submission deadline for the selected year
+useEffect(() => {
+  if (!auth.currentUser || !selectedYear) return;
+
+  const loadSubmissionDeadline = async () => {
+    try {
+      const deadlineRef = ref(
+        db,
+        `financial/${auth.currentUser.uid}/${selectedYear}/metadata/deadline`
+      );
+      
+      onValue(deadlineRef, (snapshot) => {
+        if (snapshot.exists()) {
+          setSubmissionDeadline(snapshot.val());
+        } else {
+          setSubmissionDeadline("");
+        }
+      });
+    } catch (error) {
+      console.error("Error loading deadline:", error);
+    }
+  };
+
+  loadSubmissionDeadline();
+}, [selectedYear]);
 
 const handleSaveChanges = async () => {
   if (!auth.currentUser || isSavingIndicator || !selectedYear) return;
@@ -312,6 +352,11 @@ const handleSaveChanges = async () => {
     }
 
     await set(yearRef, updatedData);
+    
+    // Save the submission deadline
+    if (submissionDeadline) {
+      await saveSubmissionDeadline();
+    }
 
     setShowSaveConfirm(false);
     alert(`Changes saved for year ${selectedYear}`);
@@ -1197,25 +1242,48 @@ const isIndicatorValid = () => {
             </div>
           </div>
 
-          <div className="action-bar">
-          <button 
-            className="savechanges-btn" 
-            onClick={() => setShowSaveConfirm(true)}
-          >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-            >
-                <path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2
-                2 0 0 0 2-2V7l-4-4zM12 19a3 3 0 1 1 0-6 3 3 0 0 1
-                0 6zM6 8V5h9v3H6z"/>
-            </svg>
-            Save Changes
-          </button>
-          </div>
+<div className="action-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+  {/* Left side - Submission Deadline box */}
+  <div className="deadline-container" style={{ display: "flex", alignItems: "center", gap: "10px",marginLeft: "10px" }}>
+    <label htmlFor="submission-deadline" style={{ fontWeight: "700", color: "#000000" }}>
+      Submission Deadline:
+    </label>
+    <input
+      type="date"
+      id="submission-deadline"
+      className="deadline-input"
+      value={submissionDeadline}
+      onChange={(e) => setSubmissionDeadline(e.target.value)}
+      style={{
+        padding: "5px 12px",
+        borderRadius: "4px",
+        border: "1px solid #ccc",
+        fontSize: "14px",
+        backgroundColor: "#fff",
+        cursor: "pointer",
+      }}
+    />
+  </div>
+
+  {/* Right side - Save Changes button */}
+  <button 
+    className="savechanges-btn" 
+    onClick={() => setShowSaveConfirm(true)}
+  >
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+    >
+      <path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2
+      2 0 0 0 2-2V7l-4-4zM12 19a3 3 0 1 1 0-6 3 3 0 0 1
+      0 6zM6 8V5h9v3H6z"/>
+    </svg>
+    Save Changes
+  </button>
+</div>
 
           {/* Table */}
 <div className="financialtable-box">

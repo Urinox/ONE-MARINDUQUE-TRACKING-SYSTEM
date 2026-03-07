@@ -92,9 +92,11 @@ async function handleLogin(email, password) {
 
     if (role === 'admin') {
       navigate('/dashboard');
+    } else if (role === 'sub-admin') {
+      navigate('/mlgo-dashboard');
     } else if (role === 'user') {
       navigate('/lgu-assessment');
-    } else {
+    }else {
       alert('No access assigned');
     }
   } catch (error) {

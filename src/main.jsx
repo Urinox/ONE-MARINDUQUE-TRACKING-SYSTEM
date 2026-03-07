@@ -19,8 +19,13 @@ import THDCA from "src/PO/tourism-heritage-development-culture-and-arts.jsx";
 import YD from "src/PO/youth-development.jsx";
 import LGU from "src/LGU/lgu-assessment.jsx";
 import LGUNotification from "src/LGU/lgu-notifications.jsx";
+import MLGO from "src/MLGO/mlgo-dashboard.jsx";
+import MLGOView from "src/MLGO/mlgo-view.jsx";
+import POView from "src/PO/po-view.jsx";
+import MLGONotification from "src/MLGO/mlgo-notifications.jsx";
+import PONotification from "src/PO/po-notifications.jsx";
 
-function ProtectedRoute({ children, allowedRoles }) {
+function ProtectedRoute({ children, allowedRoles, key }) {
   const auth = getAuth();
   const db = getDatabase();
   const [role, setRole] = useState(null);
@@ -42,7 +47,7 @@ function ProtectedRoute({ children, allowedRoles }) {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [key]); // Add key as dependency to reload when key changes
 
   if (loading) return <Loader />;
   if (!auth.currentUser) return <Navigate to="/login" replace />;
@@ -160,6 +165,52 @@ function Root() {
         element={
           <ProtectedRoute allowedRoles={["admin"]}>
             <YD />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/po-view"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <POView />
+          </ProtectedRoute>
+        }
+      />
+
+      
+      <Route
+        path="/po-notifications"
+        element={
+          <ProtectedRoute allowedRoles={["admin"]}>
+            <PONotification />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/mlgo-dashboard"
+        element={
+          <ProtectedRoute allowedRoles={["sub-admin"]}>
+            <MLGO />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/mlgo-view"
+        element={
+          <ProtectedRoute allowedRoles={["sub-admin"]}>
+            <MLGOView />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/mlgo-notification"
+        element={
+          <ProtectedRoute allowedRoles={["sub-admin"]}>
+            <MLGONotification />
           </ProtectedRoute>
         }
       />

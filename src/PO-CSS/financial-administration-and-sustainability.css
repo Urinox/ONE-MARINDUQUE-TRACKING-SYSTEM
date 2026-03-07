@@ -309,7 +309,7 @@ body {
   flex-direction: column;
   min-height: 60px;
   border-radius: 5px;
-  max-height: 80vh; /* Set the box height to a percentage of the viewport */
+  max-height: 75vh; /* Set the box height to a percentage of the viewport */
 }
 
 .financialtable-wrapper {

@@ -228,6 +228,42 @@ body {
   border-radius: 50%;
 }
 
+.status.verified {
+  background-color: #28a745;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status.pending {
+  background-color: #ffc107;
+  color: #333;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+
+.sidebar-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 10px;
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.sidebar-menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
 .action-bar {
   display: flex;
   justify-content: flex-end;
@@ -774,6 +810,10 @@ th, td {
 .profile-btn.signout:hover {
   background: #ff9c9c;
 }
+
+
+
+
 
 
 

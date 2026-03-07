@@ -1,770 +1,159 @@
-import React, { useState, useEffect } from "react";
-import { db, auth} from "src/firebase";
-import styles from "src/LGU-CSS/lgu-assessment.module.css";
-import dilgLogo from "src/assets/dilg-po.png";
-import dilgSeal from "src/assets/dilg-ph.png";
-import { FiFilter,FiTrash2 , FiRotateCcw, FiSettings, FiLogOut, FiFileText } from "react-icons/fi";
-import { useNavigate } from "react-router-dom";
-import { ref, push, onValue, set, get } from "firebase/database";
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+  import React, { useState, useEffect } from "react";
+  import { db, auth} from "src/firebase";
+  import styles from "src/LGU-CSS/lgu-assessment.module.css";
+  import { ClipboardCheck } from "lucide-react";
+  import dilgLogo from "src/assets/dilg-po.png";
+  import dilgSeal from "src/assets/dilg-ph.png";
+  import { FiFilter,FiTrash2 , FiRotateCcw, FiSettings, FiLogOut, FiFileText, FiBell} from "react-icons/fi";
+  import { useNavigate } from "react-router-dom";
+  import { ref, push, onValue, set, get } from "firebase/database";
+  import jsPDF from 'jspdf';
+  import 'jspdf-autotable';
 
 
 
-export default function LGU() {
-  const navigate = useNavigate();
-  const [userAnswers, setUserAnswers] = useState({});
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [isDraft, setIsDraft] = useState(false);
-  const [lastSavedDraft, setLastSavedDraft] = useState(null);
-  const [hasSubmitted, setHasSubmitted] = useState(false);
-  const [savingAnswers, setSavingAnswers] = useState(false);
-  const [allCategoriesData, setAllCategoriesData] = useState({
-    financial: [],
-    disaster: [],
-    social: [],
-    health: [],
-    education: [],
-    safety: [],
-    environmental: [],
-    youth: [],
-    tourism: []
-  });
-  const [selectedYearDisplay, setSelectedYearDisplay] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const rowsPerPage = 10;
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [openDropdown, setOpenDropdown] = useState(null);
-  const [showModal, setShowModal] = useState(false);
-  const [search, setSearch] = useState("");
-  const user = auth.currentUser;
-  const displayName = user?.email || "User";
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
-  const [userRole, setUserRole] = useState("user");
-  const [attachments, setAttachments] = useState({});
-  const [uploadingFile, setUploadingFile] = useState(false);
-  const [editProfileData, setEditProfileData] = useState({
-  name: "",
-  email: displayName,
-  image: ""
-});
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [profileData, setProfileData] = useState({
-    name: "",
-    email: displayName,
-    image: ""
-  });
-  const [data, setData] = useState([]);
+  export default function LGU() {
+    const [remarks, setRemarks] = useState(null);
+    const navigate = useNavigate();
+    const [adminUid, setAdminUid] = useState(null);
+    const [metadata, setMetadata] = useState({});
+    const [submissionDeadline, setSubmissionDeadline] = useState("");
+    const [userAnswers, setUserAnswers] = useState({});
+    const [profileComplete, setProfileComplete] = useState(false);
+    const [showExportModal, setShowExportModal] = useState(false);
+    const [isDraft, setIsDraft] = useState(false);
+    const [lastSavedDraft, setLastSavedDraft] = useState(null);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const [hasSubmitted, setHasSubmitted] = useState(false);
+    const [savingAnswers, setSavingAnswers] = useState(false);
+    const [savingProfile, setSavingProfile] = useState(false);
+    const [selectedYearDisplay, setSelectedYearDisplay] = useState("");
 
-useEffect(() => {
-  if (!auth.currentUser) return;
+    const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [openDropdown, setOpenDropdown] = useState(null);
+    const [showModal, setShowModal] = useState(false);
+    const [search, setSearch] = useState("");
+    const user = auth.currentUser;
+    const displayName = user?.email || "User";
+    const [showProfileModal, setShowProfileModal] = useState(false);
+    const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+    const [userRole, setUserRole] = useState("user");
+    const [attachments, setAttachments] = useState({});
+    const [uploadingFile, setUploadingFile] = useState(false);
+    const municipalities = ["Boac", "Mogpog", "Sta. Cruz", "Torrijos", "Buenavista", "Gasan"];
+    const [editProfileData, setEditProfileData] = useState({
+      name: "",
+      municipality: "", // ADD THIS LINE
+      email: displayName,
+      image: ""
+    });
 
-  const profileRef = ref(db, `profiles/${auth.currentUser.uid}`);
-  onValue(profileRef, (snapshot) => {
-    if (snapshot.exists()) {
-      const profile = snapshot.val();
-      setProfileData(profile);
+    const [profileData, setProfileData] = useState({
+      name: "",
+      municipality: "", // ADD THIS LINE
+      email: displayName,
+      image: ""
+    });
+    const [data, setData] = useState([]);
 
-      // If the profile has no name, force edit modal
-      if (!profile.name) {
+
+    
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const profileRef = ref(db, `profiles/${auth.currentUser.uid}`);
+    onValue(profileRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const profile = snapshot.val();
+        setProfileData(profile);
+        setEditProfileData(profile);
+
+        // Check if profile has required fields
+        if (profile.name && profile.municipality) { // CHANGE THIS CONDITION
+          setProfileComplete(true);
+          setShowEditProfileModal(false);
+        } else {
+          setProfileComplete(false);
+          setShowEditProfileModal(true); // Force edit modal if incomplete
+        }
+      } else {
+        // No profile exists yet, force edit modal
+        setProfileComplete(false);
         setShowEditProfileModal(true);
       }
+    });
+  }, []);
+
+// Load remarks from Firebase
+const loadRemarks = async () => {
+  if (!auth.currentUser || !selectedYearDisplay) return;
+  
+  try {
+    const userName = profileData.name || auth.currentUser.email || "Anonymous";
+    const cleanName = userName.replace(/[.#$\[\]]/g, '_');
+    
+    const remarksRef = ref(db, `remarks/${selectedYearDisplay}/LGU/${cleanName}`);
+    const snapshot = await get(remarksRef);
+    
+    if (snapshot.exists()) {
+      setRemarks(snapshot.val());
     } else {
-      // No profile exists yet, open edit modal
-      setShowEditProfileModal(true);
+      setRemarks(null);
     }
-  });
-}, []);
+  } catch (error) {
+    console.error("Error loading remarks:", error);
+  }
+};
 
-
-// Replace your current years useEffect with this debug version:
-// Fetch available years - ONLY from admin user in users/
+// Fetch unread notifications count for LGU
 useEffect(() => {
   if (!auth.currentUser) return;
 
-  const fetchYears = async () => {
+  const fetchUnreadCount = async () => {
     try {
-      console.log("Fetching years from admin in users/...");
+      const userUid = auth.currentUser.uid;
+      const notificationsRootRef = ref(db, `notifications`);
+      const rootSnapshot = await get(notificationsRootRef);
       
-      // Get all users to find admin
-      const usersRef = ref(db, "users");
-      const usersSnapshot = await get(usersRef);
+      let count = 0;
       
-      let adminUid = null;
-      
-      if (usersSnapshot.exists()) {
-        const users = usersSnapshot.val();
-        console.log("All users:", users);
+      if (rootSnapshot.exists()) {
+        const yearsData = rootSnapshot.val();
         
-        // Find the admin UID
-        adminUid = Object.keys(users).find(
-          uid => users[uid]?.role === "admin"
-        );
-        
-        console.log("Admin UID found in users:", adminUid);
-      }
-      
-      if (adminUid) {
-        // Get years from the admin's node
-        const yearsRef = ref(db, `years/${adminUid}`);
-        
-        onValue(yearsRef, (snapshot) => {
-          if (snapshot.exists()) {
-            const data = snapshot.val();
-            console.log("Admin years data:", data);
-            
-            // Handle different data structures
-            let yearsArray = [];
-            
-            if (Array.isArray(data)) {
-              // If data is an array like ["2021", "2022", "2023"]
-              yearsArray = data;
-            } 
-            else if (typeof data === "object" && data !== null) {
-              // If data is an object like {2021: {...}, 2022: {...}}
-              yearsArray = Object.keys(data);
-            }
-            
-            console.log("Final years from admin:", yearsArray);
-            setYears(yearsArray);
-          } else {
-            console.log("No years data found for admin");
-            setYears([]);
+        Object.keys(yearsData).forEach(year => {
+          const yearData = yearsData[year];
+          // Look for notifications under LGU with the user's UID
+          if (yearData.LGU && yearData.LGU[userUid]) {
+            const yearNotifications = yearData.LGU[userUid];
+            Object.keys(yearNotifications).forEach(key => {
+              if (!yearNotifications[key].read) {
+                count++;
+              }
+            });
           }
         });
-      } else {
-        console.log("No admin user found in users");
-        setYears([]);
       }
+      
+      setUnreadCount(count);
+      console.log("Unread count for LGU:", count);
     } catch (error) {
-      console.error("Error fetching years:", error);
-      setYears([]);
+      console.error("Error fetching unread count:", error);
     }
   };
 
-  fetchYears();
-}, []);
-
-
-// Add state for indicators
-const [indicators, setIndicators] = useState([]);
-
-
-// Fetch indicators from Firebase - ONLY from admin in users/
-useEffect(() => {
-  if (!auth.currentUser || !selectedYearDisplay) return;
-
-  const fetchIndicators = async () => {
-    try {
-      console.log(`Fetching indicators for year ${selectedYearDisplay} from admin in users/...`);
-      
-      // Get all users to find admin
-      const usersRef = ref(db, "users");
-      const usersSnapshot = await get(usersRef);
-      
-      let adminUid = null;
-      
-      if (usersSnapshot.exists()) {
-        const users = usersSnapshot.val();
-        
-        // Find admin UID
-        adminUid = Object.keys(users).find(
-          uid => users[uid]?.role === "admin"
-        );
-        
-        console.log("Admin UID for indicators:", adminUid);
-      }
-      
-      if (adminUid) {
-        // Reference to the financial indicators for the selected year and category
-        const indicatorsRef = ref(
-          db, 
-          `financial/${adminUid}/${selectedYearDisplay}/financial-administration-and-sustainability/assessment`
-        );
-        
-        onValue(indicatorsRef, (snapshot) => {
-          if (snapshot.exists()) {
-            const data = snapshot.val();
-            console.log("Indicators data from admin:", data);
-            
-            // Convert object to array with keys
-            const indicatorsArray = Object.keys(data).map(key => ({
-              firebaseKey: key,
-              ...data[key]
-            }));
-            
-            setIndicators(indicatorsArray);
-          } else {
-            console.log("No indicators found for this year from admin");
-            setIndicators([]);
-          }
-        });
-      } else {
-        console.log("No admin UID found in users");
-        setIndicators([]);
-      }
-    } catch (error) {
-      console.error("Error fetching indicators:", error);
-      setIndicators([]);
-    }
-  };
-
-  fetchIndicators();
-}, [selectedYearDisplay]);
-
-// Handle answer changes
-const handleAnswerChange = (indicatorKey, mainIndex, field, value) => {
-  setUserAnswers(prev => ({
-    ...prev,
-    [`${indicatorKey}_${mainIndex}_${field}`]: {
-      indicatorKey,
-      mainIndex,
-      field,
-      value,
-      timestamp: Date.now()
-    }
-  }));
-};
-
-// Update handleSaveAnswers to use users/ for finding admin
-const handleSaveAnswers = async () => {
-  if (!auth.currentUser || !selectedYearDisplay || hasSubmitted) return; // Prevent multiple submissions
+  fetchUnreadCount();
   
-  setSavingAnswers(true);
+  // Set up a listener for changes
+  const notificationsRef = ref(db, `notifications`);
+  const unsubscribe = onValue(notificationsRef, () => {
+    fetchUnreadCount();
+  });
   
-  try {
-    // Get user's display name
-    const userName = profileData.name || auth.currentUser.email || "Anonymous";
-    // Clean the name to be Firebase-compatible (replace dots, etc.)
-    const cleanName = userName.replace(/[.#$\[\]]/g, '_');
-    
-    // Find admin UID from users/
-    const usersRef = ref(db, "users");
-    const usersSnapshot = await get(usersRef);
-    
-    if (usersSnapshot.exists()) {
-      const users = usersSnapshot.val();
-      let adminUid = Object.keys(users).find(
-        uid => users[uid]?.role === "admin"
-      );
-      
-      if (!adminUid) {
-        // If no admin found, check financial data
-        const financialRootRef = ref(db, "financial");
-        const financialRootSnapshot = await get(financialRootRef);
-        
-        if (financialRootSnapshot.exists()) {
-          const financialData = financialRootSnapshot.val();
-          adminUid = Object.keys(financialData).find(uid => 
-            financialData[uid] && financialData[uid][selectedYearDisplay]
-          );
-        }
-      }
-      
-      if (adminUid) {
-        // Save user answers using user's NAME
-        const answersRef = ref(
-          db,
-          `answers/${selectedYearDisplay}/LGU/${cleanName}`
-        );
-        
-        // Also save the user's UID for reference
-        const answerData = {
-          ...userAnswers,
-          _metadata: {
-            uid: auth.currentUser.uid,
-            email: auth.currentUser.email,
-            lastSaved: Date.now(),
-            submitted: true
-          }
-        };
-        
-        await set(answersRef, answerData);
-        
-        // Save attachments to Firebase
-        if (Object.keys(attachments).length > 0) {
-          const attachmentsRef = ref(
-            db,
-            `attachments/${selectedYearDisplay}/LGU/${cleanName}`
-          );
-          await set(attachmentsRef, attachments);
-          console.log("Attachments saved to Firebase");
-        }
-        
-        setHasSubmitted(true); // Mark as submitted
-        clearDraft(); // Clear localStorage draft
-        alert("Answers and attachments submitted successfully!");
-      }
-    }
-  } catch (error) {
-    console.error("Error submitting answers:", error);
-    alert("Failed to submit answers: " + error.message);
-  } finally {
-    setSavingAnswers(false);
-  }
-};
-
-// Export Financial, Administrative and Sustainability as PDF
-const exportFinancialPDF = async () => {
-  if (!selectedYearDisplay) {
-    alert("Please select a year first");
-    return;
-  }
-
-  try {
-    // Create new PDF document
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    
-    // Add header with logos (if needed)
-    // You can add your DILG logos here if you want
-    
-    // Title
-    doc.setFontSize(18);
-    doc.setTextColor(26, 42, 108); // #1a2a6c
-    doc.text("Financial, Administration and Sustainability", pageWidth / 2, 20, { align: 'center' });
-    
-    // Year
-    doc.setFontSize(14);
-    doc.setTextColor(0, 0, 0);
-    doc.text(`Year: ${selectedYearDisplay}`, pageWidth / 2, 30, { align: 'center' });
-    
-    // User info
-    doc.setFontSize(10);
-    doc.setTextColor(100, 100, 100);
-    doc.text(`Prepared by: ${profileData.name || auth.currentUser?.email || "User"}`, 14, 40);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 45);
-    
-    let yPosition = 55;
-    let rowCount = 0;
-    
-    // Loop through indicators
-    for (const record of indicators) {
-      // Main Indicators
-      if (record.mainIndicators && record.mainIndicators.length > 0) {
-        for (const main of record.mainIndicators) {
-          // Check if we need a new page
-          if (yPosition > 270) {
-            doc.addPage();
-            yPosition = 20;
-          }
-          
-          // Main indicator title
-          doc.setFontSize(12);
-          doc.setTextColor(26, 42, 108);
-          doc.setFont(undefined, 'bold');
-          doc.text(main.title, 14, yPosition);
-          yPosition += 7;
-          
-          // Get user's answer for this indicator
-          const answerKey = `${record.firebaseKey}_${record.mainIndicators.indexOf(main)}_${main.title}`;
-          const answer = userAnswers[answerKey];
-          
-          // Answer
-          doc.setFontSize(11);
-          doc.setTextColor(0, 0, 0);
-          doc.setFont(undefined, 'normal');
-          
-          let answerText = "";
-
-          if (main.fieldType === "checkbox") {
-            // For checkboxes, collect all checked options
-            const checkedOptions = [];
-            
-            if (main.choices && main.choices.length > 0) {
-              main.choices.forEach((choice, i) => {
-                const checkboxKey = `${record.firebaseKey}_${record.mainIndicators.indexOf(main)}_${main.title}_${i}`;
-                const checkboxAnswer = userAnswers[checkboxKey];
-                
-                if (checkboxAnswer && checkboxAnswer.value === true) {
-                  checkedOptions.push(choice);
-                }
-              });
-            }
-            
-            if (checkedOptions.length > 0) {
-              answerText = `Answer: ${checkedOptions.join(", ")}`;
-            } else {
-              answerText = "Answer: Not answered";
-            }
-          } else {
-            // For non-checkbox fields (radio, text, etc.)
-            const answerKey = `${record.firebaseKey}_${record.mainIndicators.indexOf(main)}_${main.title}`;
-            const answer = userAnswers[answerKey];
-            answerText = `Answer: ${answer?.value || "Not answered"}`;
-          }
-          
-          doc.text(answerText, 20, yPosition);
-          yPosition += 6;
-          
-          // Mode of Verification
-          if (main.verification) {
-            doc.setFontSize(10);
-            doc.setTextColor(80, 80, 80);
-            doc.text(`Mode of Verification: ${main.verification}`, 20, yPosition);
-            yPosition += 8;
-          } else {
-            yPosition += 4;
-          }
-          
-          rowCount++;
-        }
-      }
-      
-      // Sub Indicators
-      if (record.subIndicators && record.subIndicators.length > 0) {
-        for (const sub of record.subIndicators) {
-          // Check if we need a new page
-          if (yPosition > 270) {
-            doc.addPage();
-            yPosition = 20;
-          }
-          
-          // Sub indicator title (indented)
-          doc.setFontSize(11);
-          doc.setTextColor(80, 80, 80);
-          doc.setFont(undefined, 'italic');
-          doc.text(`• ${sub.title}`, 20, yPosition);
-          yPosition += 6;
-          
-          // Get user's answer for this sub indicator
-          const answerKey = `${record.firebaseKey}_sub_${record.subIndicators.indexOf(sub)}_${sub.title}`;
-          const answer = userAnswers[answerKey];
-          
-          // Answer (further indented)
-          doc.setFontSize(10);
-          doc.setTextColor(0, 0, 0);
-          doc.setFont(undefined, 'normal');
-          
-          let answerText = "";
-          if (sub.fieldType === "multiple" || sub.fieldType === "checkbox") {
-            if (answer) {
-              answerText = `  Answer: ${answer.value}`;
-            } else {
-              answerText = "  Answer: Not answered";
-            }
-          } else {
-            answerText = `  Answer: ${answer?.value || "Not answered"}`;
-          }
-          
-          doc.text(answerText, 25, yPosition);
-          yPosition += 5;
-          
-          // Mode of Verification for sub indicators
-          if (sub.verification) {
-            doc.setFontSize(9);
-            doc.setTextColor(100, 100, 100);
-            doc.text(`  Mode of Verification: ${sub.verification}`, 25, yPosition);
-            yPosition += 6;
-          } else {
-            yPosition += 2;
-          }
-          
-          rowCount++;
-        }
-      }
-      
-      // Add separator between records
-      if (yPosition < 270) {
-        doc.setDrawColor(200, 200, 200);
-        doc.line(14, yPosition, pageWidth - 14, yPosition);
-        yPosition += 10;
-      }
-    }
-    
-    // Add footer with page numbers
-    const pageCount = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
-      doc.text(
-        `Page ${i} of ${pageCount} - Financial Administration and Sustainability Assessment ${selectedYearDisplay}`,
-        pageWidth / 2,
-        doc.internal.pageSize.getHeight() - 10,
-        { align: 'center' }
-      );
-    }
-    
-    // Save the PDF
-    doc.save(`Financial_Assessment_${selectedYearDisplay}_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`);
-    
-  } catch (error) {
-    console.error("Error generating PDF:", error);
-    alert("Failed to generate PDF");
-  }
-};
+  return () => unsubscribe();
+}, [auth.currentUser?.uid]);
 
 
-
-// Export All Areas PDF (all tabs)
-const exportAllAreasPDF = async () => {
-  if (!selectedYearDisplay) {
-    alert("Please select a year first");
-    return;
-  }
-
-  try {
-    // Show loading message
-    alert("Generating comprehensive report... This may take a moment.");
-    
-    // Create new PDF document
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-    
-    // ===== COVER PAGE =====
-    doc.setFontSize(24);
-    doc.setTextColor(26, 42, 108); // #1a2a6c
-    doc.text("Comprehensive LGU Assessment Report", pageWidth / 2, 60, { align: 'center' });
-    
-    doc.setFontSize(18);
-    doc.setTextColor(0, 0, 0);
-    doc.text(`Year: ${selectedYearDisplay}`, pageWidth / 2, 80, { align: 'center' });
-    
-    doc.setFontSize(12);
-    doc.setTextColor(100, 100, 100);
-    doc.text(`Prepared by: ${profileData.name || auth.currentUser?.email || "User"}`, pageWidth / 2, 100, { align: 'center' });
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, pageWidth / 2, 110, { align: 'center' });
-    
-    // Add DILG logos or other branding if desired
-    
-    doc.addPage();
-    
-    // ===== FUNCTION TO EXPORT A CATEGORY =====
-    const exportCategory = async (categoryData, categoryTitle, startY) => {
-      let yPosition = startY;
-      
-      // Category Title
-      doc.setFontSize(16);
-      doc.setTextColor(26, 42, 108);
-      doc.setFont(undefined, 'bold');
-      doc.text(categoryTitle, 14, yPosition);
-      yPosition += 10;
-      
-      if (!categoryData || categoryData.length === 0) {
-        doc.setFontSize(12);
-        doc.setTextColor(150, 150, 150);
-        doc.setFont(undefined, 'italic');
-        doc.text("No indicators available for this category", 20, yPosition);
-        yPosition += 15;
-        return yPosition;
-      }
-      
-      // Loop through records in this category
-      for (const record of categoryData) {
-        // Main Indicators
-        if (record.mainIndicators && record.mainIndicators.length > 0) {
-          for (const main of record.mainIndicators) {
-            // Check if we need a new page
-            if (yPosition > 270) {
-              doc.addPage();
-              yPosition = 20;
-            }
-            
-            // Main indicator title
-            doc.setFontSize(12);
-            doc.setTextColor(26, 42, 108);
-            doc.setFont(undefined, 'bold');
-            doc.text(main.title, 14, yPosition);
-            yPosition += 7;
-            
-            // Get user's answer for this indicator
-            const answerKey = `${record.firebaseKey}_${record.mainIndicators.indexOf(main)}_${main.title}`;
-            const answer = userAnswers[answerKey];
-            
-            // Answer
-            doc.setFontSize(11);
-            doc.setTextColor(0, 0, 0);
-            doc.setFont(undefined, 'normal');
-            
-            let answerText = "";
-            if (main.fieldType === "multiple" || main.fieldType === "checkbox") {
-              if (answer) {
-                answerText = `Answer: ${answer.value}`;
-              } else {
-                answerText = "Answer: Not answered";
-              }
-            } else {
-              answerText = `Answer: ${answer?.value || "Not answered"}`;
-            }
-            
-            doc.text(answerText, 20, yPosition);
-            yPosition += 6;
-            
-            // Mode of Verification
-            if (main.verification) {
-              doc.setFontSize(10);
-              doc.setTextColor(80, 80, 80);
-              doc.text(`Mode of Verification: ${main.verification}`, 20, yPosition);
-              yPosition += 8;
-            } else {
-              yPosition += 4;
-            }
-          }
-        }
-        
-        // Sub Indicators
-        if (record.subIndicators && record.subIndicators.length > 0) {
-          for (const sub of record.subIndicators) {
-            // Check if we need a new page
-            if (yPosition > 270) {
-              doc.addPage();
-              yPosition = 20;
-            }
-            
-            // Sub indicator title (indented)
-            doc.setFontSize(11);
-            doc.setTextColor(80, 80, 80);
-            doc.setFont(undefined, 'italic');
-            doc.text(`• ${sub.title}`, 20, yPosition);
-            yPosition += 6;
-            
-            // Get user's answer for this sub indicator
-            const answerKey = `${record.firebaseKey}_sub_${record.subIndicators.indexOf(sub)}_${sub.title}`;
-            const answer = userAnswers[answerKey];
-            
-            // Answer (further indented)
-            doc.setFontSize(10);
-            doc.setTextColor(0, 0, 0);
-            doc.setFont(undefined, 'normal');
-            
-            let answerText = "";
-
-            if (sub.fieldType === "checkbox") {
-              // For checkboxes, collect all checked options
-              const checkedOptions = [];
-              
-              if (sub.choices && sub.choices.length > 0) {
-                sub.choices.forEach((choice, i) => {
-                  const checkboxKey = `${record.firebaseKey}_sub_${record.subIndicators.indexOf(sub)}_${sub.title}_${i}`;
-                  const checkboxAnswer = userAnswers[checkboxKey];
-                  
-                  if (checkboxAnswer && checkboxAnswer.value === true) {
-                    checkedOptions.push(choice);
-                  }
-                });
-              }
-              
-              if (checkedOptions.length > 0) {
-                answerText = `  Answer: ${checkedOptions.join(", ")}`;
-              } else {
-                answerText = "  Answer: Not answered";
-              }
-            } else {
-              // For non-checkbox fields
-              const answerKey = `${record.firebaseKey}_sub_${record.subIndicators.indexOf(sub)}_${sub.title}`;
-              const answer = userAnswers[answerKey];
-              answerText = `  Answer: ${answer?.value || "Not answered"}`;
-            }
-            
-            doc.text(answerText, 25, yPosition);
-            yPosition += 5;
-            
-            // Mode of Verification for sub indicators
-            if (sub.verification) {
-              doc.setFontSize(9);
-              doc.setTextColor(100, 100, 100);
-              doc.text(`  Mode of Verification: ${sub.verification}`, 25, yPosition);
-              yPosition += 6;
-            } else {
-              yPosition += 2;
-            }
-          }
-        }
-        
-        // Add separator between records
-        if (yPosition < 270) {
-          doc.setDrawColor(200, 200, 200);
-          doc.line(14, yPosition, pageWidth - 14, yPosition);
-          yPosition += 10;
-        }
-      }
-      
-      return yPosition;
-    };
-    
-    // ===== EXPORT EACH CATEGORY =====
-    let currentY = 20;
-    
-    // Financial Administration and Sustainability
-    if (indicators && indicators.length > 0) {
-      currentY = await exportCategory(indicators, "Financial Administration and Sustainability", currentY);
-    } else {
-      currentY = await exportCategory([], "Financial Administration and Sustainability", currentY);
-    }
-    
-    // Add page break between categories
-    doc.addPage();
-    currentY = 20;
-    
-    // Disaster Preparedness
-    // Note: You need to fetch data for each category similarly
-    // For now, we'll show placeholder
-    doc.setFontSize(16);
-    doc.setTextColor(26, 42, 108);
-    doc.setFont(undefined, 'bold');
-    doc.text("Disaster Preparedness", 14, currentY);
-    currentY += 10;
-    
-    doc.setFontSize(12);
-    doc.setTextColor(150, 150, 150);
-    doc.setFont(undefined, 'italic');
-    doc.text("Data for this category will be available soon", 20, currentY);
-    currentY += 20;
-    
-    doc.addPage();
-    currentY = 20;
-    
-    // Social Protection and Sensitivity
-    doc.setFontSize(16);
-    doc.setTextColor(26, 42, 108);
-    doc.setFont(undefined, 'bold');
-    doc.text("Social Protection and Sensitivity", 14, currentY);
-    currentY += 10;
-    
-    doc.setFontSize(12);
-    doc.setTextColor(150, 150, 150);
-    doc.setFont(undefined, 'italic');
-    doc.text("Data for this category will be available soon", 20, currentY);
-    currentY += 20;
-    
-    // Continue for all 9 categories...
-    // You'll need to fetch actual data for each tab
-    
-    // ===== ADD TABLE OF CONTENTS =====
-    // Add table of contents at the beginning (after cover)
-    const totalPages = doc.internal.getNumberOfPages();
-    
-    // Add page numbers and footers
-    for (let i = 1; i <= totalPages; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
-      
-      // Skip footer on cover page (page 1)
-      if (i > 1) {
-        doc.text(
-          `Page ${i-1} of ${totalPages-1} - Provincial Assessment ${selectedYearDisplay}`,
-          pageWidth / 2,
-          doc.internal.pageSize.getHeight() - 10,
-          { align: 'center' }
-        );
-      }
-    }
-    
-    // Save the PDF
-    doc.save(`Provincial_Assessment_${selectedYearDisplay}_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`);
-    
-    alert("Comprehensive report generated successfully!");
-    
-  } catch (error) {
-    console.error("Error generating comprehensive PDF:", error);
-    alert("Failed to generate comprehensive report: " + error.message);
-  }
-};
-
-// Update loadUserAnswers to use users/ for finding admin
+// Update the loadUserAnswers function (around line 150-200):
 const loadUserAnswers = async () => {
   if (!auth.currentUser || !selectedYearDisplay) return;
   
@@ -808,22 +197,53 @@ const loadUserAnswers = async () => {
           const data = snapshot.val();
           const { _metadata, ...answers } = data;
           
-          // Set answers first
+          // Store metadata separately
+          setMetadata(_metadata || {});
+          
+          // Set answers
           setUserAnswers(answers || {});
           
-          // Then set submission status
-          if (_metadata && _metadata.submitted === true) {
+          // Debug log to see what's in metadata
+          console.log("📊 Loaded metadata:", _metadata);
+          
+          // Check if ANY forwarding-related fields exist
+          const hasForwardingFlags = 
+            _metadata?.forwardedToPO === true || 
+            _metadata?.forwarded === true ||
+            _metadata?.forwardedAt || 
+            _metadata?.forwardedBy ||
+            _metadata?.forwardedTo;
+          
+          // IMPORTANT: Check flags in the correct order
+          // 1. Check if returned - this should take precedence and make it editable
+          if (_metadata && _metadata.returned === true) {
+            setHasSubmitted(false); // Allow editing again
+            console.log("✅ Assessment was returned, now editable");
+          }
+          // 2. Check if ANY forwarding flags exist - should be locked
+          else if (hasForwardingFlags) {
+            setHasSubmitted(true); // Keep locked
+            console.log("🔒 Assessment has forwarding flags - locked for editing", {
+              forwardedToPO: _metadata?.forwardedToPO,
+              forwarded: _metadata?.forwarded,
+              forwardedAt: _metadata?.forwardedAt,
+              forwardedBy: _metadata?.forwardedBy
+            });
+          }
+          // 3. Then set submission status for normally submitted ones
+          else if (_metadata && _metadata.submitted === true) {
             setHasSubmitted(true);
-            console.log("Found submitted answers");
+            console.log("📝 Found submitted answers");
           } else {
             setHasSubmitted(false);
-            console.log("Found draft answers in Firebase");
+            console.log("📝 Found draft answers in Firebase");
           }
         } else {
           // No answers in Firebase
           setUserAnswers({});
+          setMetadata({});
           setHasSubmitted(false);
-          console.log("No answers in Firebase");
+          console.log("📝 No answers in Firebase");
         }
         
         // Load attachments from Firebase
@@ -835,10 +255,13 @@ const loadUserAnswers = async () => {
         
         if (attachmentsSnapshot.exists()) {
           setAttachments(attachmentsSnapshot.val());
-          console.log("Attachments loaded from Firebase");
+          console.log("📎 Attachments loaded from Firebase");
         } else {
           setAttachments({});
         }
+        
+        // Load remarks from Firebase
+        await loadRemarks();
       }
     }
   } catch (error) {
@@ -847,439 +270,1503 @@ const loadUserAnswers = async () => {
   }
 };
 
-// Handle file upload for verification (supports multiple files)
-const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
-  if (!file) return;
-  
-  setUploadingFile(true);
-  
-  try {
-    // Convert file to base64 for storage
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const attachmentData = {
-        fileName: file.name,
-        fileType: file.type,
-        fileSize: file.size,
-        fileData: reader.result, // base64 data
-        uploadedAt: Date.now(),
+  // Fetch admin UID on component mount
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const fetchAdminUid = async () => {
+      try {
+        const usersRef = ref(db, "users");
+        const usersSnapshot = await get(usersRef);
+        
+        if (usersSnapshot.exists()) {
+          const users = usersSnapshot.val();
+          const adminId = Object.keys(users).find(
+            uid => users[uid]?.role === "admin"
+          );
+          
+          if (adminId) {
+            setAdminUid(adminId);
+            console.log("Admin UID set:", adminId);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching admin UID:", error);
+      }
+    };
+
+    fetchAdminUid();
+  }, []);
+
+  // Fetch available years - ONLY from admin user in users/
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const fetchYears = async () => {
+      try {
+        console.log("Fetching years from admin in users/...");
+        
+        // Get all users to find admin
+        const usersRef = ref(db, "users");
+        const usersSnapshot = await get(usersRef);
+        
+        let adminUid = null;
+        
+        if (usersSnapshot.exists()) {
+          const users = usersSnapshot.val();
+          console.log("All users:", users);
+          
+          // Find the admin UID
+          adminUid = Object.keys(users).find(
+            uid => users[uid]?.role === "admin"
+          );
+          
+          console.log("Admin UID found in users:", adminUid);
+        }
+        
+        if (adminUid) {
+          // Get years from the admin's node
+          const yearsRef = ref(db, `years/${adminUid}`);
+          
+          onValue(yearsRef, (snapshot) => {
+            if (snapshot.exists()) {
+              const data = snapshot.val();
+              console.log("Admin years data:", data);
+              
+              // Handle different data structures
+              let yearsArray = [];
+              
+              if (Array.isArray(data)) {
+                // If data is an array like ["2021", "2022", "2023"]
+                yearsArray = data;
+              } 
+              else if (typeof data === "object" && data !== null) {
+                // If data is an object like {2021: {...}, 2022: {...}}
+                yearsArray = Object.keys(data);
+              }
+              
+              console.log("Final years from admin:", yearsArray);
+              setYears(yearsArray);
+            } else {
+              console.log("No years data found for admin");
+              setYears([]);
+            }
+          });
+        } else {
+          console.log("No admin user found in users");
+          setYears([]);
+        }
+      } catch (error) {
+        console.error("Error fetching years:", error);
+        setYears([]);
+      }
+    };
+
+    fetchYears();
+  }, []);
+
+  // Fetch submission deadline from admin based on selected year
+  useEffect(() => {
+    if (!auth.currentUser || !selectedYearDisplay) return;
+
+    const fetchDeadline = async () => {
+      try {
+        console.log("Fetching deadline for year:", selectedYearDisplay);
+        
+        // Get all users to find admin
+        const usersRef = ref(db, "users");
+        const usersSnapshot = await get(usersRef);
+        
+        let adminUid = null;
+        
+        if (usersSnapshot.exists()) {
+          const users = usersSnapshot.val();
+          
+          // Find the admin UID by role
+          adminUid = Object.keys(users).find(
+            uid => users[uid]?.role === "admin"
+          );
+          
+          console.log("Admin UID found for deadline:", adminUid);
+        }
+        
+        if (adminUid) {
+          // Try to fetch deadline from the admin's financial metadata path
+          // This is where the admin saves the deadline in the FAS component
+          const deadlineRef = ref(
+            db, 
+            `financial/${adminUid}/${selectedYearDisplay}/metadata/deadline`
+          );
+          
+          onValue(deadlineRef, (snapshot) => {
+            if (snapshot.exists()) {
+              const deadline = snapshot.val();
+              console.log("Deadline found:", deadline);
+              setSubmissionDeadline(deadline);
+            } else {
+              console.log("No deadline found for this year");
+              setSubmissionDeadline("");
+            }
+          });
+        } else {
+          console.log("No admin user found");
+          setSubmissionDeadline("");
+        }
+      } catch (error) {
+        console.error("Error fetching deadline:", error);
+        setSubmissionDeadline("");
+      }
+    };
+
+    fetchDeadline();
+  }, [selectedYearDisplay, db]);
+  // Add state for indicators
+  const [indicators, setIndicators] = useState([]);
+
+
+  // Fetch indicators from Firebase - ONLY from admin in users/
+  useEffect(() => {
+    if (!auth.currentUser || !selectedYearDisplay) return;
+
+    const fetchIndicators = async () => {
+      try {
+        console.log(`Fetching indicators for year ${selectedYearDisplay} from admin in users/...`);
+        
+        // Get all users to find admin
+        const usersRef = ref(db, "users");
+        const usersSnapshot = await get(usersRef);
+        
+        let adminUid = null;
+        
+        if (usersSnapshot.exists()) {
+          const users = usersSnapshot.val();
+          
+          // Find admin UID
+          adminUid = Object.keys(users).find(
+            uid => users[uid]?.role === "admin"
+          );
+          
+          console.log("Admin UID for indicators:", adminUid);
+        }
+        
+        if (adminUid) {
+          // Reference to the financial indicators for the selected year and category
+          const indicatorsRef = ref(
+            db, 
+            `financial/${adminUid}/${selectedYearDisplay}/financial-administration-and-sustainability/assessment`
+          );
+          
+          onValue(indicatorsRef, (snapshot) => {
+            if (snapshot.exists()) {
+              const data = snapshot.val();
+              console.log("Indicators data from admin:", data);
+              
+              // Convert object to array with keys
+              const indicatorsArray = Object.keys(data).map(key => ({
+                firebaseKey: key,
+                ...data[key]
+              }));
+              
+              setIndicators(indicatorsArray);
+            } else {
+              console.log("No indicators found for this year from admin");
+              setIndicators([]);
+            }
+          });
+        } else {
+          console.log("No admin UID found in users");
+          setIndicators([]);
+        }
+      } catch (error) {
+        console.error("Error fetching indicators:", error);
+        setIndicators([]);
+      }
+    };
+
+    fetchIndicators();
+  }, [selectedYearDisplay]);
+
+  // Handle answer changes
+  const handleAnswerChange = (indicatorKey, mainIndex, field, value) => {
+    setUserAnswers(prev => ({
+      ...prev,
+      [`${indicatorKey}_${mainIndex}_${field}`]: {
         indicatorKey,
         mainIndex,
-        field
-      };
-      
-      // Generate a unique key for each file using timestamp
-      const uniqueKey = `${indicatorKey}_${mainIndex}_${field}_${Date.now()}`;
-      
-      setAttachments(prev => ({
-        ...prev,
-        [uniqueKey]: attachmentData
-      }));
-      
-      alert(`File "${file.name}" attached successfully!`);
-      setUploadingFile(false);
-    };
+        field,
+        value,
+        timestamp: Date.now()
+      }
+    }));
+  };
+
+
+const handleSaveAnswers = async () => {
+  // Check if ANY forwarding flags exist - block submission
+  const hasForwardingFlags = 
+    metadata?.forwardedToPO === true || 
+    metadata?.forwarded === true ||
+    metadata?.forwardedAt || 
+    metadata?.forwardedBy ||
+    metadata?.forwardedTo;
+  
+  if (hasForwardingFlags) {
+    alert("This assessment has been forwarded and cannot be edited or submitted.");
+    return;
+  }
+  
+  if (!auth.currentUser || !selectedYearDisplay) return;
+  
+  setSavingAnswers(true);
+
+  try {
+    // Get user's display name
+    const userName = profileData.name || auth.currentUser.email || "Anonymous";
+    // Clean the name to be Firebase-compatible (replace dots, etc.)
+    const cleanName = userName.replace(/[.#$\[\]]/g, '_');
     
-    reader.readAsDataURL(file);
+    // Find admin UID from users/
+    const usersRef = ref(db, "users");
+    const usersSnapshot = await get(usersRef);
+    
+    if (usersSnapshot.exists()) {
+      const users = usersSnapshot.val();
+      let adminUid = Object.keys(users).find(
+        uid => users[uid]?.role === "admin"
+      );
+      
+      if (!adminUid) {
+        // If no admin found, check financial data
+        const financialRootRef = ref(db, "financial");
+        const financialRootSnapshot = await get(financialRootRef);
+        
+        if (financialRootSnapshot.exists()) {
+          const financialData = financialRootSnapshot.val();
+          adminUid = Object.keys(financialData).find(uid => 
+            financialData[uid] && financialData[uid][selectedYearDisplay]
+          );
+        }
+      }
+      
+      if (adminUid) {
+        // Save user answers for ALL sections using user's NAME
+        const answersRef = ref(
+          db,
+          `answers/${selectedYearDisplay}/LGU/${cleanName}`
+        );
+        
+        // Important: When resubmitting after being returned,
+        // we need to clear ALL flags and set submitted to true
+        const answerData = {
+          ...userAnswers,
+          _metadata: {
+            uid: auth.currentUser.uid,
+            email: auth.currentUser.email,
+            name: profileData.name || auth.currentUser.email,
+            lastSaved: Date.now(),
+            submitted: true,
+            year: selectedYearDisplay,
+            sections: {
+              financial: true,
+              disaster: true,
+              social: true,
+              health: true,
+              education: true,
+              business: true,
+              safety: true,
+              environmental: true,
+              tourism: true,
+              youth: true
+            }
+            // Do NOT include ANY forwarding flags or returned flag
+          }
+        };
+        
+        await set(answersRef, answerData);
+        
+        // Save attachments to Firebase
+        if (Object.keys(attachments).length > 0) {
+          const attachmentsRef = ref(
+            db,
+            `attachments/${selectedYearDisplay}/LGU/${cleanName}`
+          );
+          await set(attachmentsRef, attachments);
+          console.log("Attachments saved to Firebase");
+        }
+        
+        // ===== ADD NOTIFICATION FOR MLGO HERE =====
+        // Find the MLGO UID (the sub-admin for this municipality)
+        // First get the current user's municipality
+        const userMunicipality = profileData.municipality;
+        
+        // Get all users to find sub-admin with matching municipality
+        const allUsersRef = ref(db, "users");
+        const allUsersSnapshot = await get(allUsersRef);
+        let mlgoUid = null;
+        
+        if (allUsersSnapshot.exists()) {
+          const allUsers = allUsersSnapshot.val();
+          
+          // Find sub-admin with matching municipality
+          for (const [uid, userData] of Object.entries(allUsers)) {
+            if (userData.role === "sub-admin") {
+              // Check their profile for municipality
+              const profileRef = ref(db, `profiles/${uid}`);
+              const profileSnapshot = await get(profileRef);
+              
+              if (profileSnapshot.exists()) {
+                const profile = profileSnapshot.val();
+                if (profile.municipality === userMunicipality) {
+                  mlgoUid = uid;
+                  break;
+                }
+              }
+            }
+          }
+        }
+        
+        if (mlgoUid) {
+          const notificationRef = ref(db, `notifications/${selectedYearDisplay}/MLGO/${mlgoUid}`);
+          const notificationId = Date.now().toString();
+          const notificationData = {
+            id: notificationId,
+            type: "assessment_submitted",
+            title: `Assessment Form (${selectedYearDisplay}) has been submitted by LGU.`,
+            message: `Assessment from ${profileData.name || auth.currentUser.email} has been submitted.`,
+            from: auth.currentUser?.email,
+            fromName: profileData.name || auth.currentUser?.email,
+            timestamp: Date.now(),
+            read: false,
+            year: selectedYearDisplay,
+            municipality: userMunicipality,
+            action: "view_assessment"
+          };
+          
+          await set(ref(db, `notifications/${selectedYearDisplay}/MLGO/${mlgoUid}/${notificationId}`), notificationData);
+          console.log("✅ Notification sent to MLGO");
+        } else {
+          console.log("No MLGO found for municipality:", userMunicipality);
+        }
+        // ===== END NOTIFICATION =====
+        
+        setHasSubmitted(true); // Mark as submitted
+        clearDraft(); // Clear localStorage draft
+        alert("All sections submitted successfully!");
+      }
+    }
   } catch (error) {
-    console.error("Error uploading file:", error);
-    alert("Failed to upload file");
-    setUploadingFile(false);
+    console.error("Error submitting answers:", error);
+    alert("Failed to submit answers: " + error.message);
+  } finally {
+    setSavingAnswers(false);
   }
 };
 
-// Trigger file input click
-const triggerFileUpload = (indicatorKey, mainIndex, field) => {
-  // Create hidden file input
-  const fileInput = document.createElement('input');
-  fileInput.type = 'file';
-  fileInput.accept = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png';
-  fileInput.onchange = (e) => {
-    if (e.target.files[0]) {
-      handleFileUpload(indicatorKey, mainIndex, field, e.target.files[0]);
+{/* Submit Button */}
+<div>
+  {hasSubmitted ? (
+    <div style={{
+      backgroundColor: metadata?.forwardedToPO ? "#6c757d" : "#4CAF50",
+      color: "white",
+      padding: "8px 20px",
+      borderRadius: "5px",
+      fontSize: "14px",
+      fontWeight: "600",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      whiteSpace: "nowrap"
+    }}>
+      ✓ {metadata?.forwardedToPO ? "Forwarded to PO (Locked)" : "All Sections Submitted"}
+    </div>
+  ) : (
+    <button
+      onClick={handleSaveAnswers}
+      // Disable if saving, no indicators, no year
+      disabled={savingAnswers || indicators.length === 0 || !selectedYearDisplay}
+      style={{
+        backgroundColor: (savingAnswers || indicators.length === 0 || !selectedYearDisplay) 
+          ? "#cccccc" 
+          : "#1b6e3a",
+        color: "white",
+        border: "none",
+        padding: "8px 20px",
+        borderRadius: "5px",
+        fontSize: "14px",
+        cursor: (savingAnswers || indicators.length === 0 || !selectedYearDisplay) 
+          ? "not-allowed" 
+          : "pointer",
+        fontWeight: "600",
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        opacity: (savingAnswers || indicators.length === 0 || !selectedYearDisplay) 
+          ? 0.7 
+          : 1,
+        whiteSpace: "nowrap"
+      }}
+    >
+      {savingAnswers ? "Submitting..." : "Submit All Sections"}
+    </button>
+  )}
+</div>
+
+  // Export Financial, Administrative and Sustainability as PDF
+  const exportFinancialPDF = async () => {
+    if (!selectedYearDisplay) {
+      alert("Please select a year first");
+      return;
+    }
+
+    try {
+      // Create new PDF document
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      
+      // Add header with logos (if needed)
+      // You can add your DILG logos here if you want
+      
+      // Title
+      doc.setFontSize(18);
+      doc.setTextColor(26, 42, 108); // #1a2a6c
+      doc.text("Financial, Administration and Sustainability", pageWidth / 2, 20, { align: 'center' });
+      
+      // Year
+      doc.setFontSize(14);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`Year: ${selectedYearDisplay}`, pageWidth / 2, 30, { align: 'center' });
+      
+      // User info
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Prepared by: ${profileData.name || auth.currentUser?.email || "User"}`, 14, 40);
+      doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, 45);
+      
+      let yPosition = 55;
+      let rowCount = 0;
+      
+      // Loop through indicators
+      for (const record of indicators) {
+        // Main Indicators
+        if (record.mainIndicators && record.mainIndicators.length > 0) {
+          for (const main of record.mainIndicators) {
+            // Check if we need a new page
+            if (yPosition > 270) {
+              doc.addPage();
+              yPosition = 20;
+            }
+            
+            // Main indicator title
+            doc.setFontSize(12);
+            doc.setTextColor(26, 42, 108);
+            doc.setFont(undefined, 'bold');
+            doc.text(main.title, 14, yPosition);
+            yPosition += 7;
+            
+            // Get user's answer for this indicator
+            const answerKey = `${record.firebaseKey}_${record.mainIndicators.indexOf(main)}_${main.title}`;
+            const answer = userAnswers[answerKey];
+            
+            // Answer
+            doc.setFontSize(11);
+            doc.setTextColor(0, 0, 0);
+            doc.setFont(undefined, 'normal');
+            
+            let answerText = "";
+
+            if (main.fieldType === "checkbox") {
+              // For checkboxes, collect all checked options
+              const checkedOptions = [];
+              
+              if (main.choices && main.choices.length > 0) {
+                main.choices.forEach((choice, i) => {
+                  const checkboxKey = `${record.firebaseKey}_${record.mainIndicators.indexOf(main)}_${main.title}_${i}`;
+                  const checkboxAnswer = userAnswers[checkboxKey];
+                  
+                  if (checkboxAnswer && checkboxAnswer.value === true) {
+                    checkedOptions.push(choice);
+                  }
+                });
+              }
+              
+              if (checkedOptions.length > 0) {
+                answerText = `Answer: ${checkedOptions.join(", ")}`;
+              } else {
+                answerText = "Answer: Not answered";
+              }
+            } else {
+              // For non-checkbox fields (radio, text, etc.)
+              const answerKey = `${record.firebaseKey}_${record.mainIndicators.indexOf(main)}_${main.title}`;
+              const answer = userAnswers[answerKey];
+              answerText = `Answer: ${answer?.value || "Not answered"}`;
+            }
+            
+            doc.text(answerText, 20, yPosition);
+            yPosition += 6;
+            
+            // Mode of Verification
+            if (main.verification) {
+              doc.setFontSize(10);
+              doc.setTextColor(80, 80, 80);
+              doc.text(`Mode of Verification: ${main.verification}`, 20, yPosition);
+              yPosition += 8;
+            } else {
+              yPosition += 4;
+            }
+            
+            rowCount++;
+          }
+        }
+        
+        // Sub Indicators
+        if (record.subIndicators && record.subIndicators.length > 0) {
+          for (const sub of record.subIndicators) {
+            // Check if we need a new page
+            if (yPosition > 270) {
+              doc.addPage();
+              yPosition = 20;
+            }
+            
+            // Sub indicator title (indented)
+            doc.setFontSize(11);
+            doc.setTextColor(80, 80, 80);
+            doc.setFont(undefined, 'italic');
+            doc.text(`• ${sub.title}`, 20, yPosition);
+            yPosition += 6;
+            
+            // Get user's answer for this sub indicator
+            const answerKey = `${record.firebaseKey}_sub_${record.subIndicators.indexOf(sub)}_${sub.title}`;
+            const answer = userAnswers[answerKey];
+            
+            // Answer (further indented)
+            doc.setFontSize(10);
+            doc.setTextColor(0, 0, 0);
+            doc.setFont(undefined, 'normal');
+            
+            let answerText = "";
+            if (sub.fieldType === "multiple" || sub.fieldType === "checkbox") {
+              if (answer) {
+                answerText = `  Answer: ${answer.value}`;
+              } else {
+                answerText = "  Answer: Not answered";
+              }
+            } else {
+              answerText = `  Answer: ${answer?.value || "Not answered"}`;
+            }
+            
+            doc.text(answerText, 25, yPosition);
+            yPosition += 5;
+            
+            // Mode of Verification for sub indicators
+            if (sub.verification) {
+              doc.setFontSize(9);
+              doc.setTextColor(100, 100, 100);
+              doc.text(`  Mode of Verification: ${sub.verification}`, 25, yPosition);
+              yPosition += 6;
+            } else {
+              yPosition += 2;
+            }
+            
+            rowCount++;
+          }
+        }
+        
+        // Add separator between records
+        if (yPosition < 270) {
+          doc.setDrawColor(200, 200, 200);
+          doc.line(14, yPosition, pageWidth - 14, yPosition);
+          yPosition += 10;
+        }
+      }
+      
+      // Add footer with page numbers
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text(
+          `Page ${i} of ${pageCount} - Financial Administration and Sustainability Assessment ${selectedYearDisplay}`,
+          pageWidth / 2,
+          doc.internal.pageSize.getHeight() - 10,
+          { align: 'center' }
+        );
+      }
+      
+      // Save the PDF
+      doc.save(`Financial_Assessment_${selectedYearDisplay}_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`);
+      
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      alert("Failed to generate PDF");
     }
   };
-  fileInput.click();
-};
 
-// Remove attachment
-const removeAttachment = (attachmentKey) => {
-  if (window.confirm("Remove this attachment?")) {
-    setAttachments(prev => {
-      const newAttachments = { ...prev };
-      delete newAttachments[attachmentKey];
-      return newAttachments;
-    });
-  }
-};
 
-// Load answers when year changes
-    useEffect(() => {
-      const loadData = async () => {
-        if (selectedYearDisplay) {
-          // First check if already submitted from Firebase
-          await loadUserAnswers();
+
+  // Export All Areas PDF (all tabs)
+  const exportAllAreasPDF = async () => {
+    if (!selectedYearDisplay) {
+      alert("Please select a year first");
+      return;
+    }
+
+    try {
+      // Show loading message
+      alert("Generating comprehensive report... This may take a moment.");
+      
+      // Create new PDF document
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      
+      // ===== COVER PAGE =====
+      doc.setFontSize(24);
+      doc.setTextColor(26, 42, 108); // #1a2a6c
+      doc.text("Comprehensive LGU Assessment Report", pageWidth / 2, 60, { align: 'center' });
+      
+      doc.setFontSize(18);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`Year: ${selectedYearDisplay}`, pageWidth / 2, 80, { align: 'center' });
+      
+      doc.setFontSize(12);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Prepared by: ${profileData.name || auth.currentUser?.email || "User"}`, pageWidth / 2, 100, { align: 'center' });
+      doc.text(`Date: ${new Date().toLocaleDateString()}`, pageWidth / 2, 110, { align: 'center' });
+      
+      // Add DILG logos or other branding if desired
+      
+      doc.addPage();
+      
+      // ===== FUNCTION TO EXPORT A CATEGORY =====
+      const exportCategory = async (categoryData, categoryTitle, startY) => {
+        let yPosition = startY;
+        
+        // Category Title
+        doc.setFontSize(16);
+        doc.setTextColor(26, 42, 108);
+        doc.setFont(undefined, 'bold');
+        doc.text(categoryTitle, 14, yPosition);
+        yPosition += 10;
+        
+        if (!categoryData || categoryData.length === 0) {
+          doc.setFontSize(12);
+          doc.setTextColor(150, 150, 150);
+          doc.setFont(undefined, 'italic');
+          doc.text("No indicators available for this category", 20, yPosition);
+          yPosition += 15;
+          return yPosition;
         }
+        
+        // Loop through records in this category
+        for (const record of categoryData) {
+          // Main Indicators
+          if (record.mainIndicators && record.mainIndicators.length > 0) {
+            for (const main of record.mainIndicators) {
+              // Check if we need a new page
+              if (yPosition > 270) {
+                doc.addPage();
+                yPosition = 20;
+              }
+              
+              // Main indicator title
+              doc.setFontSize(12);
+              doc.setTextColor(26, 42, 108);
+              doc.setFont(undefined, 'bold');
+              doc.text(main.title, 14, yPosition);
+              yPosition += 7;
+              
+              // Get user's answer for this indicator
+              const answerKey = `${record.firebaseKey}_${record.mainIndicators.indexOf(main)}_${main.title}`;
+              const answer = userAnswers[answerKey];
+              
+              // Answer
+              doc.setFontSize(11);
+              doc.setTextColor(0, 0, 0);
+              doc.setFont(undefined, 'normal');
+              
+              let answerText = "";
+              if (main.fieldType === "multiple" || main.fieldType === "checkbox") {
+                if (answer) {
+                  answerText = `Answer: ${answer.value}`;
+                } else {
+                  answerText = "Answer: Not answered";
+                }
+              } else {
+                answerText = `Answer: ${answer?.value || "Not answered"}`;
+              }
+              
+              doc.text(answerText, 20, yPosition);
+              yPosition += 6;
+              
+              // Mode of Verification
+              if (main.verification) {
+                doc.setFontSize(10);
+                doc.setTextColor(80, 80, 80);
+                doc.text(`Mode of Verification: ${main.verification}`, 20, yPosition);
+                yPosition += 8;
+              } else {
+                yPosition += 4;
+              }
+            }
+          }
+          
+          // Sub Indicators
+          if (record.subIndicators && record.subIndicators.length > 0) {
+            for (const sub of record.subIndicators) {
+              // Check if we need a new page
+              if (yPosition > 270) {
+                doc.addPage();
+                yPosition = 20;
+              }
+              
+              // Sub indicator title (indented)
+              doc.setFontSize(11);
+              doc.setTextColor(80, 80, 80);
+              doc.setFont(undefined, 'italic');
+              doc.text(`• ${sub.title}`, 20, yPosition);
+              yPosition += 6;
+              
+              // Get user's answer for this sub indicator
+              const answerKey = `${record.firebaseKey}_sub_${record.subIndicators.indexOf(sub)}_${sub.title}`;
+              const answer = userAnswers[answerKey];
+              
+              // Answer (further indented)
+              doc.setFontSize(10);
+              doc.setTextColor(0, 0, 0);
+              doc.setFont(undefined, 'normal');
+              
+              let answerText = "";
+
+              if (sub.fieldType === "checkbox") {
+                // For checkboxes, collect all checked options
+                const checkedOptions = [];
+                
+                if (sub.choices && sub.choices.length > 0) {
+                  sub.choices.forEach((choice, i) => {
+                    const checkboxKey = `${record.firebaseKey}_sub_${record.subIndicators.indexOf(sub)}_${sub.title}_${i}`;
+                    const checkboxAnswer = userAnswers[checkboxKey];
+                    
+                    if (checkboxAnswer && checkboxAnswer.value === true) {
+                      checkedOptions.push(choice);
+                    }
+                  });
+                }
+                
+                if (checkedOptions.length > 0) {
+                  answerText = `  Answer: ${checkedOptions.join(", ")}`;
+                } else {
+                  answerText = "  Answer: Not answered";
+                }
+              } else {
+                // For non-checkbox fields
+                const answerKey = `${record.firebaseKey}_sub_${record.subIndicators.indexOf(sub)}_${sub.title}`;
+                const answer = userAnswers[answerKey];
+                answerText = `  Answer: ${answer?.value || "Not answered"}`;
+              }
+              
+              doc.text(answerText, 25, yPosition);
+              yPosition += 5;
+              
+              // Mode of Verification for sub indicators
+              if (sub.verification) {
+                doc.setFontSize(9);
+                doc.setTextColor(100, 100, 100);
+                doc.text(`  Mode of Verification: ${sub.verification}`, 25, yPosition);
+                yPosition += 6;
+              } else {
+                yPosition += 2;
+              }
+            }
+          }
+          
+          // Add separator between records
+          if (yPosition < 270) {
+            doc.setDrawColor(200, 200, 200);
+            doc.line(14, yPosition, pageWidth - 14, yPosition);
+            yPosition += 10;
+          }
+        }
+        
+        return yPosition;
       };
       
-      loadData();
-    }, [selectedYearDisplay]); // Remove hasSubmitted from dependencies
-
-    // Separate useEffect for loading draft after hasSubmitted is updated
-    useEffect(() => {
-      if (selectedYearDisplay && !hasSubmitted) {
-        loadDraft();
+      // ===== EXPORT EACH CATEGORY =====
+      let currentY = 20;
+      
+      // Financial Administration and Sustainability
+      if (indicators && indicators.length > 0) {
+        currentY = await exportCategory(indicators, "Financial Administration and Sustainability", currentY);
+      } else {
+        currentY = await exportCategory([], "Financial Administration and Sustainability", currentY);
       }
-    }, [selectedYearDisplay, hasSubmitted]); // Now depends on hasSubmitted
+      
+      // Add page break between categories
+      doc.addPage();
+      currentY = 20;
+      
+      // Disaster Preparedness
+      // Note: You need to fetch data for each category similarly
+      // For now, we'll show placeholder
+      doc.setFontSize(16);
+      doc.setTextColor(26, 42, 108);
+      doc.setFont(undefined, 'bold');
+      doc.text("Disaster Preparedness", 14, currentY);
+      currentY += 10;
+      
+      doc.setFontSize(12);
+      doc.setTextColor(150, 150, 150);
+      doc.setFont(undefined, 'italic');
+      doc.text("Data for this category will be available soon", 20, currentY);
+      currentY += 20;
+      
+      doc.addPage();
+      currentY = 20;
+      
+      // Social Protection and Sensitivity
+      doc.setFontSize(16);
+      doc.setTextColor(26, 42, 108);
+      doc.setFont(undefined, 'bold');
+      doc.text("Social Protection and Sensitivity", 14, currentY);
+      currentY += 10;
+      
+      doc.setFontSize(12);
+      doc.setTextColor(150, 150, 150);
+      doc.setFont(undefined, 'italic');
+      doc.text("Data for this category will be available soon", 20, currentY);
+      currentY += 20;
+      
+      // Continue for all 9 categories...
+      // You'll need to fetch actual data for each tab
+      
+      // ===== ADD TABLE OF CONTENTS =====
+      // Add table of contents at the beginning (after cover)
+      const totalPages = doc.internal.getNumberOfPages();
+      
+      // Add page numbers and footers
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        
+        // Skip footer on cover page (page 1)
+        if (i > 1) {
+          doc.text(
+            `Page ${i-1} of ${totalPages-1} - Provincial Assessment ${selectedYearDisplay}`,
+            pageWidth / 2,
+            doc.internal.pageSize.getHeight() - 10,
+            { align: 'center' }
+          );
+        }
+      }
+      
+      // Save the PDF
+      doc.save(`Provincial_Assessment_${selectedYearDisplay}_${new Date().toLocaleDateString().replace(/\//g, '-')}.pdf`);
+      
+      alert("Comprehensive report generated successfully!");
+      
+    } catch (error) {
+      console.error("Error generating comprehensive PDF:", error);
+      alert("Failed to generate comprehensive report: " + error.message);
+    }
+  };
+
+  // Handle file upload for verification (supports multiple files)
+  const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
+    if (!file) return;
+    
+    setUploadingFile(true);
+    
+    try {
+      // Convert file to base64 for storage
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const attachmentData = {
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+          fileData: reader.result, // base64 data
+          uploadedAt: Date.now(),
+          indicatorKey,
+          mainIndex,
+          field
+        };
+        
+        // Generate a unique key for each file using timestamp
+        const uniqueKey = `${indicatorKey}_${mainIndex}_${field}_${Date.now()}`;
+        
+        setAttachments(prev => ({
+          ...prev,
+          [uniqueKey]: attachmentData
+        }));
+        
+        alert(`File "${file.name}" attached successfully!`);
+        setUploadingFile(false);
+      };
+      
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      alert("Failed to upload file");
+      setUploadingFile(false);
+    }
+  };
+
+  // Trigger file input click
+  const triggerFileUpload = (indicatorKey, mainIndex, field) => {
+    // Create hidden file input
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png';
+    fileInput.onchange = (e) => {
+      if (e.target.files[0]) {
+        handleFileUpload(indicatorKey, mainIndex, field, e.target.files[0]);
+      }
+    };
+    fileInput.click();
+  };
+
+  // Remove attachment
+  const removeAttachment = (attachmentKey) => {
+    if (window.confirm("Remove this attachment?")) {
+      setAttachments(prev => {
+        const newAttachments = { ...prev };
+        delete newAttachments[attachmentKey];
+        return newAttachments;
+      });
+    }
+  };
+
+  // Load answers when year changes
+      useEffect(() => {
+        const loadData = async () => {
+          if (selectedYearDisplay) {
+            // First check if already submitted from Firebase
+            await loadUserAnswers();
+          }
+        };
+        
+        loadData();
+      }, [selectedYearDisplay]); // Remove hasSubmitted from dependencies
+
+      // Separate useEffect for loading draft after hasSubmitted is updated
+      useEffect(() => {
+        if (selectedYearDisplay && !hasSubmitted) {
+          loadDraft();
+        }
+      }, [selectedYearDisplay, hasSubmitted]); // Now depends on hasSubmitted
 
 
 
-  const [newRecord, setNewRecord] = useState({
-    year: "",
-    municipality: ""
-  });
-
-const handleSaveProfile = async () => {
-  if (!auth.currentUser) return;
-
-  try {
-    setSavingProfile(true);
-
-    await set(ref(db, `profiles/${auth.currentUser.uid}`), {
-      ...editProfileData,
-      email: auth.currentUser.email
+    const [newRecord, setNewRecord] = useState({
+      year: "",
+      municipality: ""
     });
 
-setProfileData(editProfileData); // update visible profile
+  const handleSaveProfile = async () => {
+    if (!auth.currentUser) return;
 
-    alert("Profile updated successfully!");
-    setShowEditProfileModal(false);
-  } catch (error) {
-    console.error(error);
-    alert("Failed to save profile");
-  } finally {
-    setSavingProfile(false);
-  }
-};
+    // ADD VALIDATION
+    if (!editProfileData.name.trim()) {
+      alert("Please enter your name");
+      return;
+    }
 
-const handleImageUpload = (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+    if (!editProfileData.municipality.trim()) {
+      alert("Please select your municipality");
+      return;
+    }
 
-  const reader = new FileReader();
-  reader.onloadend = () => {
-    setEditProfileData({ ...editProfileData, image: reader.result });
+    try {
+      setSavingProfile(true);
+
+      await set(ref(db, `profiles/${auth.currentUser.uid}`), {
+        ...editProfileData,
+        email: auth.currentUser.email
+      });
+
+      setProfileData(editProfileData); // update visible profile
+      setProfileComplete(true); // ADD THIS LINE
+      
+      alert("Profile updated successfully!");
+      setShowEditProfileModal(false);
+    } catch (error) {
+      console.error(error);
+      alert("Failed to save profile");
+    } finally {
+      setSavingProfile(false);
+    }
   };
-  reader.readAsDataURL(file);
-};
 
-const [years, setYears] = useState([]);
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-
-
-// Save draft to localStorage (not Firebase)
-const handleSaveDraft = () => {
-  if (!auth.currentUser || !selectedYearDisplay) return;
-  
-  try {
-    // Create draft data
-    const draftData = {
-      answers: userAnswers,
-      attachments: attachments, // Include attachments in draft
-      year: selectedYearDisplay,
-      userId: auth.currentUser.uid,
-      userName: profileData.name || auth.currentUser.email || "Anonymous",
-      lastUpdated: Date.now()
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setEditProfileData({ ...editProfileData, image: reader.result });
     };
-    
-    // Save to localStorage
-    localStorage.setItem(
-      `draft_${auth.currentUser.uid}_${selectedYearDisplay}`,
-      JSON.stringify(draftData)
-    );
-    
-    setIsDraft(true);
-    setLastSavedDraft(new Date().toLocaleTimeString());
-    
-    // Show success message
-    console.log("Draft saved locally with", Object.keys(attachments).length, "attachments");
-    alert("Draft saved successfully!"); 
-  } catch (error) {
-    console.error("Error saving draft:", error);
-    alert("Failed to save draft");
-  }
-};
+    reader.readAsDataURL(file);
+  };
 
-// Load draft from localStorage
-const loadDraft = () => {
-  if (!auth.currentUser || !selectedYearDisplay) return;
-  
-  try {
-    const savedDraft = localStorage.getItem(
-      `draft_${auth.currentUser.uid}_${selectedYearDisplay}`
-    );
+  const [years, setYears] = useState([]);
+
+
+
+  // Save draft to localStorage (not Firebase)
+  const handleSaveDraft = () => {
+    if (!auth.currentUser || !selectedYearDisplay) return;
     
-    if (savedDraft) {
-      const draftData = JSON.parse(savedDraft);
-      console.log("Draft found for year:", selectedYearDisplay);
+    try {
+      // Create draft data
+      const draftData = {
+        answers: userAnswers,
+        attachments: attachments, // Include attachments in draft
+        year: selectedYearDisplay,
+        userId: auth.currentUser.uid,
+        userName: profileData.name || auth.currentUser.email || "Anonymous",
+        lastUpdated: Date.now()
+      };
       
-      // Load answers
-      setUserAnswers(draftData.answers || {});
-      
-      // Load attachments if they exist in draft
-      if (draftData.attachments) {
-        setAttachments(draftData.attachments);
-        console.log("Attachments loaded from draft:", Object.keys(draftData.attachments).length);
-      }
+      // Save to localStorage
+      localStorage.setItem(
+        `draft_${auth.currentUser.uid}_${selectedYearDisplay}`,
+        JSON.stringify(draftData)
+      );
       
       setIsDraft(true);
-      setLastSavedDraft(new Date(draftData.lastUpdated).toLocaleTimeString());
-    } else {
-      console.log("No draft found for year:", selectedYearDisplay);
-      setIsDraft(false);
+      setLastSavedDraft(new Date().toLocaleTimeString());
+      
+      // Show success message
+      console.log("Draft saved locally with", Object.keys(attachments).length, "attachments");
+      alert("Draft saved successfully!"); 
+    } catch (error) {
+      console.error("Error saving draft:", error);
+      alert("Failed to save draft");
     }
-  } catch (error) {
-    console.error("Error loading draft:", error);
-  }
-};
-
-// Clear draft after successful submission
-const clearDraft = () => {
-  if (!auth.currentUser || !selectedYearDisplay) return;
-  localStorage.removeItem(`draft_${auth.currentUser.uid}_${selectedYearDisplay}`);
-  setIsDraft(false);
-  // Don't clear attachments here - they're now in Firebase
-};
-
-// Load answers when year changes
-// Load data when year changes - SINGLE SOURCE OF TRUTH
-useEffect(() => {
-  const loadDataForYear = async () => {
-    if (!selectedYearDisplay) return;
-    
-    console.log("Loading data for year:", selectedYearDisplay);
-    
-    // Step 1: Load from Firebase (submitted answers)
-    await loadUserAnswers();
-    
-    // Step 2: After we know submission status, load draft if not submitted
-    // We need to wait a tiny bit for hasSubmitted to update from loadUserAnswers
-    setTimeout(() => {
-      if (!hasSubmitted) {
-        console.log("No submission found, loading draft...");
-        loadDraft();
-      } else {
-        console.log("Submission found, not loading draft");
-      }
-    }, 100);
   };
-  
-  loadDataForYear();
-}, [selectedYearDisplay]); // Only depend on year change
+
+  // Load draft from localStorage
+  const loadDraft = () => {
+    if (!auth.currentUser || !selectedYearDisplay) return;
+    
+    try {
+      const savedDraft = localStorage.getItem(
+        `draft_${auth.currentUser.uid}_${selectedYearDisplay}`
+      );
+      
+      if (savedDraft) {
+        const draftData = JSON.parse(savedDraft);
+        console.log("Draft found for year:", selectedYearDisplay);
+        
+        // Load answers
+        setUserAnswers(draftData.answers || {});
+        
+        // Load attachments if they exist in draft
+        if (draftData.attachments) {
+          setAttachments(draftData.attachments);
+          console.log("Attachments loaded from draft:", Object.keys(draftData.attachments).length);
+        }
+        
+        setIsDraft(true);
+        setLastSavedDraft(new Date(draftData.lastUpdated).toLocaleTimeString());
+      } else {
+        console.log("No draft found for year:", selectedYearDisplay);
+        setIsDraft(false);
+      }
+    } catch (error) {
+      console.error("Error loading draft:", error);
+    }
+  };
+
+  // Clear draft after successful submission
+  const clearDraft = () => {
+    if (!auth.currentUser || !selectedYearDisplay) return;
+    localStorage.removeItem(`draft_${auth.currentUser.uid}_${selectedYearDisplay}`);
+    setIsDraft(false);
+    // Don't clear attachments here - they're now in Firebase
+  };
+
+  // Load answers when year changes
+  // Load data when year changes - SINGLE SOURCE OF TRUTH
+  useEffect(() => {
+    const loadDataForYear = async () => {
+      if (!selectedYearDisplay) return;
+      
+      console.log("Loading data for year:", selectedYearDisplay);
+      
+      // Step 1: Load from Firebase (submitted answers)
+      await loadUserAnswers();
+      
+      // Step 2: After we know submission status, load draft if not submitted
+      // We need to wait a tiny bit for hasSubmitted to update from loadUserAnswers
+      setTimeout(() => {
+        if (!hasSubmitted) {
+          console.log("No submission found, loading draft...");
+          loadDraft();
+        } else {
+          console.log("Submission found, not loading draft");
+        }
+      }, 100);
+    };
+    
+    loadDataForYear();
+  }, [selectedYearDisplay]); // Only depend on year change
 
 
-const handleSettings = () => {
-  navigate("/settings");
-};
+  const handleSignOut = () => {
+    const confirmLogout = window.confirm("Are you sure you want to sign out?");
+    if (confirmLogout) {
+      navigate("/login");
+    }
+  };
 
-const handleSignOut = () => {
-  const confirmLogout = window.confirm("Are you sure you want to sign out?");
-  if (confirmLogout) {
-    navigate("/login");
-  }
-};
+  return (
+    <div className="dashboard-scale">
+      <div className="dashboard">
+        {/* Sidebar */}
+        <div className={`sidebar ${sidebarOpen ? "" : "collapsed"}`}>
+          <div className="sidebar-header">
+            {sidebarOpen && (
+              <>
+                <img src={dilgSeal} alt="DILG Seal" style={{ height: "50px", width: "auto" }} />
+                <img src={dilgLogo} alt="DILG Logo" style={{ height: "50px", width: "auto" }} />
+                <h3>ONE <span className="yellow">MAR</span><span className="cyan">IND</span>
+                <span className="red">UQUE</span> TRACKING SYSTEM</h3>
+                <div className="sidebar-divider"></div>
+              </>
+            )}
+          </div>
 
-return (
-  <div className="dashboard-scale">
-    <div className="dashboard">
-      {/* Sidebar */}
-      <div className={`sidebar ${sidebarOpen ? "" : "collapsed"}`}>
-        <div className="sidebar-header">
           {sidebarOpen && (
             <>
-              <img src={dilgSeal} alt="DILG Seal" style={{ height: "50px", width: "auto" }} />
-              <img src={dilgLogo} alt="DILG Logo" style={{ height: "50px", width: "auto" }} />
-              <h3>ONE <span className="yellow">MAR</span><span className="cyan">IND</span>
-              <span className="red">UQUE</span> TRACKING SYSTEM</h3>
-              <div className="sidebar-divider"></div>
+              {openDropdown && (
+                <div
+                  className="dropdown-overlay"
+                  onClick={() => setOpenDropdown(null)}
+                ></div>
+              )}
+              <div className={styles.sidebarMenu}>
+
+
+<button
+  className={`${styles.sidebarMenuItem} ${styles.active}`}
+  onClick={() => navigate("/lgu-assessment")}
+>
+  <ClipboardCheck size={20} />
+  Assessment
+</button>
+
+<button
+  className={styles.sidebarMenuItem}
+  onClick={() => navigate("/lgu-notification")}
+  style={{
+    display: "flex",
+    alignItems: "center",
+    width: "100%",
+    padding: "10px",
+    background: "none",
+    border: "none",
+    color: "white",
+    cursor: "pointer",
+    transition: "background-color 0.2s ease",
+    position: "relative"
+  }}
+  onMouseEnter={(e) => {
+    e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.28)";
+    e.currentTarget.style.borderRadius = "4px";
+  }}
+  onMouseLeave={(e) => {
+    e.currentTarget.style.backgroundColor = "transparent";
+  }}
+>
+  <FiBell style={{ marginRight: "1px", fontSize: "18px", marginLeft: "5px", }} />
+  Notifications
+  {unreadCount > 0 && (
+    <span style={{
+      backgroundColor: "#dc3545",
+      color: "white",
+      borderRadius: "12px",
+      padding: "2px 8px",
+      fontSize: "11px",
+      marginLeft: "8px",
+      fontWeight: "bold"
+    }}>
+      {unreadCount}
+    </span>
+  )}
+</button>
+
+
+              </div>
+
+              <div className={styles.sidebarBottom}>
+                <button 
+                  className={`${styles.sidebarBtn} ${styles.signoutBtn}`} 
+                  onClick={handleSignOut}
+                >
+                  <FiLogOut style={{ marginRight: "8px", fontSize: "18px" }} />
+                  Sign Out
+                </button>
+              </div>
             </>
           )}
         </div>
 
-        {sidebarOpen && (
-          <>
-            {openDropdown && (
-              <div
-                className="dropdown-overlay"
-                onClick={() => setOpenDropdown(null)}
-              ></div>
-            )}
-            <div className={styles.sidebarMenu}>
-              <button
-                className={`${styles.sidebarMenuItem} ${styles.active}`}
-                onClick={() => navigate("/lgu-assessment")}
-              >
-                <span className={styles.menuIcon}>📋</span>
-                Assessment
-              </button>
-
-              <button
-                className={styles.sidebarMenuItem}
-                onClick={() => navigate("/lgu-notification")}
-              >
-                <span className={styles.menuIcon}>🔔</span>
-                Notification
-              </button>
-            </div>
-
-            <div className={styles.sidebarBottom}>
-              <button 
-                className={`${styles.sidebarBtn} ${styles.settingsBtn}`} 
-                onClick={handleSettings}
-              >
-                <FiSettings style={{ marginRight: "8px", fontSize: "18px" }} />
-                Settings
-              </button>
-
-              <button 
-                className={`${styles.sidebarBtn} ${styles.signoutBtn}`} 
-                onClick={handleSignOut}
-              >
-                <FiLogOut style={{ marginRight: "8px", fontSize: "18px" }} />
-                Sign Out
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Main */}
-      <div className="main">
-        <div className="topbar">
-          <button
-            className="toggle-btn"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            style={{ cursor: "pointer" }}
-          >
-            {sidebarOpen ? "☰" : "✖"}
-          </button>
-          <div className="topbarLeft">
-            <div className="topbarLeft">
-            <h2>Provincial Assessment {selectedYearDisplay && (<span style={{ fontSize: "24px", fontWeight: "bold", color: "#000000" }}>
-                  {selectedYearDisplay}</span>
-                )}
-                </h2>
-
-                </div>
-          </div>
-
-          <div className="top-right">
-            <div className="profile-container">
-              <div
-                className="profile"
-                onClick={() => setShowProfileModal(true)}
-                style={{ cursor: "pointer" }}
-              >
-                <div className="avatar">
-                  {profileData.image ? (
-                    <img
-                      src={profileData.image}
-                      alt="avatar"
-                      style={{
-                        width: "60px",
-                        height: "60px",
-                        borderRadius: "50%",
-                        objectFit: "cover",
-                        border: "7px solid #0c1a4b",
-                      }}
-                    />
-                  ) : (
-                    "👤"
-                  )}
-                </div>
-                <span>{profileData.name || displayName}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Assessment Content */}
-        <div className={styles.assessmentContainer}>
-          {/* Year + Export */}
-          <div className={styles.assessmentHeader}>
-              <select
-                className={styles.yearSelect}
-                value={newRecord.year}
-                onChange={(e) => {
-                  const year = e.target.value;
-                  setNewRecord({ ...newRecord, year: year });
-                  setSelectedYearDisplay(year); // Add this line to show the year on the right
-                }}
-              >
-                <option value="">Select Year</option>
-                {years.map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
-
-
-<div className={styles.exportDropdownContainer}>
-  <button 
-    className={styles.exportBtn} 
-    onClick={() => setShowExportModal(!showExportModal)}
-  >
-    ☰ EXPORT MENU
-  </button>
-  
-  {showExportModal && (
-    <div className={styles.exportDropdown}>
-      <div 
-        className={styles.exportDropdownItem}
-        onClick={() => {
-          exportFinancialPDF();
-          setShowExportModal(false);
-        }}
-      >
-        <div className={styles.pdfIcon}></div>
-        <h4>Financial, Administrative and Sustainability</h4>
-      </div>
-      
-      <div 
-        className={styles.exportDropdownItem}
-          onClick={() => {
-            exportAllAreasPDF();
-            setShowExportModal(false);
-          }}
-      >
-        <div className={styles.pdfIcon}></div>
-        <h4>Export All Area</h4>
+  {!profileComplete && (
+    <div style={{
+      position: "fixed",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      zIndex: 999,
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      pointerEvents: "none"
+    }}>
+      <div style={{
+        backgroundColor: "white",
+        padding: "30px",
+        borderRadius: "10px",
+        textAlign: "center",
+        maxWidth: "400px",
+        pointerEvents: "none",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.2)"
+      }}>
+        <h2 style={{ color: "#081a4b", marginBottom: "15px" }}>Complete Your Profile First</h2>
+        <p style={{ color: "#666", fontSize: "16px" }}>
+          Please set up your profile with your name and municipality to access the dashboard.
+        </p>
       </div>
     </div>
   )}
-</div>
-          </div>
 
-          {/* Tabs */}
-          <div className={styles.assessmentTabs}>
-            <button className={styles.activeTab}>
-              Financial Administration and Sustainability
+        {/* Main */}
+        <div className="main">
+          <div className="topbar">
+            <button
+              className="toggle-btn"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              style={{ cursor: "pointer" }}
+            >
+              {sidebarOpen ? "☰" : "✖"}
             </button>
-            <button>Disaster Preparedness</button>
-            <button>Social Protection and Sensitivity</button>
-            <button>Health Compliance and Responsiveness</button>
-            <button>Sustainable Education</button>
-            <button>Safety, Peace and Order</button>
-            <button>Environmental Management</button>
-            <button>Youth Development</button>
-            <button>Tourism, Heritage Development, Culture and Arts</button>
+            <div className="topbarLeft">
+              <div className="topbarLeft">
+              <h2>Provincial Assessment {selectedYearDisplay && (<span style={{ fontSize: "24px", fontWeight: "bold", color: "#000000" }}>
+                    {selectedYearDisplay}</span>
+                  )}
+                  </h2>
+
+                  </div>
+            </div>
+
+            <div className="top-right">
+              <div className="profile-container">
+                <div
+                  className="profile"
+                  onClick={() => setShowProfileModal(true)}
+                  style={{ cursor: "pointer" }}
+                >
+                  <div className="avatar">
+                    {profileData.image ? (
+                      <img
+                        src={profileData.image}
+                        alt="avatar"
+                        style={{
+                          width: "60px",
+                          height: "60px",
+                          borderRadius: "50%",
+                          objectFit: "cover",
+                          border: "7px solid #0c1a4b",
+                        }}
+                      />
+                    ) : (
+                      "👤"
+                    )}
+                  </div>
+                  <span>{profileData.name || displayName}</span>
+                </div>
+              </div>
+            </div>
           </div>
 
+          {/* Assessment Content */}
+          <div className={styles.assessmentContainer}>
+
+
+<div className={styles.assessmentHeader}>
+  <div style={{ display: "flex", alignItems: "center", gap: "15px", flexWrap: "wrap" }}>
+    <select
+      className={styles.yearSelect}
+      value={newRecord.year}
+      onChange={(e) => {
+        const year = e.target.value;
+        setNewRecord({ ...newRecord, year: year });
+        setSelectedYearDisplay(year);
+      }}
+    >
+      <option value="">Select Year</option>
+      {years.map((year) => (
+        <option key={year} value={year}>
+          {year}
+        </option>
+      ))}
+    </select>
+
+    {/* Submission Deadline Display - Read Only */}
+    <div className={styles.deadlineDisplay} style={{
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      padding: "8px 15px",
+      backgroundColor: "#f5f5f5",
+      borderRadius: "4px",
+      border: "1px solid #ddd"
+    }}>
+      <span style={{ fontWeight: "600", color: "#333", fontSize: "14px" }}>
+        Submission Deadline:
+      </span>
+      <span style={{ color: "#840000", fontWeight: "500", fontSize: "14px" }}>
+        {submissionDeadline ? new Date(submissionDeadline).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        }) : "Not set"}
+      </span>
+    </div>
+  </div>
+
+
+  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+    {/* Submit Button */}
+    <div>
+      {hasSubmitted ? (
+        <div style={{
+          backgroundColor: "#4CAF50",
+          color: "white",
+          padding: "8px 20px",
+          borderRadius: "5px",
+          fontSize: "14px",
+          fontWeight: "600",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          whiteSpace: "nowrap"
+        }}>
+          ✓ All Sections Submitted
+        </div>
+      ) : (
+        <button
+          onClick={handleSaveAnswers}
+          disabled={savingAnswers || indicators.length === 0 || !selectedYearDisplay}
+          style={{
+            backgroundColor: savingAnswers ? "#cccccc" : "#1b6e3a",
+            color: "white",
+            border: "none",
+            padding: "8px 20px",
+            borderRadius: "5px",
+            fontSize: "14px",
+            cursor: savingAnswers || indicators.length === 0 || !selectedYearDisplay ? "not-allowed" : "pointer",
+            fontWeight: "600",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            opacity: savingAnswers || indicators.length === 0 || !selectedYearDisplay ? 0.7 : 1,
+            whiteSpace: "nowrap"
+          }}
+        >
+          {savingAnswers ? "Submitting..." : "Submit All Sections"}
+        </button>
+      )}
+    </div>
+
+    {/* Export Menu */}
+    <div className={styles.exportDropdownContainer}>
+      <button 
+        className={styles.exportBtn} 
+        onClick={() => setShowExportModal(!showExportModal)}
+      >
+        ☰ EXPORT MENU
+      </button>
+      
+      {showExportModal && (
+        <div className={styles.exportDropdown}>
+          <div 
+            className={styles.exportDropdownItem}
+            onClick={() => {
+              exportFinancialPDF();
+              setShowExportModal(false);
+            }}
+          >
+            <div className={styles.pdfIcon}></div>
+            <h4>Financial, Administrative and Sustainability</h4>
+          </div>
+          
+          <div 
+            className={styles.exportDropdownItem}
+            onClick={() => {
+              exportAllAreasPDF();
+              setShowExportModal(false);
+            }}
+          >
+            <div className={styles.pdfIcon}></div>
+            <h4>Export All Area</h4>
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+</div>
+
+            {/* Tabs */}
+            <div className={styles.assessmentTabs}>
+              <button className={styles.activeTab}>
+                Financial Administration and Sustainability
+              </button>
+              <button>Disaster Preparedness</button>
+              <button>Social Protection and Sensitivity</button>
+              <button>Health Compliance and Responsiveness</button>
+              <button>Sustainable Education</button>
+              <button>Business Friendliness and Competitiveness</button>
+              <button>Safety, Peace and Order</button>
+              <button>Environmental Management</button>
+              <button>Tourism, Heritage Development, Culture and Arts</button>
+              <button>Youth Development</button>
+            </div>
+
+
 {/* Form Section */}
-{/* Form Section */}
-<div className="lgutable-box">
-  <div className="scrollable-content">
+<div className={styles.lgutableBox}>
+  <div className={styles.scrollableContent}
+      style={{ 
+      maxHeight: sidebarOpen ? '57vh' : '63vh',
+    }}
+    >
+    
+    {/* Return Remarks Display - MOVED INSIDE SCROLLABLECONTENT at the top */}
+    {hasSubmitted === false && metadata?.returned && (
+      <div style={{
+        backgroundColor: "#fff3cd",
+        border: "1px solid #ffeeba",
+        borderRadius: "8px",
+        padding: "15px",
+        marginBottom: "20px",
+        color: "#856404",
+        width: "100%"
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+          <span style={{ fontSize: "18px" }}>📝</span>
+          <strong>Remarks from MLGOO:</strong>
+        </div>
+        <p style={{ margin: "0 0 0 25px", fontSize: "14px" }}>
+          {metadata?.remarks || "Please review and resubmit."}
+        </p>
+      </div>
+    )}
+
     {indicators.length === 0 ? (
       <p style={{ textAlign: "center", marginTop: "20px" }}>
         No indicators added yet for {selectedYearDisplay || "selected year"}.
@@ -1287,34 +1774,264 @@ return (
     ) : (
       <>
         {indicators.map((record) => (
-          <div key={record.firebaseKey} className="reference-wrapper">
+            <div key={record.firebaseKey} className="reference-wrapper">
 
-            {/* Main Indicators */}
-            {record.mainIndicators?.map((main, index) => (
-              <div key={index} className="reference-wrapper">
-                <div className="reference-row">
-                  {/* LEFT COLUMN - Title */}
-                  <div className="reference-label">{main.title}</div>
+              {/* Main Indicators */}
+              {record.mainIndicators?.map((main, index) => (
+                <div key={index} className="reference-wrapper">
+                  <div className="reference-row">
+                    {/* LEFT COLUMN - Title */}
+                    <div className="reference-label">{main.title}</div>
 
-                  {/* RIGHT COLUMN - Answerable fields */}
-                  <div className="mainreference-field">
-                    <div className="field-content">
-                      {main.fieldType === "multiple" &&
-                        main.choices.map((choice, i) => {
-                          const answerKey = `${record.firebaseKey}_${index}_${main.title}`;
+                    {/* RIGHT COLUMN - Answerable fields */}
+                    <div className="mainreference-field">
+                      <div className="field-content">
+                        {main.fieldType === "multiple" &&
+                          main.choices.map((choice, i) => {
+                            const answerKey = `${record.firebaseKey}_${index}_${main.title}`;
+                            const isSelected = userAnswers[answerKey]?.value === choice;
+                            
+                            return (
+                              <div key={i}>
+                                <input 
+                                  type="radio" 
+                                  name={`${record.firebaseKey}_${index}`}
+                                  value={choice}
+                                  checked={isSelected}
+                                  onChange={(e) => handleAnswerChange(
+                                    record.firebaseKey,
+                                    index,
+                                    main.title,
+                                    e.target.value
+                                  )}
+                                /> {choice || <span style={{ fontStyle: "italic", color: "gray" }}>Empty Option</span>}
+                              </div>
+                            );
+                          })}
+
+                        {main.fieldType === "checkbox" &&
+                          main.choices.map((choice, i) => {
+                            const answerKey = `${record.firebaseKey}_${index}_${main.title}_${i}`;
+                            const isChecked = userAnswers[answerKey]?.value === true;
+                            
+                            return (
+                              <div key={i}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={isChecked}
+                                  onChange={(e) => handleAnswerChange(
+                                    record.firebaseKey,
+                                    index,
+                                    `${main.title}_${i}`,
+                                    e.target.checked
+                                  )}
+                                /> {choice || <span style={{ fontStyle: "italic", color: "gray" }}>Empty Option</span>}
+                              </div>
+                            );
+                          })}
+
+                        {main.fieldType === "short" && (
+                          <input
+                            type="text"
+                            style={{ width: "100%", padding: "5px", borderRadius: "4px", border: "1px solid #ccc" }}
+                            placeholder="Enter your answer..."
+                            value={userAnswers[`${record.firebaseKey}_${index}_${main.title}`]?.value || ""}
+                            onChange={(e) => handleAnswerChange(
+                              record.firebaseKey,
+                              index,
+                              main.title,
+                              e.target.value
+                            )}
+                          />
+                        )}
+
+                        {main.fieldType === "integer" && (
+                          <input
+                            type="number"
+                            style={{ width: "100%", padding: "5px", borderRadius: "4px", border: "1px solid #ccc" }}
+                            placeholder="Enter a number..."
+                            value={userAnswers[`${record.firebaseKey}_${index}_${main.title}`]?.value || ""}
+                            onChange={(e) => handleAnswerChange(
+                              record.firebaseKey,
+                              index,
+                              main.title,
+                              e.target.value
+                            )}
+                          />
+                        )}
+
+                        {main.fieldType === "date" && (
+                          <input
+                            type="date"
+                            style={{ width: "100%", padding: "5px", borderRadius: "4px", border: "1px solid #ccc" }}
+                            value={userAnswers[`${record.firebaseKey}_${index}_${main.title}`]?.value || ""}
+                            onChange={(e) => handleAnswerChange(
+                              record.firebaseKey,
+                              index,
+                              main.title,
+                              e.target.value
+                            )}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+  {/* Mode of Verification (read-only) with Inline Attachments */}
+  {main.verification && (
+    <div className="reference-verification-full" style={{ 
+      display: "flex",
+      flexDirection: "column",
+      width: "100%"
+    }}>
+      {/* Top row with Mode of Verification text and Add Attachment button */}
+      <div style={{ 
+        display: "flex", 
+        justifyContent: "space-between", 
+        alignItems: "center",
+        width: "100%",
+        gap: "10px"
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
+          <span className="reference-verification-label">Mode of Verification:</span>
+          <span className="reference-verification-value">{main.verification}</span>
+        </div>
+        
+        {/* Add Attachment Button - Hidden after submission */}
+        {!hasSubmitted && (
+          <button
+            onClick={() => triggerFileUpload(record.firebaseKey, index, main.title)}
+            disabled={uploadingFile}
+            style={{
+              backgroundColor: "#840000",
+              color: "white",
+              border: "none",
+              padding: "4px 10px",
+              borderRadius: "4px",
+              fontSize: "11px",
+              cursor: uploadingFile ? "not-allowed" : "pointer",
+              fontWeight: "600",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              opacity: uploadingFile ? 0.6 : 1,
+              whiteSpace: "nowrap"
+            }}
+          >
+            {uploadingFile ? "⏳" : "+"} {uploadingFile ? "Uploading..." : "Add Attachment"}
+          </button>
+        )}
+        
+        {/* Show "Submitted" badge instead of button after submission */}
+        {hasSubmitted && (
+          <span style={{
+            backgroundColor: "#4CAF50",
+            color: "white",
+            padding: "4px 10px",
+            borderRadius: "4px",
+            fontSize: "11px",
+            fontWeight: "600",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            whiteSpace: "nowrap"
+          }}>
+            ✓ Submitted
+          </span>
+        )}
+      </div>
+      
+      {/* Attachments Row - Inline with the button area */}
+      {Object.keys(attachments).filter(key => 
+        key.startsWith(`${record.firebaseKey}_${index}_${main.title}`)
+      ).length > 0 && (
+        <div style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "8px",
+          marginTop: "8px",
+          width: "100%"
+        }}>
+          {Object.entries(attachments)
+            .filter(([key, value]) => 
+              key.startsWith(`${record.firebaseKey}_${index}_${main.title}`)
+            )
+            .map(([key, attachment]) => (
+              <div key={key} style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                backgroundColor: hasSubmitted ? "#e0e0e0" : "#e8f5e9",
+                padding: "4px 10px",
+                borderRadius: "16px",
+                fontSize: "11px",
+                border: hasSubmitted ? "1px solid #bdbdbd" : "1px solid #c8e6c9",
+                maxWidth: "180px",
+                opacity: hasSubmitted ? 0.8 : 1
+              }}>
+                <span style={{ fontSize: "12px" }}>📎</span>
+                <span style={{ 
+                  overflow: "hidden", 
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap"
+                }}>
+                  {attachment.fileName}
+                </span>
+                {/* Only show remove button if not submitted */}
+                {!hasSubmitted && (
+                  <button
+                    onClick={() => removeAttachment(key)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#d32f2f",
+                      cursor: "pointer",
+                      fontSize: "14px",
+                      fontWeight: "bold",
+                      padding: "0 2px",
+                      marginLeft: "2px"
+                    }}
+                    title="Remove attachment"
+                  >
+                    ✕
+                  </button>
+                )}
+                {/* Show lock icon for submitted attachments */}
+                {hasSubmitted && (
+                  <span style={{ fontSize: "12px", color: "#757575", marginLeft: "4px" }}>🔒</span>
+                )}
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  )}
+                </div>
+              ))}
+
+              {/* Sub Indicators - similar changes */}
+              {record.subIndicators?.map((sub, index) => (
+                <div key={index} className="reference-wrapper">
+                  <div className="reference-row sub-row">
+                    <div className="reference-label">{sub.title}</div>
+
+                    <div className="reference-field">
+                      {sub.fieldType === "multiple" &&
+                        sub.choices.map((choice, i) => {
+                          const answerKey = `${record.firebaseKey}_sub_${index}_${sub.title}`;
                           const isSelected = userAnswers[answerKey]?.value === choice;
                           
                           return (
                             <div key={i}>
                               <input 
                                 type="radio" 
-                                name={`${record.firebaseKey}_${index}`}
+                                name={`${record.firebaseKey}_sub_${index}`}
                                 value={choice}
                                 checked={isSelected}
                                 onChange={(e) => handleAnswerChange(
                                   record.firebaseKey,
-                                  index,
-                                  main.title,
+                                  `sub_${index}`,
+                                  sub.title,
                                   e.target.value
                                 )}
                               /> {choice || <span style={{ fontStyle: "italic", color: "gray" }}>Empty Option</span>}
@@ -1322,9 +2039,9 @@ return (
                           );
                         })}
 
-                      {main.fieldType === "checkbox" &&
-                        main.choices.map((choice, i) => {
-                          const answerKey = `${record.firebaseKey}_${index}_${main.title}_${i}`;
+                      {sub.fieldType === "checkbox" &&
+                        sub.choices.map((choice, i) => {
+                          const answerKey = `${record.firebaseKey}_sub_${index}_${sub.title}_${i}`;
                           const isChecked = userAnswers[answerKey]?.value === true;
                           
                           return (
@@ -1334,8 +2051,8 @@ return (
                                 checked={isChecked}
                                 onChange={(e) => handleAnswerChange(
                                   record.firebaseKey,
-                                  index,
-                                  `${main.title}_${i}`,
+                                  `sub_${index}`,
+                                  `${sub.title}_${i}`,
                                   e.target.checked
                                 )}
                               /> {choice || <span style={{ fontStyle: "italic", color: "gray" }}>Empty Option</span>}
@@ -1343,652 +2060,424 @@ return (
                           );
                         })}
 
-                      {main.fieldType === "short" && (
+                      {sub.fieldType === "short" && (
                         <input
                           type="text"
-                          style={{ width: "100%", padding: "5px", borderRadius: "4px", border: "1px solid #ccc" }}
+                          style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
                           placeholder="Enter your answer..."
-                          value={userAnswers[`${record.firebaseKey}_${index}_${main.title}`]?.value || ""}
+                          value={userAnswers[`${record.firebaseKey}_sub_${index}_${sub.title}`]?.value || ""}
                           onChange={(e) => handleAnswerChange(
                             record.firebaseKey,
-                            index,
-                            main.title,
+                            `sub_${index}`,
+                            sub.title,
                             e.target.value
                           )}
                         />
                       )}
 
-                      {main.fieldType === "integer" && (
+                      {sub.fieldType === "integer" && (
                         <input
                           type="number"
-                          style={{ width: "100%", padding: "5px", borderRadius: "4px", border: "1px solid #ccc" }}
+                          style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
                           placeholder="Enter a number..."
-                          value={userAnswers[`${record.firebaseKey}_${index}_${main.title}`]?.value || ""}
+                          value={userAnswers[`${record.firebaseKey}_sub_${index}_${sub.title}`]?.value || ""}
                           onChange={(e) => handleAnswerChange(
                             record.firebaseKey,
-                            index,
-                            main.title,
+                            `sub_${index}`,
+                            sub.title,
                             e.target.value
                           )}
                         />
                       )}
 
-                      {main.fieldType === "date" && (
+                      {sub.fieldType === "date" && (
                         <input
                           type="date"
-                          style={{ width: "100%", padding: "5px", borderRadius: "4px", border: "1px solid #ccc" }}
-                          value={userAnswers[`${record.firebaseKey}_${index}_${main.title}`]?.value || ""}
+                          style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
+                          value={userAnswers[`${record.firebaseKey}_sub_${index}_${sub.title}`]?.value || ""}
                           onChange={(e) => handleAnswerChange(
                             record.firebaseKey,
-                            index,
-                            main.title,
+                            `sub_${index}`,
+                            sub.title,
                             e.target.value
                           )}
+                          
                         />
+                        
                       )}
+                      
                     </div>
                   </div>
-                </div>
 
-{/* Mode of Verification (read-only) with Inline Attachments */}
-{main.verification && (
-  <div className="reference-verification-full" style={{ 
-    display: "flex",
-    flexDirection: "column",
-    width: "100%"
-  }}>
-    {/* Top row with Mode of Verification text and Add Attachment button */}
-    <div style={{ 
-      display: "flex", 
-      justifyContent: "space-between", 
-      alignItems: "center",
+  {/* Mode of Verification for sub indicators with Inline Attachments */}
+  {sub.verification && (
+    <div className="reference-verification-full" style={{ 
+      display: "flex",
+      flexDirection: "column",
       width: "100%",
-      gap: "10px"
+      marginTop: "5px"
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
-        <span className="reference-verification-label">Mode of Verification:</span>
-        <span className="reference-verification-value">{main.verification}</span>
-      </div>
-      
-      {/* Add Attachment Button - Hidden after submission */}
-      {!hasSubmitted && (
-        <button
-          onClick={() => triggerFileUpload(record.firebaseKey, index, main.title)}
-          disabled={uploadingFile}
-          style={{
-            backgroundColor: "#840000",
-            color: "white",
-            border: "none",
-            padding: "4px 10px",
-            borderRadius: "4px",
-            fontSize: "11px",
-            cursor: uploadingFile ? "not-allowed" : "pointer",
-            fontWeight: "600",
-            display: "flex",
-            alignItems: "center",
-            gap: "4px",
-            opacity: uploadingFile ? 0.6 : 1,
-            whiteSpace: "nowrap"
-          }}
-        >
-          {uploadingFile ? "⏳" : "+"} {uploadingFile ? "Uploading..." : "Add Attachment"}
-        </button>
-      )}
-      
-      {/* Show "Submitted" badge instead of button after submission */}
-      {hasSubmitted && (
-        <span style={{
-          backgroundColor: "#4CAF50",
-          color: "white",
-          padding: "4px 10px",
-          borderRadius: "4px",
-          fontSize: "11px",
-          fontWeight: "600",
-          display: "flex",
-          alignItems: "center",
-          gap: "4px",
-          whiteSpace: "nowrap"
-        }}>
-          ✓ Submitted
-        </span>
-      )}
-    </div>
-    
-    {/* Attachments Row - Inline with the button area */}
-    {Object.keys(attachments).filter(key => 
-      key.startsWith(`${record.firebaseKey}_${index}_${main.title}`)
-    ).length > 0 && (
-      <div style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: "8px",
-        marginTop: "8px",
-        width: "100%"
-      }}>
-        {Object.entries(attachments)
-          .filter(([key, value]) => 
-            key.startsWith(`${record.firebaseKey}_${index}_${main.title}`)
-          )
-          .map(([key, attachment]) => (
-            <div key={key} style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              backgroundColor: hasSubmitted ? "#e0e0e0" : "#e8f5e9",
-              padding: "4px 10px",
-              borderRadius: "16px",
-              fontSize: "11px",
-              border: hasSubmitted ? "1px solid #bdbdbd" : "1px solid #c8e6c9",
-              maxWidth: "180px",
-              opacity: hasSubmitted ? 0.8 : 1
-            }}>
-              <span style={{ fontSize: "12px" }}>📎</span>
-              <span style={{ 
-                overflow: "hidden", 
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap"
-              }}>
-                {attachment.fileName}
-              </span>
-              {/* Only show remove button if not submitted */}
-              {!hasSubmitted && (
-                <button
-                  onClick={() => removeAttachment(key)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#d32f2f",
-                    cursor: "pointer",
-                    fontSize: "14px",
-                    fontWeight: "bold",
-                    padding: "0 2px",
-                    marginLeft: "2px"
-                  }}
-                  title="Remove attachment"
-                >
-                  ✕
-                </button>
-              )}
-              {/* Show lock icon for submitted attachments */}
-              {hasSubmitted && (
-                <span style={{ fontSize: "12px", color: "#757575", marginLeft: "4px" }}>🔒</span>
-              )}
-            </div>
-          ))}
-      </div>
-    )}
-  </div>
-)}
-              </div>
-            ))}
-
-            {/* Sub Indicators - similar changes */}
-            {record.subIndicators?.map((sub, index) => (
-              <div key={index} className="reference-wrapper">
-                <div className="reference-row sub-row">
-                  <div className="reference-label">{sub.title}</div>
-
-                  <div className="reference-field">
-                    {sub.fieldType === "multiple" &&
-                      sub.choices.map((choice, i) => {
-                        const answerKey = `${record.firebaseKey}_sub_${index}_${sub.title}`;
-                        const isSelected = userAnswers[answerKey]?.value === choice;
-                        
-                        return (
-                          <div key={i}>
-                            <input 
-                              type="radio" 
-                              name={`${record.firebaseKey}_sub_${index}`}
-                              value={choice}
-                              checked={isSelected}
-                              onChange={(e) => handleAnswerChange(
-                                record.firebaseKey,
-                                `sub_${index}`,
-                                sub.title,
-                                e.target.value
-                              )}
-                            /> {choice || <span style={{ fontStyle: "italic", color: "gray" }}>Empty Option</span>}
-                          </div>
-                        );
-                      })}
-
-                    {sub.fieldType === "checkbox" &&
-                      sub.choices.map((choice, i) => {
-                        const answerKey = `${record.firebaseKey}_sub_${index}_${sub.title}_${i}`;
-                        const isChecked = userAnswers[answerKey]?.value === true;
-                        
-                        return (
-                          <div key={i}>
-                            <input 
-                              type="checkbox" 
-                              checked={isChecked}
-                              onChange={(e) => handleAnswerChange(
-                                record.firebaseKey,
-                                `sub_${index}`,
-                                `${sub.title}_${i}`,
-                                e.target.checked
-                              )}
-                            /> {choice || <span style={{ fontStyle: "italic", color: "gray" }}>Empty Option</span>}
-                          </div>
-                        );
-                      })}
-
-                    {sub.fieldType === "short" && (
-                      <input
-                        type="text"
-                        style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
-                        placeholder="Enter your answer..."
-                        value={userAnswers[`${record.firebaseKey}_sub_${index}_${sub.title}`]?.value || ""}
-                        onChange={(e) => handleAnswerChange(
-                          record.firebaseKey,
-                          `sub_${index}`,
-                          sub.title,
-                          e.target.value
-                        )}
-                      />
-                    )}
-
-                    {sub.fieldType === "integer" && (
-                      <input
-                        type="number"
-                        style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
-                        placeholder="Enter a number..."
-                        value={userAnswers[`${record.firebaseKey}_sub_${index}_${sub.title}`]?.value || ""}
-                        onChange={(e) => handleAnswerChange(
-                          record.firebaseKey,
-                          `sub_${index}`,
-                          sub.title,
-                          e.target.value
-                        )}
-                      />
-                    )}
-
-                    {sub.fieldType === "date" && (
-                      <input
-                        type="date"
-                        style={{ width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #ccc" }}
-                        value={userAnswers[`${record.firebaseKey}_sub_${index}_${sub.title}`]?.value || ""}
-                        onChange={(e) => handleAnswerChange(
-                          record.firebaseKey,
-                          `sub_${index}`,
-                          sub.title,
-                          e.target.value
-                        )}
-                      />
-                    )}
-                  </div>
-                </div>
-
-{/* Mode of Verification for sub indicators with Inline Attachments */}
-{sub.verification && (
-  <div className="reference-verification-full" style={{ 
-    display: "flex",
-    flexDirection: "column",
-    width: "100%",
-    marginTop: "5px"
-  }}>
-    {/* Top row with Mode of Verification text and Add Attachment button */}
-    <div style={{ 
-      display: "flex", 
-      justifyContent: "space-between", 
-      alignItems: "center",
-      width: "100%",
-      gap: "10px"
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
-        <span className="reference-verification-label">Mode of Verification:</span>
-        <span className="reference-verification-value">{sub.verification}</span>
-      </div>
-      
-      {/* Add Attachment Button - Hidden after submission */}
-      {!hasSubmitted && (
-        <button
-          onClick={() => triggerFileUpload(record.firebaseKey, `sub_${index}`, sub.title)}
-          disabled={uploadingFile}
-          style={{
-            backgroundColor: "#840000",
-            color: "white",
-            border: "none",
-            padding: "4px 10px",
-            borderRadius: "4px",
-            fontSize: "11px",
-            cursor: uploadingFile ? "not-allowed" : "pointer",
-            fontWeight: "600",
-            display: "flex",
-            alignItems: "center",
-            gap: "4px",
-            opacity: uploadingFile ? 0.6 : 1,
-            whiteSpace: "nowrap"
-          }}
-        >
-          {uploadingFile ? "⏳" : "+"} {uploadingFile ? "Uploading..." : "Add Attachment"}
-        </button>
-      )}
-      
-      {/* Show "Submitted" badge instead of button after submission */}
-      {hasSubmitted && (
-        <span style={{
-          backgroundColor: "#4CAF50",
-          color: "white",
-          padding: "4px 10px",
-          borderRadius: "4px",
-          fontSize: "11px",
-          fontWeight: "600",
-          display: "flex",
-          alignItems: "center",
-          gap: "4px",
-          whiteSpace: "nowrap"
-        }}>
-          ✓ Submitted
-        </span>
-      )}
-    </div>
-    
-    {/* Attachments Row - Inline with the button area */}
-    {Object.keys(attachments).filter(key => 
-      key.startsWith(`${record.firebaseKey}_sub_${index}_${sub.title}`)
-    ).length > 0 && (
-      <div style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: "8px",
-        marginTop: "8px",
-        width: "100%"
-      }}>
-        {Object.entries(attachments)
-          .filter(([key, value]) => 
-            key.startsWith(`${record.firebaseKey}_sub_${index}_${sub.title}`)
-          )
-          .map(([key, attachment]) => (
-            <div key={key} style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              backgroundColor: hasSubmitted ? "#e0e0e0" : "#e8f5e9",
-              padding: "4px 10px",
-              borderRadius: "16px",
-              fontSize: "11px",
-              border: hasSubmitted ? "1px solid #bdbdbd" : "1px solid #c8e6c9",
-              maxWidth: "180px",
-              opacity: hasSubmitted ? 0.8 : 1
-            }}>
-              <span style={{ fontSize: "12px" }}>📎</span>
-              <span style={{ 
-                overflow: "hidden", 
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap"
-              }}>
-                {attachment.fileName}
-              </span>
-              {/* Only show remove button if not submitted */}
-              {!hasSubmitted && (
-                <button
-                  onClick={() => removeAttachment(key)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#d32f2f",
-                    cursor: "pointer",
-                    fontSize: "14px",
-                    fontWeight: "bold",
-                    padding: "0 2px",
-                    marginLeft: "2px"
-                  }}
-                  title="Remove attachment"
-                >
-                  ✕
-                </button>
-              )}
-              {/* Show lock icon for submitted attachments */}
-              {hasSubmitted && (
-                <span style={{ fontSize: "12px", color: "#757575", marginLeft: "4px" }}>🔒</span>
-              )}
-            </div>
-          ))}
-      </div>
-    )}
-  </div>
-)}
-
-
-              </div>
-            ))}
-          </div>
-        ))}
-
-            {/* Save Button */}
-{/* Draft and Submit Buttons */}
-<div style={{ 
-  display: "flex", 
-  justifyContent: "space-between", 
-  alignItems: "center",
-  marginTop: "20px",
-  padding: "8px 20px",
-  backgroundColor: "#ffffff",
-  borderRadius: "8px",
-  marginBottom:"-.8%"
-
-}}>
-  {/* LEFT SIDE - Draft button and status */}
-  <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
-    {!hasSubmitted && (
-      <>
-        <button
-          onClick={handleSaveDraft}
-          disabled={indicators.length === 0}
-          style={{
-            backgroundColor: "#ffc107",
-            color: "#020202",
-            border: "none",
-            padding: "8px 30px",
-            borderRadius: "5px",
-            fontSize: "14px",
-            cursor: indicators.length === 0 ? "not-allowed" : "pointer",
-            fontWeight: "700",
-            display: "flex",
-            alignItems: "center",
-            gap: "5px",
-            opacity: indicators.length === 0 ? 0.5 : 1
-          }}
-        >
-          Draft
-        </button>
-        
-        {isDraft && (
-          <span style={{ 
-            backgroundColor: "#fff3cd", 
-            color: "#ac8510",
-            padding: "4px 12px",
-            borderRadius: "20px",
-            fontSize: "12px",
-            fontWeight: "600",
-            border: "1px solid #ffeeba"
-          }}>
-            DRAFT SAVED
-          </span>
-        )}
-        
-        {lastSavedDraft && isDraft && (
-          <span style={{ fontSize: "12px", color: "#666" }}>
-            Last saved: {lastSavedDraft}
-          </span>
-        )}
-      </>
-    )}
-    
-    {hasSubmitted && (
-      <span style={{ 
-        backgroundColor: "#d4edda", 
-        color: "#155724",
-        padding: "4px 12px",
-        borderRadius: "20px",
-        fontSize: "12px",
-        fontWeight: "600",
-        border: "1px solid #c3e6cb"
-      }}>
-        ✓ FINAL SUBMITTED
-      </span>
-    )}
-  </div>
-
-  {/* RIGHT SIDE - Submit button or Submitted status */}
-  <div>
-    {hasSubmitted ? (
-      <div style={{
-        backgroundColor: "#4CAF50",
-        color: "white",
-        padding: "8px 30px",
-        borderRadius: "5px",
-        fontSize: "14px",
-        fontWeight: "600",
-        display: "flex",
+      {/* Top row with Mode of Verification text and Add Attachment button */}
+      <div style={{ 
+        display: "flex", 
+        justifyContent: "space-between", 
         alignItems: "center",
-        gap: "8px"
+        width: "100%",
+        gap: "10px"
       }}>
-        Submitted
-      </div>
-    ) : (
-      <button
-        onClick={handleSaveAnswers}
-        disabled={savingAnswers || indicators.length === 0}
-        style={{
-          backgroundColor: savingAnswers ? "#cccccc" : "#1b6e3a",
-          color: "white",
-          border: "none",
-          padding: "8px 30px",
-          borderRadius: "5px",
-          fontSize: "14px",
-          cursor: savingAnswers || indicators.length === 0 ? "not-allowed" : "pointer",
-          fontWeight: "600",
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          opacity: savingAnswers || indicators.length === 0 ? 0.7 : 1
-        }}
-      >
-        {savingAnswers ? "Submitting..." : "Submit"}
-      </button>
-    )}
-  </div>
-</div>
-
-
-      </>
-    )}
-  </div>
-</div>
-
-
+        <div style={{ display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
+          <span className="reference-verification-label">Mode of Verification:</span>
+          <span className="reference-verification-value">{sub.verification}</span>
         </div>
+        
+        {/* Add Attachment Button - Hidden after submission */}
+        {!hasSubmitted && (
+          <button
+            onClick={() => triggerFileUpload(record.firebaseKey, `sub_${index}`, sub.title)}
+            disabled={uploadingFile}
+            style={{
+              backgroundColor: "#840000",
+              color: "white",
+              border: "none",
+              padding: "4px 10px",
+              borderRadius: "4px",
+              fontSize: "11px",
+              cursor: uploadingFile ? "not-allowed" : "pointer",
+              fontWeight: "600",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              opacity: uploadingFile ? 0.6 : 1,
+              whiteSpace: "nowrap"
+            }}
+          >
+            {uploadingFile ? "⏳" : "+"} {uploadingFile ? "Uploading..." : "Add Attachment"}
+          </button>
+        )}
+        
+        {/* Show "Submitted" badge instead of button after submission */}
+        {hasSubmitted && (
+          <span style={{
+            backgroundColor: "#4CAF50",
+            color: "white",
+            padding: "4px 10px",
+            borderRadius: "4px",
+            fontSize: "11px",
+            fontWeight: "600",
+            display: "flex",
+            alignItems: "center",
+            gap: "4px",
+            whiteSpace: "nowrap"
+          }}>
+            ✓ Submitted
+          </span>
+        )}
       </div>
-
-      {/* Modals */}
-      {showProfileModal && (
-        <div className="modal-overlay">
-          <div className="profile-view-modal">
-            <div className="profile-view-header">
-              <span className="back-btn" onClick={() => setShowProfileModal(false)}>←</span>
-              <h3>Profile</h3>
-            </div>
-            <div className="profile-view-body">
-              <div className="profile-view-avatar">
-                {profileData.image ? (
-                  <img src={profileData.image} alt="Profile" />
-                ) : (
-                  <div className="avatar-placeholder">👤</div>
+      
+      {/* Attachments Row - Inline with the button area */}
+      {Object.keys(attachments).filter(key => 
+        key.startsWith(`${record.firebaseKey}_sub_${index}_${sub.title}`)
+      ).length > 0 && (
+        <div style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "8px",
+          marginTop: "8px",
+          width: "100%"
+        }}>
+          {Object.entries(attachments)
+            .filter(([key, value]) => 
+              key.startsWith(`${record.firebaseKey}_sub_${index}_${sub.title}`)
+            )
+            .map(([key, attachment]) => (
+              <div key={key} style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                backgroundColor: hasSubmitted ? "#e0e0e0" : "#e8f5e9",
+                padding: "4px 10px",
+                borderRadius: "16px",
+                fontSize: "11px",
+                border: hasSubmitted ? "1px solid #bdbdbd" : "1px solid #c8e6c9",
+                maxWidth: "180px",
+                opacity: hasSubmitted ? 0.8 : 1
+              }}>
+                <span style={{ fontSize: "12px" }}>📎</span>
+                <span style={{ 
+                  overflow: "hidden", 
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap"
+                }}>
+                  {attachment.fileName}
+                </span>
+                {/* Only show remove button if not submitted */}
+                {!hasSubmitted && (
+                  <button
+                    onClick={() => removeAttachment(key)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#d32f2f",
+                      cursor: "pointer",
+                      fontSize: "14px",
+                      fontWeight: "bold",
+                      padding: "0 2px",
+                      marginLeft: "2px"
+                    }}
+                    title="Remove attachment"
+                  >
+                    ✕
+                  </button>
+                )}
+                {/* Show lock icon for submitted attachments */}
+                {hasSubmitted && (
+                  <span style={{ fontSize: "12px", color: "#757575", marginLeft: "4px" }}>🔒</span>
                 )}
               </div>
-              <h2>{profileData.name || "No Name"}</h2>
-              <p className="profile-email">{profileData.email}</p>
-              <div className="profile-action-buttons">
-                <button
-                  className="profile-btn"
-                  onClick={() => {
-                    setShowProfileModal(false);
-                    setShowEditProfileModal(true);
-                  }}
-                >
-                  Edit Profile
-                </button>
-                <button
-                  className="profile-btn signout"
-                  onClick={handleSignOut}
-                >
-                  Sign Out
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showEditProfileModal && (
-        <div className="modal-overlay">
-          <div className="add-record-modal profile-modal">
-            <div className="modal-header">
-              <h3>Edit Profile</h3>
-              <span
-                className="close-x"
-                onClick={() => {
-                  setEditProfileData(profileData);
-                  setShowEditProfileModal(false);
-                }}
-              >
-                ✕
-              </span>
-            </div>
-            <div className="modal-body">
-              <div className="modal-field">
-                <label>Profile Image:</label>
-                <input type="file" accept="image/*" onChange={handleImageUpload} />
-              </div>
-              {editProfileData.image && (
-                <div className="profile-preview">
-                  <img src={editProfileData.image} alt="Preview" />
-                  <button
-                    type="button"
-                    className="remove-photo-btn"
-                    onClick={() =>
-                      setEditProfileData({ ...editProfileData, image: "" })
-                    }
-                  >
-                    Remove
-                  </button>
-                </div>
-              )}
-              <div className="modal-field">
-                <label>Name:</label>
-                <input
-                  type="text"
-                  value={editProfileData.name}
-                  onChange={(e) =>
-                    setEditProfileData({ ...editProfileData, name: e.target.value })
-                  }
-                />
-              </div>
-              <div className="modal-field">
-                <label>Email:</label>
-                <input
-                  type="text"
-                  value={auth.currentUser?.email || ""}
-                  disabled
-                  style={{ background: "#f1f1f1", cursor: "not-allowed" }}
-                />
-              </div>
-              <div className="modal-footer">
-                <button
-                  className="save-profile-btn"
-                  onClick={handleSaveProfile}
-                  disabled={savingProfile || !editProfileData.name.trim()}
-                >
-                  {savingProfile ? "Saving..." : "Save Changes"}
-                </button>
-              </div>
-            </div>
-          </div>
+            ))}
         </div>
       )}
     </div>
+  )}
+
+
+                </div>
+              ))}
+            </div>
+          ))}
+
+
+  {/* Draft and Submit Buttons */}
+  <div style={{ 
+    display: "flex", 
+    justifyContent: "space-between", 
+    alignItems: "center",
+    marginTop: "20px",
+    padding: "8px 20px",
+    backgroundColor: "#ffffff",
+    borderRadius: "8px",
+    marginBottom:"-.8%"
+
+  }}>
+    {/* LEFT SIDE - Draft button and status */}
+    <div style={{ display: "flex", alignItems: "center", gap: "15px" }}>
+      {!hasSubmitted && (
+        <>
+          <button
+            onClick={handleSaveDraft}
+            disabled={indicators.length === 0}
+            style={{
+              backgroundColor: "#ffc107",
+              color: "#020202",
+              border: "none",
+              padding: "8px 30px",
+              borderRadius: "5px",
+              fontSize: "14px",
+              cursor: indicators.length === 0 ? "not-allowed" : "pointer",
+              fontWeight: "700",
+              display: "flex",
+              alignItems: "center",
+              gap: "5px",
+              opacity: indicators.length === 0 ? 0.5 : 1
+            }}
+          >
+            Draft
+          </button>
+          
+          {isDraft && (
+            <span style={{ 
+              backgroundColor: "#fff3cd", 
+              color: "#ac8510",
+              padding: "4px 12px",
+              borderRadius: "20px",
+              fontSize: "12px",
+              fontWeight: "600",
+              border: "1px solid #ffeeba"
+            }}>
+              DRAFT SAVED
+            </span>
+          )}
+          
+          {lastSavedDraft && isDraft && (
+            <span style={{ fontSize: "12px", color: "#666" }}>
+              Last saved: {lastSavedDraft}
+            </span>
+          )}
+        </>
+      )}
+      
+      {hasSubmitted && (
+        <span style={{ 
+          backgroundColor: "#d4edda", 
+          color: "#155724",
+          padding: "4px 12px",
+          borderRadius: "20px",
+          fontSize: "12px",
+          fontWeight: "600",
+          border: "1px solid #c3e6cb"
+        }}>
+          ✓ FINAL SUBMITTED
+        </span>
+      )}
+    </div>
+
+
+
   </div>
-);
-}
+
+
+        </>
+      )}
+    </div>
+  </div>
+
+
+          </div>
+        </div>
+
+        {/* Modals */}
+        {showProfileModal && (
+          <div className="modal-overlay">
+            <div className="profile-view-modal">
+              <div className="profile-view-header">
+                <span className="back-btn" onClick={() => setShowProfileModal(false)}>←</span>
+                <h3>Profile</h3>
+              </div>
+                        <div className="profile-view-body">
+                          <div className="profile-view-avatar">
+                            {profileData.image ? (
+                              <img src={profileData.image} alt="Profile" />
+                            ) : (
+                              <div className="avatar-placeholder">👤</div>
+                            )}
+                          </div>
+                          <h2>{profileData.name || "No Name"}</h2>
+                          <p className="profile-email">{profileData.email}</p>
+                          <p className={styles.profileMunicipality}>{profileData.municipality}</p>
+                          <div className="profile-action-buttons">
+                            <button
+                              className="profile-btn"
+                              onClick={() => {
+                                setShowProfileModal(false);
+                                setShowEditProfileModal(true);
+                              }}
+                            >
+                              Edit Profile
+                            </button>
+                            <button
+                              className="profile-btn signout"
+                              onClick={handleSignOut}
+                            >
+                              Sign Out
+                            </button>
+                          </div>
+                        </div>
+            </div>
+          </div>
+        )}
+
+        {showEditProfileModal && (
+          <div className="modal-overlay">
+            <div className="add-record-modal profile-modal">
+              <div className="modal-header">
+                <h3>Edit Profile</h3>
+          <span
+            className="close-x"
+            onClick={profileComplete ? () => {
+              setEditProfileData(profileData);
+              setShowEditProfileModal(false);
+            } : undefined}
+            style={{
+              cursor: profileComplete ? "pointer" : "not-allowed",
+              opacity: profileComplete ? 1 : 0.5,
+              pointerEvents: profileComplete ? "auto" : "none"
+            }}
+            title={!profileComplete ? "Please complete your profile first" : "Close"}
+          >
+            ✕
+          </span>
+              </div>
+              <div className="modal-body">
+                <div className="modal-field">
+                  <label>Profile Image:</label>
+                  <input type="file" accept="image/*" onChange={handleImageUpload} />
+                </div>
+                {editProfileData.image && (
+                  <div className="profile-preview">
+                    <img src={editProfileData.image} alt="Preview" />
+                    <button
+                      type="button"
+                      className="remove-photo-btn"
+                      onClick={() =>
+                        setEditProfileData({ ...editProfileData, image: "" })
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+                <div className="modal-field">
+                  <label>Name:</label>
+                  <input
+                    type="text"
+                    value={editProfileData.name}
+                    onChange={(e) =>
+                      setEditProfileData({ ...editProfileData, name: e.target.value })
+                    }
+                  />
+                </div>
+
+  <div className="modal-field">
+    <label>Municipality:</label>
+    <select
+      value={editProfileData.municipality}
+      onChange={(e) =>
+        setEditProfileData({ ...editProfileData, municipality: e.target.value })
+      }
+      disabled={profileComplete} // Disabled when profile is complete (editing mode)
+      style={{ 
+        width: "100%", 
+        padding: "8px", 
+        borderRadius: "4px", 
+        border: "1px solid #ccc",
+        backgroundColor: profileComplete ? "#f5f5f5" : "white",
+        cursor: profileComplete ? "not-allowed" : "pointer",
+        opacity: profileComplete ? 0.7 : 1
+      }}
+      title={profileComplete ? "Municipality cannot be changed after initial setup" : "Select your municipality"}
+    >
+      <option value="">Select Municipality</option>
+      {municipalities.map((municipality) => (
+        <option key={municipality} value={municipality}>
+          {municipality}
+        </option>
+      ))}
+    </select>
+  </div>
+
+                <div className="modal-field">
+                  <label>Email:</label>
+                  <input
+                    type="text"
+                    value={auth.currentUser?.email || ""}
+                    disabled
+                    style={{ background: "#f1f1f1", cursor: "not-allowed" }}
+                  />
+                </div>
+                <div className="modal-footer">
+  <button
+    className="save-profile-btn"
+    onClick={handleSaveProfile}
+    disabled={savingProfile || !editProfileData.name.trim() || !editProfileData.municipality.trim()} // UPDATE THIS LINE
+  >
+    {savingProfile ? "Saving..." : "Save Changes"}
+  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+  }

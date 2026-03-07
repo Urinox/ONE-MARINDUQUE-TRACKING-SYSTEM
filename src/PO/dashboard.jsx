@@ -3,26 +3,36 @@ import { db, auth} from "src/firebase";
 import "src/PO-CSS/dashboard.css";
 import dilgLogo from "src/assets/dilg-po.png";
 import dilgSeal from "src/assets/dilg-ph.png";
-import { FiFilter, FiRotateCcw, FiSettings, FiLogOut, FiFileText } from "react-icons/fi";
+import { FiFilter, FiRotateCcw, FiSettings, FiLogOut, FiFileText, FiBell } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
-import { ref, push, onValue, set } from "firebase/database";
+import { ref, push, onValue, set, get } from "firebase/database";
 
 
 
 export default function Dashboard() {
+  const [forwardedData, setForwardedData] = useState([]);
+  const [verifiedData, setVerifiedData] = useState([]);
+const [loadingVerified, setLoadingVerified] = useState(true);
+const [loadingForwarded, setLoadingForwarded] = useState(true);
+const [userRoleMap, setUserRoleMap] = useState({}); // Store user roles
+const [searchResults, setSearchResults] = useState([]); // For search suggestions
+const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [openDropdown, setOpenDropdown] = useState(null);
+  const [municipalityMap, setMunicipalityMap] = useState({});
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState("");
   const user = auth.currentUser;
   const displayName = user?.email || "User";
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [editProfileData, setEditProfileData] = useState({
   name: "",
+  municipality: "", // ADD THIS LINE
   email: displayName,
   image: ""
 });
@@ -68,7 +78,435 @@ useEffect(() => {
     }
   });
 }, []);
+
+// Add this with your other useState declarations
+const [subAdminMunicipalities, setSubAdminMunicipalities] = useState({});
+
+
+// Fetch unread notifications count
+useEffect(() => {
+  if (!auth.currentUser) return;
+
+  const fetchUnreadCount = async () => {
+    try {
+      const userUid = auth.currentUser.uid;
+      const notificationsRootRef = ref(db, `notifications`);
+      const rootSnapshot = await get(notificationsRootRef);
+      
+      let count = 0;
+      
+      if (rootSnapshot.exists()) {
+        const yearsData = rootSnapshot.val();
+        
+        Object.keys(yearsData).forEach(year => {
+          const yearData = yearsData[year];
+          // Look for notifications under PO with the user's UID
+          if (yearData.PO && yearData.PO[userUid]) {
+            const yearNotifications = yearData.PO[userUid];
+            Object.keys(yearNotifications).forEach(key => {
+              if (!yearNotifications[key].read) {
+                count++;
+              }
+            });
+          }
+        });
+      }
+      
+      setUnreadCount(count);
+    } catch (error) {
+      console.error("Error fetching unread count:", error);
+    }
+  };
+
+  fetchUnreadCount();
+  
+  // Set up a listener for changes (optional - you could use onValue instead of get)
+  const notificationsRef = ref(db, `notifications`);
+  const unsubscribe = onValue(notificationsRef, () => {
+    fetchUnreadCount();
+  });
+  
+  return () => unsubscribe();
+}, [auth.currentUser?.uid]);
+
+
+// Add this useEffect to scan users/ for sub-admin roles and get their municipality from profiles/
+useEffect(() => {
+  if (!auth.currentUser) return;
+
+  const fetchSubAdminMunicipalities = async () => {
+    try {
+      console.log("🔍 Scanning for sub-admin users...");
+      
+      // Get all users from users/ node
+      const usersRef = ref(db, "users");
+      const usersSnapshot = await get(usersRef);
+      
+      // Get all profiles from profiles/ node
+      const profilesRef = ref(db, "profiles");
+      const profilesSnapshot = await get(profilesRef);
+      
+      if (usersSnapshot.exists() && profilesSnapshot.exists()) {
+        const users = usersSnapshot.val();
+        const profiles = profilesSnapshot.val();
+        
+        const subAdminMap = {};
+        
+        // Loop through all users to find sub-admin role
+        Object.keys(users).forEach(uid => {
+          const userData = users[uid];
+          
+          // Check if user has sub-admin role
+          if (userData && userData.role === "sub-admin") {
+            console.log(`Found sub-admin with UID: ${uid}`);
+            
+            // Get their municipality from profiles using the same UID
+            if (profiles[uid] && profiles[uid].municipality) {
+              const municipality = profiles[uid].municipality;
+              subAdminMap[uid] = municipality;
+              console.log(`Sub-admin ${uid} has municipality: ${municipality}`);
+            } else {
+              console.log(`No municipality found for sub-admin UID: ${uid}`);
+            }
+          }
+        });
+        
+        console.log("Sub-admin municipalities map:", subAdminMap);
+        setSubAdminMunicipalities(subAdminMap);
+      }
+    } catch (error) {
+      console.error("Error fetching sub-admin data:", error);
+    }
+  };
+
+  fetchSubAdminMunicipalities();
+}, [auth.currentUser?.uid]);
+// Fetch all profiles to get municipality names and user details
+useEffect(() => {
+  if (!auth.currentUser) return;
+
+  const fetchProfiles = async () => {
+    try {
+      const profilesRef = ref(db, `profiles`);
+      onValue(profilesRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const profiles = snapshot.val();
+          const munMap = {};
+          const roleMap = {};
+          const emailToUidMap = {}; // Map email to UID for lookup
+          const nameToUidMap = {}; // Map name to UID for lookup
+          
+          // Create maps from profiles
+          Object.keys(profiles).forEach(uid => {
+            const profile = profiles[uid];
+            
+            // Municipality map
+            if (profile.municipality) {
+              munMap[uid] = profile.municipality;
+            }
+            
+            // Role map (default to "user")
+            if (profile.role) {
+              roleMap[uid] = profile.role;
+            } else {
+              roleMap[uid] = "user";
+            }
+            
+            // Email to UID map for lookups
+            if (profile.email) {
+              emailToUidMap[profile.email.toLowerCase()] = uid;
+            }
+            
+            // Name to UID map for lookups
+            if (profile.name) {
+              nameToUidMap[profile.name.toLowerCase()] = uid;
+            }
+          });
+          
+          console.log("Municipality map:", munMap);
+          console.log("User role map:", roleMap);
+          console.log("Email to UID map:", emailToUidMap);
+          
+          setMunicipalityMap(munMap);
+          setUserRoleMap(roleMap);
+          
+          // Store these additional maps if needed
+          // setEmailToUidMap(emailToUidMap);
+          // setNameToUidMap(nameToUidMap);
+        }
+      });
+    } catch (error) {
+      console.error("Error fetching profiles:", error);
+    }
+  };
+
+  fetchProfiles();
+}, []);
+
+// Fetch verified assessments from Firebase
+useEffect(() => {
+  if (!auth.currentUser) return;
+
+  const fetchVerifiedData = () => {
+    try {
+      setLoadingVerified(true);
+      
+      const verifiedRef = ref(db, `verified`);
+      
+      onValue(verifiedRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const allVerified = snapshot.val();
+          const items = [];
+          let counter = 1;
+          
+          console.log("Raw verified data:", allVerified);
+          
+// Iterate through years
+Object.keys(allVerified).forEach(year => {
+  if (allVerified[year] && allVerified[year].LGU) {
+    Object.keys(allVerified[year].LGU).forEach(lguName => {
+      const item = allVerified[year].LGU[lguName];
+      
+      let municipality = "Unknown";
+      
+      // Try to get municipality from the item data first
+      if (item.municipality) {
+        municipality = item.municipality;
+        console.log(`Found municipality in item: ${municipality}`);
+      }
+      // Then try from subAdminMunicipalities using lguUid
+      else if (item.lguUid && subAdminMunicipalities[item.lguUid]) {
+        municipality = subAdminMunicipalities[item.lguUid];
+        console.log(`Found municipality from subAdminMap: ${municipality}`);
+      }
+      // Finally fallback to lguName
+      else {
+        municipality = lguName;
+        console.log(`Using lguName as fallback: ${municipality}`);
+      }
+      
+      items.push({
+        id: counter++,
+        municipality: municipality, // Now this will be the actual municipality name
+        year: year,
+        status: "Verified",
+        submission: item.submission || new Date().toLocaleDateString(),
+        deadline: item.deadline || "-",
+        lguUid: item.lguUid || "No UID",
+        submittedBy: item.submittedBy || "Unknown",
+        verifiedBy: item.verifiedBy || "Unknown",
+        verifiedAt: item.verifiedAt,
+        data: item.originalData || {},
+        type: "verified"
+      });
+    });
+  }
+});
+          
+          console.log("Final mapped verified data:", items);
+          setVerifiedData(items);
+        } else {
+          console.log("No verified data found");
+          setVerifiedData([]);
+        }
+        setLoadingVerified(false);
+      });
+    } catch (error) {
+      console.error("Error fetching verified data:", error);
+      setLoadingVerified(false);
+    }
+  };
+
+  fetchVerifiedData();
+}, [auth.currentUser?.uid]);
+
+useEffect(() => {
+  if (!auth.currentUser) return;
+
+  const fetchForwardedData = () => {
+    try {
+      setLoadingForwarded(true);
+      
+      const forwardedRef = ref(db, `forwarded/${auth.currentUser.uid}`);
+      
+      onValue(forwardedRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          const items = [];
+          let counter = 1;
+          
+          console.log("Raw forwarded data:", data);
+          console.log("Sub-admin municipalities:", subAdminMunicipalities);
+          
+          Object.keys(data).forEach(key => {
+            const item = data[key];
+            
+let municipality = "Unknown";
+let lookupAttempted = false;
+
+// Try to get municipality from UID if it exists
+if (item.lguUid && item.lguUid !== "No UID" && item.lguUid !== "Unknown") {
+  lookupAttempted = true;
+  console.log(`Looking up UID: ${item.lguUid} in subAdminMunicipalities`);
+  
+  if (subAdminMunicipalities[item.lguUid]) {
+    municipality = subAdminMunicipalities[item.lguUid];
+    console.log(`Found municipality: ${municipality} for UID: ${item.lguUid}`);
+  } else {
+    console.log(`UID ${item.lguUid} not found in subAdminMunicipalities map`);
+    // Continue to fallbacks - don't return
+  }
+}
+
+// ALWAYS try fallbacks if municipality is still Unknown
+if (municipality === "Unknown") {
+  // Fallback: try to get from municipality field directly
+  if (item.municipality) {
+    municipality = item.municipality;
+    console.log(`Using direct municipality field: ${municipality}`);
+  }
+  // Fallback: try lguName
+  else if (item.lguName) {
+    municipality = item.lguName;
+    console.log(`Using lguName: ${municipality}`);
+  }
+}
+            
+            // Fallback: try to get from municipality field directly
+            if (municipality === "Unknown" && item.municipality) {
+              municipality = item.municipality;
+              console.log(`Using direct municipality field: ${municipality}`);
+            }
+            
+            // Fallback: try lguName
+            if (municipality === "Unknown" && item.lguName) {
+              municipality = item.lguName;
+              console.log(`Using lguName: ${municipality}`);
+            }
+            
+            items.push({
+              id: counter++,
+              municipality: municipality,
+              year: item.year || "Unknown",
+              status: item.status || "Pending",
+              submission: item.submission || new Date().toLocaleDateString(),
+              deadline: item.deadline || "-",
+              lguUid: item.lguUid || "No UID",
+              submittedBy: item.submittedBy || "Unknown",
+              userRole: item.userRole || "Unknown"
+            });
+          });
+          
+          // REMOVED THE FILTER - now showing ALL items
+          console.log("Final mapped forwarded data:", items);
+          setForwardedData(items); // Show ALL items
+          
+        } else {
+          console.log("No forwarded data found");
+          setForwardedData([]);
+        }
+        setLoadingForwarded(false);
+      });
+    } catch (error) {
+      console.error("Error fetching forwarded data:", error);
+      setLoadingForwarded(false);
+    }
+  };
+
+  fetchForwardedData();
+}, [auth.currentUser?.uid, subAdminMunicipalities]);
+
+
+
+useEffect(() => {
+  const handleStorageChange = (e) => {
+    if (e.key === 'forwardedToPO') {
+      try {
+        const forwarded = JSON.parse(e.newValue || '[]');
+        if (forwarded.length > 0) {
+          const mappedData = forwarded.map((item, index) => {
+            let municipality = item.municipality || "Unknown";
+            
+            // Try to get user role
+            let userRole = "Unknown";
+            if (item.lguUid && userRoleMap[item.lguUid]) {
+              userRole = userRoleMap[item.lguUid];
+            } else if (item.userRole) {
+              userRole = item.userRole;
+            }
+            
+            return {
+              id: index + 1,
+              municipality: municipality,
+              year: item.year,
+              status: item.status || "Pending",
+              submission: item.submission,
+              deadline: item.deadline,
+              lgu: item.lgu || "M",
+              data: item.data || {},
+              lguUid: item.lguUid,
+              userRole: userRole,
+              submittedBy: item.submittedBy || "Unknown"
+            };
+          });
+          
+          setData(mappedData);
+        }
+      } catch (error) {
+        console.error("Error handling storage change:", error);
+      }
+    }
+  };
+
+  window.addEventListener('storage', handleStorageChange);
+  return () => window.removeEventListener('storage', handleStorageChange);
+}, [userRoleMap]);
+
 /*
+useEffect(() => {
+  const handleStorageChange = (e) => {
+    if (e.key === 'forwardedToPO') {
+      try {
+        const forwarded = JSON.parse(e.newValue || '[]');
+        if (forwarded.length > 0) {
+          const mappedData = forwarded.map((item, index) => {
+            let municipality = item.municipality || "Unknown";
+            
+            // Try to get user role
+            let userRole = "Unknown";
+            if (item.lguUid && userRoleMap[item.lguUid]) {
+              userRole = userRoleMap[item.lguUid];
+            } else if (item.userRole) {
+              userRole = item.userRole;
+            }
+            
+            return {
+              id: index + 1,
+              municipality: municipality,
+              year: item.year,
+              status: item.status || "Pending",
+              submission: item.submission,
+              deadline: item.deadline,
+              lgu: item.lgu || "M",
+              data: item.data || {},
+              lguUid: item.lguUid,
+              userRole: userRole,
+              submittedBy: item.submittedBy || "Unknown"
+            };
+          });
+          
+          setData(mappedData);
+        }
+      } catch (error) {
+        console.error("Error handling storage change:", error);
+      }
+    }
+  };
+
+  window.addEventListener('storage', handleStorageChange);
+  return () => window.removeEventListener('storage', handleStorageChange);
+}, [userRoleMap]);
+
 useEffect(() => {
   const dataRef = ref(db, `financial/${auth.currentUser.uid}`);
   onValue(dataRef, (snapshot) => {
@@ -154,22 +592,48 @@ const handleAddRecord = async () => {
 */  
 
 
+const handleView = (item) => {
+  console.log("View:", item);
+  
+  // Check if this is a verified assessment
+  if (item.type === "verified") {
+    navigate("/po-view", { 
+      state: { 
+        year: item.year,
+        municipality: item.municipality,
+        lguUid: item.lguUid,
+        submittedBy: item.submittedBy,
+        data: item.data,
+        lguName: item.municipality, // Use municipality as lguName
+        submission: item.submission,
+        deadline: item.deadline,
+        isVerified: true, // Flag to indicate this is verified data
+        verifiedBy: item.verifiedBy,
+        verifiedAt: item.verifiedAt,
+        originalData: item.data // Use data as originalData
+      } 
+    });
+  } else {
+    // Forwarded assessment
+    navigate("/po-view", { 
+      state: { 
+        year: item.year,
+        municipality: item.municipality,
+        lguUid: item.lguUid,
+        submittedBy: item.submittedBy,
+        data: item.originalData || item.data,
+        lguName: item.lguName,
+        submission: item.submission,
+        deadline: item.deadline,
+        isVerified: false
+      } 
+    });
+  }
+};
 
-  const handleExport = (item) => {
-  console.log("Export:", item);
-  };
-
-  const handleView = (item) => {
-    console.log("View:", item);
-  };
-
-  const handleCompletion = (item) => {
-    console.log("Completion:", item);
-  };
 
 
   const municipalities = ["Boac", "Mogpog", "Sta. Cruz", "Torrijos", "Buenavista", "Gasan"];
-  const forms = ["LGU Profile", "Regional Assessment"];
   const [years, setYears] = useState(["2021","2022","2023","2024","2025","2026"]);
   
 const handleAddYear = async () => {
@@ -223,21 +687,51 @@ const handleDeleteYear = async (yearToDelete) => {
     setCurrentPage(1);
   };
 
-  const filteredData = data.filter((item) => {
-    return (
-      (!filters.municipality || item.municipality === filters.municipality) &&
-      (!filters.year || item.year === filters.year) &&
-      (!filters.status || item.status === filters.status) &&
-      (item.municipality.toLowerCase().includes(search.toLowerCase()) ||
-        item.year.toLowerCase().includes(search.toLowerCase()))
-    );
-  });
 
-  /* Pagination Logic */
-  const indexOfLastRow = currentPage * rowsPerPage;
-  const indexOfFirstRow = indexOfLastRow - rowsPerPage;
-  const currentRows = filteredData.slice(indexOfFirstRow, indexOfLastRow);
-  const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+// Combine forwardedData and verifiedData for display
+const allData = [...(forwardedData || []), ...(verifiedData || [])];
+
+// Sort by date (most recent first) - optional
+const sortedData = allData.sort((a, b) => {
+  const dateA = a.submission ? new Date(a.submission) : new Date(0);
+  const dateB = b.submission ? new Date(b.submission) : new Date(0);
+  return dateB - dateA;
+});
+
+// Remove duplicates based on lguUid and year and type
+const uniqueData = sortedData.filter((item, index, self) => 
+  index === self.findIndex((t) => 
+    t.lguUid === item.lguUid && 
+    t.year === item.year && 
+    t.type === item.type
+  )
+);
+// **FIX: Reassign sequential IDs starting from 1**
+const dataWithSequentialIds = uniqueData.map((item, index) => ({
+  ...item,
+  id: index + 1  // This will give 1, 2, 3, 4, 5, 6 in order
+}));
+
+const filteredData = dataWithSequentialIds.filter((item) => {
+  // Check if search term matches municipality
+  const matchesSearch = search === "" || 
+    item.municipality?.toLowerCase().includes(search.toLowerCase()) ||
+    item.year?.toLowerCase().includes(search.toLowerCase()) ||
+    item.submittedBy?.toLowerCase().includes(search.toLowerCase());
+  
+  return (
+    (!filters.municipality || item.municipality === filters.municipality) &&
+    (!filters.year || item.year === filters.year) &&
+    (!filters.status || item.status?.toLowerCase() === filters.status.toLowerCase()) &&
+    matchesSearch
+  );
+});
+
+/* Pagination Logic */
+const indexOfLastRow = currentPage * rowsPerPage;
+const indexOfFirstRow = indexOfLastRow - rowsPerPage;
+const currentRows = filteredData.slice(indexOfFirstRow, indexOfLastRow);
+const totalPages = Math.ceil(filteredData.length / rowsPerPage);
 
   const renderDropdown = (type, list) => (
     <div className="dropdown">
@@ -248,10 +742,6 @@ const handleDeleteYear = async (yearToDelete) => {
       ))}
     </div>
   );
-
-const handleSettings = () => {
-  navigate("/settings");
-};
 
 const handleSignOut = () => {
   const confirmLogout = window.confirm("Are you sure you want to sign out?");
@@ -278,77 +768,114 @@ const handleSignOut = () => {
           </div>
 
 
-          {sidebarOpen && (
-            <>
-              <p className="filter-title">
-                <FiFilter style={{ marginRight: "10px", verticalAlign: "middle" }} />
-                FILTER
-                <button className="clear-icon-btn" onClick={clearFilters} aria-label="Clear Filters">
-                <FiRotateCcw />
-              </button>
-              </p>
-  
-              {/* Dropdown Overlay */}
-              {openDropdown && (
-                <div
-                  className="dropdown-overlay"
-                  onClick={() => setOpenDropdown(null)}
-                ></div>
-              )}
+{sidebarOpen && (
+  <>
+    <p className="filter-title">
+      <FiFilter style={{ marginRight: "10px", verticalAlign: "middle" }} />
+      FILTER
+      <button className="clear-icon-btn" onClick={clearFilters} aria-label="Clear Filters">
+        <FiRotateCcw />
+      </button>
+    </p>
 
-              <div className="filter-item">
-                <div
-                  className="filter-btn"
-                  onClick={() =>
-                    setOpenDropdown(openDropdown === "municipality" ? null : "municipality")
-                  }
-                >
-                  Municipality {filters.municipality && `: ${filters.municipality}`}
-                  <span className="arrow" style={{ pointerEvents: "none" }}>
-                    {openDropdown === "municipality" ? "▲" : "▼"}
-                  </span>
-                </div>
-                {openDropdown === "municipality" && renderDropdown("municipality", municipalities)}
-              </div>
+    {/* Dropdown Overlay */}
+    {openDropdown && (
+      <div
+        className="dropdown-overlay"
+        onClick={() => setOpenDropdown(null)}
+      ></div>
+    )}
 
-              <div className="filter-item">
-                <div
-                  className="filter-btn"
-                  onClick={() => setOpenDropdown(openDropdown === "year" ? null : "year")}
-                >
-                  Year {filters.year && `: ${filters.year}`}
-                  <span className="arrow" style={{ pointerEvents: "none" }}>
-                    {openDropdown === "year" ? "▲" : "▼"}
-                  </span>
-                </div>
-                {openDropdown === "year" && renderDropdown("year", years)}
-              </div>
+    <div className="filter-item">
+      <div
+        className="filter-btn"
+        onClick={() =>
+          setOpenDropdown(openDropdown === "municipality" ? null : "municipality")
+        }
+      >
+        Municipality {filters.municipality && `: ${filters.municipality}`}
+        <span className="arrow" style={{ pointerEvents: "none" }}>
+          {openDropdown === "municipality" ? "▲" : "▼"}
+        </span>
+      </div>
+      {openDropdown === "municipality" && renderDropdown("municipality", municipalities)}
+    </div>
 
-              <div className="filter-item">
-                <div
-                  className="filter-btn"
-                  onClick={() => setOpenDropdown(openDropdown === "status" ? null : "status")}
-                >
-                  Status {filters.status && `: ${filters.status}`}
-                  <span className="arrow" style={{ pointerEvents: "none" }}>
-                    {openDropdown === "status" ? "▲" : "▼"}
-                  </span>
-                </div>
-                {openDropdown === "status" && renderDropdown("status", statuses)}
-              </div>
-                <div className="sidebar-bottom">
-                <button className="sidebar-btn settings-btn" onClick={handleSettings}>
-                  <FiSettings style={{ marginRight: "8px", fontSize: "18px" }} />
-                  Settings
-                </button>
+    <div className="filter-item">
+      <div
+        className="filter-btn"
+        onClick={() => setOpenDropdown(openDropdown === "year" ? null : "year")}
+      >
+        Year {filters.year && `: ${filters.year}`}
+        <span className="arrow" style={{ pointerEvents: "none" }}>
+          {openDropdown === "year" ? "▲" : "▼"}
+        </span>
+      </div>
+      {openDropdown === "year" && renderDropdown("year", years)}
+    </div>
 
-                <button className="sidebar-btn signout-btn" onClick={handleSignOut}>
-                  <FiLogOut style={{ marginRight: "8px", fontSize: "18px" }} />
-                  Sign Out
-                </button>
-              </div>
-            </>
-          )}
+    <div className="filter-item">
+      <div
+        className="filter-btn"
+        onClick={() => setOpenDropdown(openDropdown === "status" ? null : "status")}
+      >
+        Status {filters.status && `: ${filters.status}`}
+        <span className="arrow" style={{ pointerEvents: "none" }}>
+          {openDropdown === "status" ? "▲" : "▼"}
+        </span>
+      </div>
+      {openDropdown === "status" && renderDropdown("status", statuses)}
+    </div>
+    
+{/* Fixed Notification Button */}
+<button
+  className="sidebar-menu-item"
+  onClick={() => navigate("/po-notifications")}
+  style={{
+    display: "flex",
+    alignItems: "center",
+    width: "100%",
+    padding: "10px",
+    background: "none",
+    border: "none",
+    color: "white",
+    cursor: "pointer",
+    transition: "background-color 0.2s ease",
+    position: "relative"
+  }}
+  onMouseEnter={(e) => {
+    e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.28)";
+    e.currentTarget.style.borderRadius = "4px";
+  }}
+  onMouseLeave={(e) => {
+    e.currentTarget.style.backgroundColor = "transparent";
+  }}
+>
+  <FiBell style={{ marginRight: "8px", fontSize: "18px" }} />
+  Notifications
+  {unreadCount > 0 && (
+    <span style={{
+      backgroundColor: "#dc3545",
+      color: "white",
+      borderRadius: "12px",
+      padding: "2px 8px",
+      fontSize: "11px",
+      marginLeft: "8px",
+      fontWeight: "bold"
+    }}>
+      {unreadCount}
+    </span>
+  )}
+</button>
+    
+    <div className="sidebar-bottom">
+      <button className="sidebar-btn signout-btn" onClick={handleSignOut}>
+        <FiLogOut style={{ marginRight: "8px", fontSize: "18px" }} />
+        Sign Out
+      </button>
+    </div>
+  </>
+)}
         </div>
 
 
@@ -545,104 +1072,130 @@ const handleSignOut = () => {
   </button>
 </div>
 
-          {/* Table */}
-          <div className="table-box">
-            <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>LGU TYPE</th>
-                  <th>MUNICIPALITY</th>
-                  <th>YEAR</th>
-                  <th>STATUS</th>
-                  <th>Submission</th>
-                  <th>Encoding Deadline</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentRows.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.id}</td>
-                    <td>{item.lgu}</td>
-                    <td>{item.municipality}</td>
-                    <td>{item.year}</td>
-                    <td>
-                      <span className={`status ${item.status.toLowerCase()}`}>
-                        {item.status}
-                      </span>
-                    </td>
-                    <td>{item.submission}</td>
-                    <td>{item.deadline}</td>
-                    <td className="actions">
-                      <button className="btn export" onClick={() => handleExport(item)}>
-                        Export
-                      </button>
-                      <button className="btn view" onClick={() => handleView(item)}>
-                        View
-                      </button>
-                      <button className="btn completion" onClick={() => handleCompletion(item)}>
-                        Completion
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-            {/* Accurate Pagination like the image */}
-            <div className="table-footer">
-              {filteredData.length === 0 ? (
-                "Showing 0–0 of 0 items"
-              ) : (
-                <>
-                  Showing {indexOfFirstRow + 1}–
-                  {Math.min(indexOfLastRow, filteredData.length)} of {filteredData.length} items
-                </>
-              )}
-              <div className="page-buttons">
-                {/* LEFT ARROW */}
-                  <button
-                    disabled={filteredData.length === 0 || currentPage === 1}
-                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                  >
-                  ◀
-                </button>
+{/* Table */}
+<div className="table-box">
+  <div className="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>MUNICIPALITY</th>
+          <th>YEAR</th>
+          <th>STATUS</th>
+          <th>Submission Date</th>
+          <th>Submission Deadline</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+<tbody>
+  {loadingForwarded || loadingVerified ? (
+    <tr>
+      <td colSpan="7" style={{ textAlign: "center", padding: "20px" }}>
+        Loading...
+      </td>
+    </tr>
+  ) : filteredData.length > 0 ? (
+    currentRows.map((item) => (
+      <tr key={item.id}>
+        <td>{item.id}</td>
+        <td>
+          {item.municipality}
+        </td>
+        <td>{item.year}</td>
+        <td>
+          <span className={`status ${item.status?.toLowerCase() || 'pending'}`}>
+            {item.status}
+          </span>
+        </td>
+        <td>{item.submission}</td>
+        <td>{item.deadline}</td>
+<td className="actions">
+  <button 
+    onClick={() => handleView(item)}
+    style={{
+      backgroundColor: "#0c1a4b",
+      color: "white",
+      border: "none",
+      padding: "6px 15px",
+      borderRadius: "4px",
+      fontSize: "13px",
+      cursor: "pointer",
+      fontWeight: "500",
+      display: "flex",
+      alignItems: "center",
+      gap: "5px",
+      transition: "background-color 0.2s"
+    }}
+    onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#1a2a6c"}
+    onMouseOut={(e) => e.currentTarget.style.backgroundColor = "#0c1a4b"}
+  >
+    View 👁
+  </button>
+</td>
+      </tr>
+    ))
+   ) : (
+    <tr>
+      <td colSpan="7" style={{ textAlign: "center", padding: "20px" }}>
+        No assessments found
+      </td>
+    </tr>
+  )}
+</tbody>
+    </table>
+  </div>
+  
+{/* Pagination */}
+<div className="table-footer">
+  {filteredData.length === 0 ? (
+    "Showing 0–0 of 0 items"
+  ) : (
+    <>
+      Showing {indexOfFirstRow + 1}–
+      {Math.min(indexOfLastRow, filteredData.length)} of {filteredData.length} items
+    </>
+  )}
+  <div className="page-buttons">
+    {/* LEFT ARROW */}
+    <button
+      disabled={filteredData.length === 0 || currentPage === 1}
+      onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+    >
+      ◀
+    </button>
 
-                {/* PAGE INPUT */}
-                  <input
-                    max={totalPages || 1}
-                    value={filteredData.length === 0 ? 0 : currentPage}
-                    disabled={filteredData.length === 0}
-                    onChange={(e) => {
-                      if (filteredData.length === 0) return;
+    {/* PAGE INPUT */}
+    <input
+      max={totalPages || 1}
+      value={filteredData.length === 0 ? 0 : currentPage}
+      disabled={filteredData.length === 0}
+      onChange={(e) => {
+        if (filteredData.length === 0) return;
 
-                      let value = Number(e.target.value);
+        let value = Number(e.target.value);
 
-                      if (value < 1) value = 1;
-                      if (value > totalPages) value = totalPages;
+        if (value < 1) value = 1;
+        if (value > totalPages) value = totalPages;
 
-                      setCurrentPage(value);
-                    }}
-                    className="page-input"
-                  />
+        setCurrentPage(value);
+      }}
+      className="page-input"
+    />
 
-                <span>of {totalPages}</span>
+    <span>of {totalPages}</span>
 
-                {/* RIGHT ARROW */}
-                  <button
-                    disabled={filteredData.length === 0 || currentPage === totalPages}
-                    onClick={() =>
-                      setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-                    }
-                  >
-                  ▶
-                </button>
-              </div>
-            
-            </div>
-          </div>
+    {/* RIGHT ARROW */}
+    <button
+      disabled={filteredData.length === 0 || currentPage === totalPages}
+      onClick={() =>
+        setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+      }
+    >
+      ▶
+    </button>
+  </div>
+</div>
+</div>
         </div>
 
         {/* Modal */}
