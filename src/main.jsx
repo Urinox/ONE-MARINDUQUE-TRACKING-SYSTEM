@@ -1,11 +1,14 @@
-import { StrictMode, useState, useEffect } from "react";
+import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { ref, get } from "firebase/database";
 import "./index.css";
 
-// Import your Firebase instances from the existing config file
-import { auth, db } from "./firebase"; // Adjust the path as needed
+// Import your Firebase instances
+import { auth, db } from "./firebase";
+
+// Import Auth Context
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { InactivityWarning } from "../components/InactivityWarning";
 
 // Import your components
 import App from "./PO/app.jsx";
@@ -20,142 +23,118 @@ import POView from "./PO/po-view.jsx";
 import MLGONotification from "./MLGO/mlgo-notifications.jsx";
 import PONotification from "./PO/po-notifications.jsx";
 
-// REMOVE THIS WHOLE SECTION:
-// const firebaseConfig = {...};
-// const app = initializeApp(firebaseConfig);
-// const auth = getAuth(app);
-// const db = getDatabase(app);
-
+// Protected Route Component (using Auth Context)
 function ProtectedRoute({ children, allowedRoles }) {
-  const [role, setRole] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
-
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
-      setUser(currentUser);
-      
-      if (!currentUser) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const snapshot = await get(ref(db, `users/${currentUser.uid}/role`));
-        if (snapshot.exists()) {
-          setRole(snapshot.val());
-        }
-      } catch (error) {
-        console.error("Error fetching user role:", error);
-      } finally {
-        setLoading(false);
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
+  const { user, userRole, loading } = useAuth();
 
   if (loading) return <Loader />;
   if (!user) return <Navigate to="/login" replace />;
-  if (!allowedRoles.includes(role)) return <Navigate to="/login" replace />;
+  if (!allowedRoles.includes(userRole)) return <Navigate to="/login" replace />;
 
   return children;
 }
 
-function Root() {
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 2000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  if (loading) return <Loader />;
-
+// Layout component to show inactivity warning
+function AppLayout({ children }) {
+  const { showInactivityWarning } = useAuth();
+  
   return (
-    <Routes>
-      <Route path="/login" element={<App />} />
+    <>
+      {showInactivityWarning && <InactivityWarning />}
+      {children}
+    </>
+  );
+}
 
-      {/* PO/Admin Routes */}
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute allowedRoles={["admin"]}>
-            <Dashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/po-indicators"
-        element={
-          <ProtectedRoute allowedRoles={["admin"]}>
-            <POIndicators />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/po-view"
-        element={
-          <ProtectedRoute allowedRoles={["admin"]}>
-            <POView />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/po-notifications"
-        element={
-          <ProtectedRoute allowedRoles={["admin"]}>
-            <PONotification />
-          </ProtectedRoute>
-        }
-      />
+function Root() {
+  return (
+    <AuthProvider>
+      <AppLayout>
+        <Routes>
+          <Route path="/login" element={<App />} />
 
-      {/* MLGO Routes */}
-      <Route
-        path="/mlgo-dashboard"
-        element={
-          <ProtectedRoute allowedRoles={["sub-admin"]}>
-            <MLGO />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/mlgo-view"
-        element={
-          <ProtectedRoute allowedRoles={["sub-admin"]}>
-            <MLGOView />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/mlgo-notification"
-        element={
-          <ProtectedRoute allowedRoles={["sub-admin"]}>
-            <MLGONotification />
-          </ProtectedRoute>
-        }
-      />
+          {/* PO/Admin Routes */}
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/po-indicators"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <POIndicators />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/po-view"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <POView />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/po-notifications"
+            element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <PONotification />
+              </ProtectedRoute>
+            }
+          />
 
-      {/* LGU Routes */}
-      <Route
-        path="/lgu-assessment"
-        element={
-          <ProtectedRoute allowedRoles={["user"]}>
-            <LGU />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/lgu-notification"
-        element={
-          <ProtectedRoute allowedRoles={["user"]}>
-            <LGUNotification />
-          </ProtectedRoute>
-        }
-      />
+          {/* MLGO Routes */}
+          <Route
+            path="/mlgo-dashboard"
+            element={
+              <ProtectedRoute allowedRoles={["sub-admin"]}>
+                <MLGO />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/mlgo-view"
+            element={
+              <ProtectedRoute allowedRoles={["sub-admin"]}>
+                <MLGOView />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/mlgo-notification"
+            element={
+              <ProtectedRoute allowedRoles={["sub-admin"]}>
+                <MLGONotification />
+              </ProtectedRoute>
+            }
+          />
 
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
+          {/* LGU Routes */}
+          <Route
+            path="/lgu-assessment"
+            element={
+              <ProtectedRoute allowedRoles={["user"]}>
+                <LGU />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/lgu-notification"
+            element={
+              <ProtectedRoute allowedRoles={["user"]}>
+                <LGUNotification />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+      </AppLayout>
+    </AuthProvider>
   );
 }
 

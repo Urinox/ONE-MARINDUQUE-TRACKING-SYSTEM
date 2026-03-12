@@ -75,35 +75,88 @@ export default function App() {
     return () => clearTimeout(timeoutId);
   }, [userId, db]);
 
-async function handleLogin(email, password) {
-  try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-
-    // 🚫 Require OTP verification (email verified)
-    if (!user.emailVerified) {
-      alert("Please verify your email (OTP) before logging in.");
-      return;
+  async function handleLogin(email, password) {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+  
+      // 🚫 Require email verification
+      if (!user.emailVerified) {
+        alert("Please verify your email before logging in.");
+        return;
+      }
+  
+      const uid = user.uid;
+      const now = Date.now();
+      const THIRTY_MINUTES = 30 * 60 * 1000; // 30 minutes in milliseconds
+      
+      // Get user data from database
+      const userSnapshot = await get(ref(db, `users/${uid}`));
+      
+      if (!userSnapshot.exists()) {
+        alert('User data not found. Please contact support.');
+        return;
+      }
+      
+      const userData = userSnapshot.val();
+      const lastVerified = userData.lastVerified || 0;
+      
+      // Check if last verification was more than 30 minutes ago
+      if (now - lastVerified > THIRTY_MINUTES) {
+        // Send new verification email
+        await sendEmailVerification(user);
+        
+        // Update lastVerified timestamp
+        await set(ref(db, `users/${uid}/lastVerified`), now);
+        
+        alert("For security purposes, we've sent a new verification email to your inbox. Please verify to continue.");
+        
+        // Sign out the user until they verify
+        await auth.signOut();
+        return;
+      }
+  
+      // Get user role
+      const roleSnapshot = await get(ref(db, `users/${uid}/role`));
+      const role = roleSnapshot.val();
+  
+      if (role === 'admin') {
+        navigate('/dashboard');
+      } else if (role === 'sub-admin') {
+        navigate('/mlgo-dashboard');
+      } else if (role === 'user') {
+        navigate('/lgu-assessment');
+      } else {
+        alert('No access assigned');
+      }
+    } catch (error) {
+      console.error('Login error:', error.message);
+      
+      // Handle specific Firebase Auth errors
+      switch (error.code) {
+        case 'auth/invalid-email':
+          alert('Invalid email address format.');
+          break;
+        case 'auth/user-disabled':
+          alert('This account has been disabled. Please contact support.');
+          break;
+        case 'auth/user-not-found':
+          alert('No account found with this email address.');
+          break;
+        case 'auth/wrong-password':
+          alert('Incorrect password. Please try again.');
+          break;
+        case 'auth/too-many-requests':
+          alert('Too many failed login attempts. Please try again later or reset your password.');
+          break;
+        case 'auth/network-request-failed':
+          alert('Network error. Please check your internet connection.');
+          break;
+        default:
+          alert('Login failed: ' + error.message);
+      }
     }
-
-    const uid = user.uid;
-    const snapshot = await get(ref(db, `users/${uid}/role`));
-    const role = snapshot.val();
-
-    if (role === 'admin') {
-      navigate('/dashboard');
-    } else if (role === 'sub-admin') {
-      navigate('/mlgo-dashboard');
-    } else if (role === 'user') {
-      navigate('/lgu-assessment');
-    }else {
-      alert('No access assigned');
-    }
-  } catch (error) {
-    console.error('Login error:', error.message);
   }
-}
-
 
   const handleForgotPassword = async () => {
     if (!userId) {
@@ -135,6 +188,7 @@ async function handleLogin(email, password) {
 
       const snapshot = await get(ref(db, `users/${user.uid}`));
       const now = Date.now();
+      const THIRTY_MINUTES = 30 * 60 * 1000;
       
       if (!snapshot.exists()) {
         await set(ref(db, `users/${user.uid}`), {
@@ -147,11 +201,23 @@ async function handleLogin(email, password) {
         });
       } else {
         const userData = snapshot.val();
-        const FOUR_HOURS = 4 * 60 * 60 * 1000;
         const lastVerified = userData.lastVerified || 0;
         
-        if (now - lastVerified > FOUR_HOURS) {
+        // Check if last verification was more than 30 minutes ago
+        if (now - lastVerified > THIRTY_MINUTES) {
+          alert("For security purposes, please verify your email again. A verification email has been sent.");
+          
+          // For Google Sign-in, we'll send a verification email if possible
+          if (!user.emailVerified) {
+            await sendEmailVerification(user);
+          }
+          
+          // Update timestamp
           await set(ref(db, `users/${user.uid}/lastVerified`), now);
+          
+          // For Google users, we might want to sign them out or handle differently
+          // Since Google users are typically already verified, we can allow them to proceed
+          // but update the timestamp
         }
       }
 
@@ -182,58 +248,62 @@ async function handleLogin(email, password) {
     return () => clearInterval(timer);
   }, [cooldown]);
 
-const handleRegister = async (email, password) => {
-  if (!email || !password) {
-    alert("Please enter all registration fields");
-    return;
-  }
-
-  try {
-    console.log("Attempting to register:", email);
-    
-    // Create user in Firebase Auth
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-    console.log("User created in Auth:", user.uid);
-
-    // Send verification email
-    await sendEmailVerification(user);
-    console.log("Verification email sent");
-
-    // Save user data to Realtime Database
-    await set(ref(db, `users/${user.uid}`), {
-      email: email,
-      role: "user",
-      lastVerified: Date.now(),
-      createdAt: new Date().toISOString()
-    });
-    console.log("User data saved to database");
-
-    alert("Registration successful! Please verify your email before logging in.");
-    setRegEmail("");
-    setRegPassword("");
-    setShowRegisterModal(false);
-
-  } catch (error) {
-    console.error("Registration error:", error);
-
-    if (error.code === "auth/email-already-in-use") {
-      alert("Registration Failed: Email already registered.");
-    } else if (error.code === "auth/invalid-email") {
-      alert("Invalid Email");
-    } else if (error.code === "auth/weak-password") {
-      alert("Weak Password - Password should be at least 6 characters");
-    } else {
-      alert("Registration Failed: " + error.message);
+  const handleRegister = async (email, password) => {
+    if (!email || !password) {
+      alert("Please enter all registration fields");
+      return;
     }
-  }
-};
+
+    try {
+      console.log("Attempting to register:", email);
+      
+      // Create user in Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      console.log("User created in Auth:", user.uid);
+
+      // Send verification email
+      await sendEmailVerification(user);
+      console.log("Verification email sent");
+
+      // Save user data to Realtime Database with initial lastVerified timestamp
+      await set(ref(db, `users/${user.uid}`), {
+        email: email,
+        role: "user",
+        lastVerified: Date.now(), // Set initial verification timestamp
+        createdAt: new Date().toISOString()
+      });
+      console.log("User data saved to database");
+
+      alert("Registration successful! Please verify your email before logging in. You'll need to verify every 30 minutes for security.");
+      setRegEmail("");
+      setRegPassword("");
+      setShowRegisterModal(false);
+
+    } catch (error) {
+      console.error("Registration error:", error);
+
+      if (error.code === "auth/email-already-in-use") {
+        alert("Registration Failed: Email already registered.");
+      } else if (error.code === "auth/invalid-email") {
+        alert("Invalid Email");
+      } else if (error.code === "auth/weak-password") {
+        alert("Weak Password - Password should be at least 6 characters");
+      } else {
+        alert("Registration Failed: " + error.message);
+      }
+    }
+  };
 
   const resendVerificationEmail = async () => {
     const user = auth.currentUser;
     if (user) {
       try {
         await sendEmailVerification(user);
+        // Update lastVerified timestamp when resending verification
+        if (user.uid) {
+          await set(ref(db, `users/${user.uid}/lastVerified`), Date.now());
+        }
         alert("Verification email sent! Please check your inbox.");
       } catch (error) {
         console.error("Error sending verification email:", error);
@@ -251,12 +321,17 @@ const handleRegister = async (email, password) => {
         email = window.prompt("Please provide your email for confirmation");
       }
       signInWithEmailLink(auth, email, window.location.href)
-        .then((result) => {
+        .then(async (result) => {
           const user = result.user;
 
           if (!user.emailVerified) {
             alert("Please verify your email first.");
             return;
+          }
+
+          // Update lastVerified timestamp for email link sign-in
+          if (user.uid) {
+            await set(ref(db, `users/${user.uid}/lastVerified`), Date.now());
           }
 
           window.localStorage.removeItem("emailForSignIn");
@@ -346,6 +421,9 @@ const handleRegister = async (email, password) => {
           <div className="modal-overlay" onClick={() => setShowRegisterModal(false)}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <h2>Register</h2>
+              <p className="security-note" style={{fontSize: '0.9rem', color: '#666', marginBottom: '1rem'}}>
+                Note: For security purposes, you'll need to verify your email every 30 minutes.
+              </p>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
