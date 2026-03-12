@@ -7,14 +7,12 @@ import { FiFilter, FiRotateCcw, FiSettings, FiLogOut, FiFileText, FiBell } from 
 import { useNavigate } from "react-router-dom";
 import { ref, push, onValue, set, get } from "firebase/database";
 
-
-
 export default function Dashboard() {
   const [forwardedData, setForwardedData] = useState([]);
   const [verifiedData, setVerifiedData] = useState([]);
-const [loadingVerified, setLoadingVerified] = useState(true);
-const [loadingForwarded, setLoadingForwarded] = useState(true);
-const [userRoleMap, setUserRoleMap] = useState({}); // Store user roles
+  const [loadingVerified, setLoadingVerified] = useState(true);
+  const [loadingForwarded, setLoadingForwarded] = useState(true);
+  const [userRoleMap, setUserRoleMap] = useState({}); // Store user roles
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
@@ -29,11 +27,11 @@ const [userRoleMap, setUserRoleMap] = useState({}); // Store user roles
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [editProfileData, setEditProfileData] = useState({
-  name: "",
-  municipality: "", // ADD THIS LINE
-  email: displayName,
-  image: ""
-});
+    name: "",
+    municipality: "",
+    email: displayName,
+    image: ""
+  });
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileData, setProfileData] = useState({
     name: "",
@@ -41,6 +39,21 @@ const [userRoleMap, setUserRoleMap] = useState({}); // Store user roles
     image: ""
   });
   const [data, setData] = useState([]);
+
+  // Add state for assessments
+  const [assessmentList, setAssessmentList] = useState([]);
+  
+  const [newRecord, setNewRecord] = useState({
+    year: "",
+    municipality: "",
+    assessment: "" // Add assessment to newRecord state
+  });
+  
+  // Use useMemo to filter assessments based on selected year
+  const filteredAssessments = useMemo(() => {
+    if (!newRecord.year) return [];
+    return assessmentList.filter(a => a.year === newRecord.year);
+  }, [assessmentList, newRecord.year]);
 
 useEffect(() => {
   if (!auth.currentUser) return;
@@ -76,6 +89,59 @@ useEffect(() => {
     }
   });
 }, []);
+
+useEffect(() => {
+  if (!auth.currentUser) return;
+
+  const assessmentsRef = ref(db, `assessments/${auth.currentUser.uid}`);
+
+  onValue(assessmentsRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const assessmentsData = snapshot.val();
+      const list = [];
+      
+      // Transform the nested object structure into an array
+      Object.keys(assessmentsData).forEach(year => {
+        const yearData = assessmentsData[year];
+        if (yearData) {
+          Object.keys(yearData).forEach(assessmentId => {
+            const assessment = yearData[assessmentId];
+            list.push({
+              id: assessmentId,
+              name: assessment.name || "Untitled Assessment",
+              year: year,
+              description: assessment.description || "",
+              createdAt: assessment.createdAt,
+              status: assessment.status || "active"
+            });
+          });
+        }
+      });
+      
+      setAssessmentList(list);
+      console.log("Loaded assessments:", list);
+    } else {
+      setAssessmentList([]);
+    }
+  });
+}, [auth.currentUser]);
+
+// Clear assessment selection when year changes
+useEffect(() => {
+  if (newRecord.year) {
+    // Clear assessment selection if it doesn't belong to the selected year
+    if (newRecord.assessment) {
+      const selectedAssessment = assessmentList.find(
+        a => a.name === newRecord.assessment && a.year === newRecord.year
+      );
+      if (!selectedAssessment) {
+        setNewRecord(prev => ({ ...prev, assessment: "" }));
+      }
+    }
+  } else {
+    setNewRecord(prev => ({ ...prev, assessment: "" }));
+  }
+}, [newRecord.year, assessmentList]);
 
 // Add this with your other useState declarations
 const [subAdminMunicipalities, setSubAdminMunicipalities] = useState({});
@@ -179,6 +245,7 @@ useEffect(() => {
 
   fetchSubAdminMunicipalities();
 }, [auth.currentUser?.uid]);
+
 // Fetch all profiles to get municipality names and user details
 useEffect(() => {
   if (!auth.currentUser) return;
@@ -266,6 +333,8 @@ Object.keys(allVerified).forEach(year => {
       const item = allVerified[year].LGU[lguName];
       
       let municipality = "Unknown";
+      let assessment = item.assessment || "General Assessment"; // Get assessment from data
+      let assessmentId = item.assessmentId || "unknown";
       
       // Try to get municipality from the item data first
       if (item.municipality) {
@@ -287,6 +356,8 @@ Object.keys(allVerified).forEach(year => {
         id: counter++,
         municipality: municipality, // Now this will be the actual municipality name
         year: year,
+        assessment: assessment, // Add assessment field
+        assessmentId: assessmentId,
         status: "Verified",
         submission: item.submission || new Date().toLocaleDateString(),
         deadline: item.deadline || "-",
@@ -340,6 +411,8 @@ useEffect(() => {
             const item = data[key];
             
 let municipality = "Unknown";
+let assessment = item.assessment || "General Assessment"; // Get assessment from data
+let assessmentId = item.assessmentId || "unknown";
 let lookupAttempted = false;
 
 // Try to get municipality from UID if it exists
@@ -386,6 +459,8 @@ if (municipality === "Unknown") {
               id: counter++,
               municipality: municipality,
               year: item.year || "Unknown",
+              assessment: item.assessment || "General Assessment", // Use item.assessment directly
+              assessmentId: item.assessmentId || "unknown",
               status: item.status || "Pending",
               submission: item.submission || new Date().toLocaleDateString(),
               deadline: item.deadline || "-",
@@ -393,7 +468,9 @@ if (municipality === "Unknown") {
               submittedBy: item.submittedBy || "Unknown",
               userRole: item.userRole || "Unknown",
               originalData: item.originalData || {},
-              // Needed so forwarded items don't collapse/hide in table logic
+              // Add data field for view component
+              data: item.originalData || {},
+              // Type field
               type: "forwarded",
               lguName: item.lguName || municipality
             });
@@ -441,6 +518,7 @@ useEffect(() => {
               id: index + 1,
               municipality: municipality,
               year: item.year,
+              assessment: item.assessment || "General Assessment",
               status: item.status || "Pending",
               submission: item.submission,
               deadline: item.deadline,
@@ -464,74 +542,11 @@ useEffect(() => {
   return () => window.removeEventListener('storage', handleStorageChange);
 }, [userRoleMap]);
 
-/*
-useEffect(() => {
-  const handleStorageChange = (e) => {
-    if (e.key === 'forwardedToPO') {
-      try {
-        const forwarded = JSON.parse(e.newValue || '[]');
-        if (forwarded.length > 0) {
-          const mappedData = forwarded.map((item, index) => {
-            let municipality = item.municipality || "Unknown";
-            
-            // Try to get user role
-            let userRole = "Unknown";
-            if (item.lguUid && userRoleMap[item.lguUid]) {
-              userRole = userRoleMap[item.lguUid];
-            } else if (item.userRole) {
-              userRole = item.userRole;
-            }
-            
-            return {
-              id: index + 1,
-              municipality: municipality,
-              year: item.year,
-              status: item.status || "Pending",
-              submission: item.submission,
-              deadline: item.deadline,
-              lgu: item.lgu || "M",
-              data: item.data || {},
-              lguUid: item.lguUid,
-              userRole: userRole,
-              submittedBy: item.submittedBy || "Unknown"
-            };
-          });
-          
-          setData(mappedData);
-        }
-      } catch (error) {
-        console.error("Error handling storage change:", error);
-      }
-    }
-  };
-
-  window.addEventListener('storage', handleStorageChange);
-  return () => window.removeEventListener('storage', handleStorageChange);
-}, [userRoleMap]);
-
-useEffect(() => {
-  const dataRef = ref(db, `financial/${auth.currentUser.uid}`);
-  onValue(dataRef, (snapshot) => {
-    const records = [];
-    let counter = 1; // start IDs from 1
-    snapshot.forEach((childSnapshot) => {
-      const record = childSnapshot.val();
-      records.push({ ...record, id: counter++, firebaseKey: childSnapshot.key });
-    });
-    setData(records);
-  });
-}, []);
-*/
-
-
-  const [newRecord, setNewRecord] = useState({
-    year: "",
-    municipality: ""
-  });
   const [filters, setFilters] = useState({
     municipality: "",
     year: "",
     status: "",
+    assessment: "" // Add assessment filter
   });
 
 
@@ -577,31 +592,6 @@ const handleImageUpload = (e) => {
   reader.readAsDataURL(file);
 };
 
-
-
-/*
-const handleAddRecord = async () => {
-  if (!newRecord.year || !newRecord.municipality) return alert("Please complete all fields.");
-
-  const nextId = data.length > 0 ? Math.max(...data.map(d => d.id)) + 1 : 1;
-  const today = new Date().toLocaleDateString("en-US", { day: "2-digit", month: "long", year: "numeric" });
-  const newEntry = { id: nextId, lgu: "M", municipality: newRecord.municipality, year: newRecord.year, status: "Draft", submission: today, deadline: "-" };
-
-  try {
-    const newRef = push(ref(db, `financial/${auth.currentUser.uid}`)); // user-specific
-    await set(newRef, newEntry); // Realtime Database push
-    
-    alert("Saved successfully!");
-    setShowModal(false);
-    setNewRecord({ year: "", municipality: "" });
-  } catch (error) {
-    console.error(error);
-    alert("Write failed: " + error.message);
-  }
-};
-*/  
-
-
 const handleView = (item) => {
   console.log("View:", item);
   
@@ -611,37 +601,43 @@ const handleView = (item) => {
       state: { 
         year: item.year,
         municipality: item.municipality,
+        assessment: item.assessment,
+        assessmentId: item.assessmentId,
         lguUid: item.lguUid,
         submittedBy: item.submittedBy,
         data: item.data,
-        lguName: item.municipality, // Use municipality as lguName
+        lguName: item.municipality,
         submission: item.submission,
         deadline: item.deadline,
-        isVerified: true, // Flag to indicate this is verified data
+        isVerified: true,
         verifiedBy: item.verifiedBy,
         verifiedAt: item.verifiedAt,
-        originalData: item.data // Use data as originalData
+        originalData: item.data
       } 
     });
   } else {
-    // Forwarded assessment
+    // Check if this assessment was previously returned
+    // You might need to check metadata or have a flag in the item
+    const wasReturned = item.wasReturned || false;
+    
     navigate("/po-view", { 
       state: { 
         year: item.year,
         municipality: item.municipality,
+        assessment: item.assessment,
+        assessmentId: item.assessmentId,
         lguUid: item.lguUid,
         submittedBy: item.submittedBy,
         data: item.originalData || item.data,
         lguName: item.lguName,
         submission: item.submission,
         deadline: item.deadline,
-        isVerified: false
+        isVerified: false,
+        wasReturned: wasReturned // Pass this flag
       } 
     });
   }
 };
-
-
 
   const municipalities = ["Boac", "Mogpog", "Sta. Cruz", "Torrijos", "Buenavista", "Gasan"];
   const [years, setYears] = useState(["2021","2022","2023","2024","2025","2026"]);
@@ -679,11 +675,93 @@ const handleDeleteYear = async (yearToDelete) => {
     setNewRecord({ ...newRecord, year: "" });
   }
 };
+
+// Update the handleAddAssessment function:
+const handleAddAssessment = async () => {
+  const newAssessmentName = prompt("Enter new assessment:");
+  if (!newAssessmentName) return;
+
+  // Check if assessment already exists for the selected year
+  if (!newRecord.year) {
+    alert("Please pick a year.");
+    return;
+  }
+
+  // Check if assessment name already exists for this year
+  const existingAssessment = filteredAssessments.find(
+    a => a.name.toLowerCase() === newAssessmentName.toLowerCase()
+  );
+  
+  if (existingAssessment) {
+    alert(`Assessment "${newAssessmentName}" already exists for year ${newRecord.year}`);
+    return;
+  }
+
+  try {
+    // Create a new assessment entry under the selected year
+    const assessmentsRef = ref(db, `assessments/${auth.currentUser.uid}/${newRecord.year}`);
+    const newAssessmentRef = push(assessmentsRef);
+    
+    await set(newAssessmentRef, {
+      name: newAssessmentName,
+      description: "",
+      createdAt: new Date().toISOString(),
+      status: "active"
+    });
+
+    // Update local state
+    setNewRecord({ ...newRecord, assessment: newAssessmentName });
+    
+    console.log("Assessment added successfully");
+  } catch (error) {
+    console.error("Error adding assessment:", error);
+    alert("Failed to add assessment");
+  }
+};
+
+// Update handleDeleteAssessment:
+const handleDeleteAssessment = async (assessmentName) => {
+  if (!newRecord.year) {
+    alert("No year selected");
+    return;
+  }
+
+  // Find the assessment ID from the list (only in the selected year)
+  const assessmentToDelete = filteredAssessments.find(a => a.name === assessmentName);
+  
+  if (!assessmentToDelete) {
+    alert("Assessment not found");
+    return;
+  }
+
+  if (!window.confirm(`Delete assessment "${assessmentName}" for year ${newRecord.year}?`)) return;
+
+  try {
+    const assessmentRef = ref(
+      db, 
+      `assessments/${auth.currentUser.uid}/${newRecord.year}/${assessmentToDelete.id}`
+    );
+    await set(assessmentRef, null);
+
+    // Reset selected value if deleted
+    if (newRecord.assessment === assessmentName) {
+      setNewRecord({ ...newRecord, assessment: "" });
+    }
+  } catch (error) {
+    console.error("Error deleting assessment:", error);
+    alert("Failed to delete assessment");
+  }
+};
   
   const statuses = ["Verified", "Pending"];
 
   const updateFilter = (type, value) => {
-    setFilters({ ...filters, [type]: value });
+    // If changing the year, clear the assessment filter
+    if (type === "year") {
+      setFilters({ ...filters, [type]: value, assessment: "" });
+    } else {
+      setFilters({ ...filters, [type]: value });
+    }
     setOpenDropdown(null);
     setCurrentPage(1);
   };
@@ -693,6 +771,7 @@ const handleDeleteYear = async (yearToDelete) => {
       municipality: "",
       year: "",
       status: "",
+      assessment: "", // Clear assessment filter
     });
     setCurrentPage(1);
   };
@@ -700,20 +779,46 @@ const handleDeleteYear = async (yearToDelete) => {
 
 // ===== ADD THE VERIFIED FILTERING LOGIC HERE (ONLY CHANGE) =====
 // Combine forwardedData and verifiedData for display, removing verified items from forwarded
+// Combine forwardedData and verifiedData for display
 const allData = useMemo(() => {
-  // Use year+municipality as the unique identity per assessment.
-  // (Using year+lguUid is unreliable because lguUid is the MLGO UID and repeats.)
+  console.log("Forwarded data:", forwardedData);
+  console.log("Verified data:", verifiedData);
+  
+  // Create a Set of verified item keys
   const verifiedKeys = new Set(
-    verifiedData.map(v => `${v.year}-${v.municipality || v.lguName || "Unknown"}`)
+    verifiedData.map(v => {
+      const key = `${v.year || ''}-${v.municipality || v.lguName || ''}-${v.assessmentId || v.assessment || ''}`;
+      console.log("Verified key:", key);
+      return key;
+    })
   );
   
-  // Filter out forwarded items that have been verified
-  const filteredForwarded = forwardedData.filter(item => 
-    !verifiedKeys.has(`${item.year}-${item.municipality || item.lguName || "Unknown"}`)
-  );
+  // Map forwarded items - DON'T filter them out, just mark them
+  const mappedForwarded = forwardedData.map(item => ({
+    ...item,
+    type: 'forwarded',
+    // Ensure we have all required fields
+    municipality: item.municipality || item.lguName || "Unknown",
+    assessment: item.assessment || "General Assessment",
+    assessmentId: item.assessmentId || "unknown",
+    year: item.year || "Unknown",
+    status: item.status || "Pending"
+  }));
   
-  // Combine filtered forwarded with verified
-  const combined = [...filteredForwarded, ...verifiedData];
+  // Map verified items
+  const mappedVerified = verifiedData.map(item => ({
+    ...item,
+    type: 'verified',
+    municipality: item.municipality || item.lguName || "Unknown",
+    assessment: item.assessment || "General Assessment",
+    assessmentId: item.assessmentId || "unknown",
+    year: item.year || "Unknown"
+  }));
+  
+  // Combine both arrays - show ALL items
+  const combined = [...mappedForwarded, ...mappedVerified];
+  
+  console.log("Combined data:", combined);
   
   // Sort by date (most recent first)
   return combined.sort((a, b) => {
@@ -728,6 +833,8 @@ const uniqueData = allData.filter((item, index, self) =>
   index === self.findIndex((t) => 
     (t.municipality || t.lguName) === (item.municipality || item.lguName) &&
     t.year === item.year &&
+    t.assessment === item.assessment && // Include assessment in uniqueness check
+    t.assessmentId === item.assessmentId &&
     t.type === item.type
   )
 );
@@ -742,12 +849,15 @@ const filteredData = dataWithSequentialIds.filter((item) => {
   const matchesSearch = search === "" || 
     item.municipality?.toLowerCase().includes(search.toLowerCase()) ||
     item.year?.toLowerCase().includes(search.toLowerCase()) ||
+    item.assessment?.toLowerCase().includes(search.toLowerCase()) || // Add assessment to search
+    item.status?.toLowerCase().includes(search.toLowerCase()) ||
     item.submittedBy?.toLowerCase().includes(search.toLowerCase());
   
   return (
     (!filters.municipality || item.municipality === filters.municipality) &&
     (!filters.year || item.year === filters.year) &&
     (!filters.status || item.status?.toLowerCase() === filters.status.toLowerCase()) &&
+    (!filters.assessment || item.assessment === filters.assessment) && // Add assessment filter
     matchesSearch
   );
 });
@@ -758,13 +868,37 @@ const indexOfFirstRow = indexOfLastRow - rowsPerPage;
 const currentRows = filteredData.slice(indexOfFirstRow, indexOfLastRow);
 const totalPages = Math.ceil(filteredData.length / rowsPerPage);
 
+// Get unique assessment names based on selected year
+const assessmentFilterOptions = useMemo(() => {
+  // Start with raw data
+  let dataToUse = [...forwardedData, ...verifiedData];
+  
+  // If a year is selected in filters, filter by that year first
+  if (filters.year) {
+    dataToUse = dataToUse.filter(item => item.year === filters.year);
+  }
+  
+  // Get unique assessment names
+  const allAssessments = dataToUse
+    .map(item => item.assessment)
+    .filter(assessment => assessment && assessment !== "General Assessment" && assessment !== "N/A");
+  
+  return [...new Set(allAssessments)].sort();
+}, [forwardedData, verifiedData, filters.year]);
+
   const renderDropdown = (type, list) => (
     <div className="dropdown">
-      {list.map((item, i) => (
-        <div key={i} className="dropdown-item" onClick={() => updateFilter(type, item)}>
-          {item}
+      {list.length > 0 ? (
+        list.map((item, i) => (
+          <div key={i} className="dropdown-item" onClick={() => updateFilter(type, item)}>
+            {item}
+          </div>
+        ))
+      ) : (
+        <div className="dropdown-item" style={{ color: '#999', cursor: 'default' }}>
+          No options available
         </div>
-      ))}
+      )}
     </div>
   );
 
@@ -850,6 +984,30 @@ const handleSignOut = () => {
         </span>
       </div>
       {openDropdown === "status" && renderDropdown("status", statuses)}
+    </div>
+
+    {/* Assessment Filter - depends on selected year */}
+    <div className="filter-item">
+      <div
+        className="filter-btn"
+        onClick={() => setOpenDropdown(openDropdown === "assessment" ? null : "assessment")}
+      >
+        Assessment {filters.assessment && `: ${filters.assessment}`}
+        <span className="arrow" style={{ pointerEvents: "none" }}>
+          {openDropdown === "assessment" ? "▲" : "▼"}
+        </span>
+      </div>
+      {openDropdown === "assessment" && (
+        <>
+          {!filters.year ? (
+            <div className="dropdown-item" style={{ color: '#999', cursor: 'default' }}>
+              Please pick a year.
+            </div>
+          ) : (
+            renderDropdown("assessment", assessmentFilterOptions)
+          )}
+        </>
+      )}
     </div>
     
 {/* Fixed Notification Button */}
@@ -1090,10 +1248,9 @@ const handleSignOut = () => {
             </div>
           </div>
 
-<div className="action-bar">
-  <button className="financial-btn" onClick={() => setShowModal(true)}>
 
-    {/* Pencil Icon */}
+<div className="action-bar">
+  <button className="po-indicators-btn" onClick={() => setShowModal(true)}>
     <svg
       xmlns="http://www.w3.org/2000/svg"
       width="18"
@@ -1110,6 +1267,201 @@ const handleSignOut = () => {
   </button>
 </div>
 
+{/* Modal - ADD NEW RECORD */}
+{showModal && (
+  <div className="modal-overlay">
+    <div className="add-record-modal">
+      
+      {/* Header */}
+      <div className="modal-header">
+        <div className="modal-title">
+          <FiFileText className="modal-icon" />
+          <h3>ADD NEW RECORD</h3>
+        </div>
+        <span className="close-x" onClick={() => setShowModal(false)}>✕</span>
+      </div>  
+      
+      {/* Body */}
+      <div className="modal-body">
+        {/* Year Dropdown */}
+        <div className="modal-field">
+          <label>Year:</label>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <select
+              style={{ width: "70%" }}
+              value={newRecord.year}
+              onChange={(e) => setNewRecord({ ...newRecord, year: e.target.value })}
+            >
+              <option value="">Select Year</option>
+              {years.map((year) => (
+                <option key={year} value={year}>{year}</option>
+              ))}
+            </select>
+
+            {/* Add Year */}
+            <button
+              type="button"
+              onClick={handleAddYear}
+              style={{
+                background: "#081a4b",
+                color: "#fff",
+                border: "none",
+                padding: "10px 10px",
+                borderRadius: "4px",
+                cursor: "pointer",
+                fontSize: "12px"
+              }}
+            >
+              + Add
+            </button>
+
+            {/* Delete Selected Year */}
+            <button
+              type="button"
+              disabled={!newRecord.year}
+              onClick={() => handleDeleteYear(newRecord.year)}
+              style={{
+                background: "transparent",
+                color: newRecord.year ? "red" : "#ccc",
+                border: newRecord.year ? "1px solid red" : "1px solid #ccc",
+                padding: "10px 10px",
+                borderRadius: "4px",
+                cursor: newRecord.year ? "pointer" : "not-allowed",
+                fontSize: "12px"
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+
+        {/* Assessment Dropdown */}
+        <div className="modal-field">
+          <label>Assessment:</label>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <select
+              style={{ width: "70%" }}
+              value={newRecord.assessment}
+              onChange={(e) => setNewRecord({ ...newRecord, assessment: e.target.value })}
+            >
+              <option value="">Select Assessment</option>
+              {filteredAssessments.map((assessment) => (
+                <option key={assessment.id} value={assessment.name}>
+                  {assessment.name}
+                </option>
+              ))}
+            </select>
+
+            {/* Add Assessment button - disabled if no year selected */}
+            <button
+              type="button"
+              onClick={handleAddAssessment}
+              disabled={!newRecord.year}
+              style={{
+                background: newRecord.year ? "#081a4b" : "#ccc",
+                color: "#fff",
+                border: "none",
+                padding: "10px 10px",
+                borderRadius: "4px",
+                cursor: newRecord.year ? "pointer" : "not-allowed",
+                fontSize: "12px"
+              }}
+            >
+              + Add
+            </button>
+
+            {/* Delete Selected Assessment - disabled if no assessment selected */}
+            <button
+              type="button"
+              disabled={!newRecord.assessment}
+              onClick={() => handleDeleteAssessment(newRecord.assessment)}
+              style={{
+                background: "transparent",
+                color: newRecord.assessment ? "red" : "#ccc",
+                border: newRecord.assessment ? "1px solid red" : "1px solid #ccc",
+                padding: "10px 10px",
+                borderRadius: "4px",
+                cursor: newRecord.assessment ? "pointer" : "not-allowed",
+                fontSize: "12px"
+              }}
+            >
+              Remove
+            </button>
+          </div>
+          {!newRecord.year && (
+            <small style={{ color: "#666", display: "block", marginTop: "5px" }}>
+             Please pick a year.
+            </small>
+          )}
+        </div>
+
+        {/* Footer Button - PROCEED */}
+        <div className="modal-footer">
+          <button 
+            className="proceed-btn"
+            onClick={async () => {
+              if (!newRecord.year) {
+                alert("Please pick a year.");
+                return;
+              }
+              if (!newRecord.assessment) {
+                alert("Please select an assessment first.");
+                return;
+              }
+
+              try {
+                // Find the selected assessment from the filtered list
+                const selectedAssessmentObj = filteredAssessments.find(
+                  a => a.name === newRecord.assessment
+                );
+
+                if (!selectedAssessmentObj) {
+                  alert("Selected assessment not found");
+                  return;
+                }
+
+                // Save to created records
+                const recordsRef = ref(db, `createdRecords/${auth.currentUser.uid}`);
+                const newRecordRef = push(recordsRef);
+                
+                await set(newRecordRef, {
+                  year: newRecord.year,
+                  assessment: newRecord.assessment,
+                  assessmentId: selectedAssessmentObj.id,
+                  createdAt: new Date().toISOString(),
+                  status: "Draft",
+                  createdBy: auth.currentUser.uid,
+                  createdByEmail: auth.currentUser.email
+                });
+
+                console.log("Record saved successfully");
+                
+                // Close the modal first
+                setShowModal(false);
+                
+                // Navigate to PO Indicators with all required data
+                navigate("/po-indicators", { 
+                  state: { 
+                    year: newRecord.year,
+                    assessment: newRecord.assessment,
+                    assessmentId: selectedAssessmentObj.id
+                  }   
+                });
+              } catch (error) {
+                console.error("Error saving record:", error);
+                alert("Failed to create assessment. Please try again.");
+              }
+            }}
+          >
+            Proceed ➜
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+
 {/* Table */}
 <div className="table-box">
   <div className="table-wrapper">
@@ -1119,120 +1471,119 @@ const handleSignOut = () => {
           <th>#</th>
           <th>MUNICIPALITY</th>
           <th>YEAR</th>
+          <th>ASSESSMENT</th>
           <th>STATUS</th>
           <th>Submission Date</th>
           <th>Submission Deadline</th>
           <th>Actions</th>
         </tr>
       </thead>
-<tbody>
-  {loadingForwarded || loadingVerified ? (
-    <tr>
-      <td colSpan="7" style={{ textAlign: "center", padding: "20px" }}>
-        Loading...
-      </td>
-    </tr>
-  ) : filteredData.length > 0 ? (
-    currentRows.map((item) => (
-      <tr key={item.id}>
-        <td>{item.id}</td>
-        <td>
-          {item.municipality}
-        </td>
-        <td>{item.year}</td>
-        <td>
-          <span className={`status ${item.status?.toLowerCase() || 'pending'}`}>
-            {item.status}
-          </span>
-        </td>
-        <td>{item.submission}</td>
-        <td>{item.deadline}</td>
-<td className="actions">
-  <button 
-    onClick={() => handleView(item)}
-    style={{
-      backgroundColor: "#0c1a4b",
-      color: "white",
-      border: "none",
-      padding: "6px 15px",
-      borderRadius: "4px",
-      fontSize: "13px",
-      cursor: "pointer",
-      fontWeight: "500",
-      display: "flex",
-      alignItems: "center",
-      gap: "5px",
-      transition: "background-color 0.2s"
-    }}
-    onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#1a2a6c"}
-    onMouseOut={(e) => e.currentTarget.style.backgroundColor = "#0c1a4b"}
-  >
-    View 👁
-  </button>
-</td>
-      </tr>
-    ))
-   ) : (
-    <tr>
-      <td colSpan="7" style={{ textAlign: "center", padding: "20px" }}>
-        No assessments found
-      </td>
-    </tr>
-  )}
-</tbody>
+      <tbody>
+        {loadingForwarded || loadingVerified ? (
+          <tr>
+            <td colSpan="8" style={{ textAlign: "center", padding: "20px" }}>
+              Loading...
+            </td>
+          </tr>
+        ) : filteredData.length > 0 ? (
+          currentRows.map((item) => (
+            <tr key={item.id}>
+              <td>{item.id}</td>
+              <td>{item.municipality}</td>
+              <td>{item.year}</td>
+              <td>{item.assessment || "General Assessment"}</td>
+              <td>
+                <span className={`status ${item.status?.toLowerCase() || 'pending'}`}>
+                  {item.status}
+                </span>
+              </td>
+              <td>{item.submission}</td>
+              <td>{item.deadline}</td>
+              <td className="actions">
+                <button 
+                  onClick={() => handleView(item)}
+                  style={{
+                    backgroundColor: "#0c1a4b",
+                    color: "white",
+                    border: "none",
+                    padding: "6px 15px",
+                    borderRadius: "4px",
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    fontWeight: "500",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    transition: "background-color 0.2s"
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#1a2a6c"}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = "#0c1a4b"}
+                >
+                  View 👁
+                </button>
+              </td>
+            </tr>
+          ))
+        ) : (
+          <tr>
+            <td colSpan="8" style={{ textAlign: "center", padding: "20px" }}>
+              No assessments found
+            </td>
+          </tr>
+        )}
+      </tbody>
     </table>
   </div>
   
-{/* Pagination */}
-<div className="table-footer">
-  {filteredData.length === 0 ? (
-    "Showing 0–0 of 0 items"
-  ) : (
-    <>
-      Showing {indexOfFirstRow + 1}–
-      {Math.min(indexOfLastRow, filteredData.length)} of {filteredData.length} items
-    </>
-  )}
-  <div className="page-buttons">
-    {/* LEFT ARROW */}
-    <button
-      disabled={filteredData.length === 0 || currentPage === 1}
-      onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-    >
-      ◀
-    </button>
+  {/* Pagination */}
+  <div className="table-footer">
+    {filteredData.length === 0 ? (
+      "Showing 0–0 of 0 items"
+    ) : (
+      <>
+        Showing {indexOfFirstRow + 1}–{Math.min(indexOfLastRow, filteredData.length)} of {filteredData.length} items
+      </>
+    )}
+    <div className="page-buttons">
+      {/* LEFT ARROW */}
+      <button
+        disabled={filteredData.length === 0 || currentPage === 1}
+        onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+      >
+        ◀
+      </button>
 
-    {/* PAGE INPUT */}
-    <input
-      max={totalPages || 1}
-      value={filteredData.length === 0 ? 0 : currentPage}
-      disabled={filteredData.length === 0}
-      onChange={(e) => {
-        if (filteredData.length === 0) return;
+      {/* PAGE INPUT */}
+      <input
+        max={totalPages || 1}
+        value={filteredData.length === 0 ? 0 : currentPage}
+        disabled={filteredData.length === 0}
+        onChange={(e) => {
+          if (filteredData.length === 0) return;
 
-        let value = Number(e.target.value);
+          let value = Number(e.target.value);
 
-        if (value < 1) value = 1;
-        if (value > totalPages) value = totalPages;
+          if (value < 1) value = 1;
+          if (value > totalPages) value = totalPages;
 
-        setCurrentPage(value);
-      }}
-      className="page-input"
-    />
+          setCurrentPage(value);
+        }}
+        className="page-input"
+      />
 
-    <span>of {totalPages}</span>
+      <span>of {totalPages}</span>
 
-    {/* RIGHT ARROW */}
-    <button
-      disabled={filteredData.length === 0 || currentPage === totalPages}
-      onClick={() =>
-        setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-      }
-    >
-      ▶
-    </button>
+      {/* RIGHT ARROW */}
+      <button
+        disabled={filteredData.length === 0 || currentPage === totalPages}
+        onClick={() =>
+          setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+        }
+      >
+        ▶
+      </button>
+    </div>
   </div>
-</div>
 </div>
         </div>
 
@@ -1310,21 +1661,126 @@ const handleSignOut = () => {
   </div>
 </div>
 
+                {/* Assessment Dropdown */}
+                <div className="modal-field">
+  <label>Assessment:</label>
+
+  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+    <select
+      style={{ width: "70%" }}
+      value={newRecord.assessment}
+      onChange={(e) =>
+        setNewRecord({ ...newRecord, assessment: e.target.value })
+      }
+    >
+      <option value="">Select Assessment</option>
+      {filteredAssessments.map((assessment) => (
+        <option key={assessment.id} value={assessment.name}>
+          {assessment.name}
+        </option>
+      ))}
+    </select>
+
+    {/* Add Assessment button - disabled if no year selected */}
+    <button
+      type="button"
+      onClick={handleAddAssessment}
+      disabled={!newRecord.year}
+      style={{
+        background: newRecord.year ? "#081a4b" : "#ccc",
+        color: "#fff",
+        border: "none",
+        padding: "10px 10px",
+        borderRadius: "4px",
+        cursor: newRecord.year ? "pointer" : "not-allowed",
+        fontSize: "12px"
+      }}
+    >
+      + Add
+    </button>
+
+    {/* Delete Selected Assessment - disabled if no assessment selected */}
+    <button
+      type="button"
+      disabled={!newRecord.assessment}
+      onClick={() => handleDeleteAssessment(newRecord.assessment)}
+      style={{
+        background: "transparent",
+        color: newRecord.assessment ? "red" : "#ccc",
+        border: newRecord.assessment ? "1px solid red" : "1px solid #ccc",
+        padding: "10px 10px",
+        borderRadius: "4px",
+        cursor: newRecord.assessment ? "pointer" : "not-allowed",
+        fontSize: "12px"
+      }}
+    >
+      Remove
+    </button>
+  </div>
+  {!newRecord.year && (
+    <small style={{ color: "#666", display: "block", marginTop: "5px" }}>
+      Please pick a year.
+    </small>
+  )}
+</div>
+
                 {/* Footer Button */}
                 <div className="modal-footer">
-                  <button className="proceed-btn"
-                    onClick={() => {
-                    if (!newRecord.year) {
-                      alert("Please select a year first.");
-                      return;
-                    }
+                <button 
+  className="proceed-btn"
+  onClick={async () => {
+    if (!newRecord.year) {
+      alert("Please pick a year.");
+      return;
+    }
+    if (!newRecord.assessment) {
+      alert("Please select an assessment first.");
+      return;
+    }
 
-  navigate("/financial-administration-and-sustainability", {
-    state: { year: newRecord.year }
-  });
-}}>
-                    Proceed ➜
-                  </button>
+    try {
+      // Find the selected assessment from the filtered list
+      const selectedAssessmentObj = filteredAssessments.find(
+        a => a.name === newRecord.assessment
+      );
+
+      if (!selectedAssessmentObj) {
+        alert("Selected assessment not found");
+        return;
+      }
+
+      // Save to created records
+      const recordsRef = ref(db, `createdRecords/${auth.currentUser.uid}`);
+      const newRecordRef = push(recordsRef);
+      
+      await set(newRecordRef, {
+        year: newRecord.year,
+        assessment: newRecord.assessment,
+        assessmentId: selectedAssessmentObj.id,
+        createdAt: new Date().toISOString(),
+        status: "Draft",
+        createdBy: auth.currentUser.uid,
+        createdByEmail: auth.currentUser.email
+      });
+
+      console.log("Record saved successfully");
+      
+      // Navigate to FAS with all required data
+      navigate("/po-indicators", { 
+        state: { 
+          year: newRecord.year,
+          assessment: newRecord.assessment,
+          assessmentId: selectedAssessmentObj.id
+        }   
+      });
+    } catch (error) {
+      console.error("Error saving record:", error);
+      alert("Failed to create assessment. Please try again.");
+    }
+  }}
+>
+  Proceed ➜
+</button>
                 </div>
 
               </div>

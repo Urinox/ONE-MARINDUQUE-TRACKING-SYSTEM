@@ -160,16 +160,16 @@ useEffect(() => {
 
   const fetchDeadlines = async () => {
     try {
-      const deadlinesRef = ref(db, `financial/${adminUid}`);
+      const deadlinesRef = ref(db, `po-indicators/${adminUid}`);
       
       onValue(deadlinesRef, (snapshot) => {
         if (snapshot.exists()) {
-          const financialData = snapshot.val();
+          const poIndicatorsData = snapshot.val();
           const deadlinesMap = {};
           
-          Object.keys(financialData).forEach(year => {
-            if (financialData[year] && financialData[year].metadata && financialData[year].metadata.deadline) {
-              deadlinesMap[year] = financialData[year].metadata.deadline;
+          Object.keys(poIndicatorsData).forEach(year => {
+            if (poIndicatorsData[year] && poIndicatorsData[year].metadata && poIndicatorsData[year].metadata.deadline) {
+              deadlinesMap[year] = poIndicatorsData[year].metadata.deadline;
             }
           });
           

@@ -5,14 +5,15 @@ import dilgLogo from "src/assets/dilg-po.png";
 import dilgSeal from "src/assets/dilg-ph.png";
 import { FiFilter, FiRotateCcw, FiSettings, FiLogOut, FiFileText, FiClipboard } from "react-icons/fi";
 import { useNavigate, useLocation } from "react-router-dom";
-import { ref, push, onValue, set, get } from "firebase/database";
-
+import { ref, child, push, onValue, set, get } from "firebase/database";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export default function POView() {
   const location = useLocation();
   const navigate = useNavigate();
   const [forwardedAssessment, setForwardedAssessment] = useState(null);
-  const [verifiedFlag, setVerifiedFlag] = useState({}); // CHANGED: object per tab
+  const [verifiedFlag, setVerifiedFlag] = useState({}); // object per tab
   const [isVerified, setIsVerified] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const lguName = location.state.lguName || location.state.municipality; 
@@ -26,20 +27,14 @@ export default function POView() {
   const displayName = user?.email || "User";
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [savingAnswers, setSavingAnswers] = useState(false);
+const [isReturned, setIsReturned] = useState(false);
   
-  // State for ALL indicators (10 categories)
-  const [indicators, setIndicators] = useState([]); // Financial
-  const [disasterIndicators, setDisasterIndicators] = useState([]);
-  const [socialIndicators, setSocialIndicators] = useState([]);
-  const [healthIndicators, setHealthIndicators] = useState([]);
-  const [educationIndicators, setEducationIndicators] = useState([]);
-  const [businessIndicators, setBusinessIndicators] = useState([]);
-  const [safetyIndicators, setSafetyIndicators] = useState([]);
-  const [environmentalIndicators, setEnvironmentalIndicators] = useState([]);
-  const [tourismIndicators, setTourismIndicators] = useState([]);
-  const [youthIndicators, setYouthIndicators] = useState([]);
+  // ===== DYNAMIC TABS STATE =====
+  const [tabs, setTabs] = useState([]);
+  const [activeTab, setActiveTab] = useState(null);
+  const [tabData, setTabData] = useState({}); // Store indicators for each tab
   
-  const [activeTab, setActiveTab] = useState(1);
   const [userRole, setUserRole] = useState(null);
   const [userMunicipality, setUserMunicipality] = useState("");
   const [loading, setLoading] = useState(true);
@@ -47,104 +42,1227 @@ export default function POView() {
   const [adminUid, setAdminUid] = useState(null);
   const [lguAnswers, setLguAnswers] = useState([]);
   const [selectedYear, setSelectedYear] = useState(location.state?.year || "2026");
-  const [newRecord, setNewRecord] = useState({
-    year: "",
-    municipality: ""
-  });
+  const [selectedAssessment, setSelectedAssessment] = useState(location.state?.assessment || "");
+  const [selectedAssessmentId, setSelectedAssessmentId] = useState(location.state?.assessmentId || "");
 
   const [showExportModal, setShowExportModal] = useState(false);
-const [editProfileData, setEditProfileData] = useState({
-  name: "",
-  email: displayName,
-  image: ""
-});
+  const [editProfileData, setEditProfileData] = useState({
+    name: "",
+    email: displayName,
+    image: ""
+  });
   const [savingProfile, setSavingProfile] = useState(false);
-const [profileData, setProfileData] = useState({
-  name: "",
-  email: displayName,
-  image: ""
-});
+  const [profileData, setProfileData] = useState({
+    name: "",
+    email: displayName,
+    image: ""
+  });
   const [filters, setFilters] = useState({
     year: "",
     status: "",
   });
 
-const [remarks, setRemarks] = useState({}); // CHANGED: object per tab
+  const [remarks, setRemarks] = useState({}); // object per tab
 
-// Helper function to get tab name
-const getTabName = (tabId) => {
-  switch(tabId) {
-    case 1: return 'Financial';
-    case 2: return 'Disaster';
-    case 3: return 'Social';
-    case 4: return 'Health';
-    case 5: return 'Education';
-    case 6: return 'Business';
-    case 7: return 'Safety';
-    case 8: return 'Environmental';
-    case 9: return 'Tourism';
-    case 10: return 'Youth';
-    default: return 'Financial';
-  }
-};
-
-// Helper function to get the correct answer key with prefix
-const getAnswerKey = (record, mainIndex, field, isSub = false, nestedIndex = null, valueType = "default") => {
-  const prefixMap = {
-    1: 'financial_',
-    2: 'disaster_',
-    3: 'social_',
-    4: 'health_',
-    5: 'education_',
-    6: 'business_',
-    7: 'safety_',
-    8: 'environmental_',
-    9: 'tourism_',
-    10: 'youth_'
+  // Helper function to get tab name
+  const getTabName = (tabId) => {
+    const tab = tabs.find(t => t.id === tabId);
+    return tab?.name || "Tab";
   };
+
+// ===== LOAD ASSESSMENT TABS FROM ADMIN =====
+useEffect(() => {
+  if (!auth.currentUser || !selectedYear || !selectedAssessmentId) return;
+
+  const fetchTabsFromAdmin = async () => {
+    try {
+      // Find admin UID first
+      const usersRef = ref(db, "users");
+      const usersSnapshot = await get(usersRef);
+      
+      if (usersSnapshot.exists()) {
+        const users = usersSnapshot.val();
+        const adminUid = Object.keys(users).find(
+          uid => users[uid]?.role === "admin"
+        );
+        
+        if (adminUid) {
+          console.log("Loading tabs from admin:", adminUid, "for year:", selectedYear, "assessment:", selectedAssessmentId);
+
+          const tabsRef = ref(
+            db,
+            `assessment-tabs/${adminUid}/${selectedYear}/${selectedAssessmentId}`
+          );
+
+          // Use onValue to listen for changes
+          onValue(tabsRef, (snapshot) => {
+            const loadedTabs = [];
+            const tabsData = {};
+            
+            if (snapshot.exists()) {
+              snapshot.forEach((childSnapshot) => {
+                const tab = childSnapshot.val();
+                const tabId = childSnapshot.key;
+                
+                loadedTabs.push({
+                  id: tabId,
+                  name: tab.name || "Untitled Tab",
+                  description: tab.description || "",
+                  createdAt: tab.createdAt,
+                  order: tab.order || 0,
+                  tabPath: tabId
+                });
+                
+                // Initialize empty indicators for this tab
+                tabsData[tabId] = [];
+              });
+              
+              // Sort tabs by order
+              loadedTabs.sort((a, b) => (a.order || 0) - (b.order || 0));
+              
+              console.log("Loaded tabs:", loadedTabs);
+              setTabs(loadedTabs);
+              setTabData(tabsData);
+
+              // Set first tab as active if available
+              if (loadedTabs.length > 0) {
+                setActiveTab(loadedTabs[0].id);
+              }
+            } else {
+              console.log("No tabs found for this assessment");
+              setTabs([]);
+              setActiveTab(null);
+            }
+          });
+        } else {
+          console.log("No admin found");
+        }
+      }
+    } catch (error) {
+      console.error("Error loading tabs:", error);
+    }
+  };
+
+  fetchTabsFromAdmin();
+}, [selectedYear, selectedAssessmentId, auth.currentUser]);
+
+
+// Add this near the top of your component to debug
+useEffect(() => {
+  console.log("Location state:", location.state);
+  console.log("Selected Year:", selectedYear);
+  console.log("Selected Assessment:", selectedAssessment);
+  console.log("Selected Assessment ID:", selectedAssessmentId);
+}, [location.state, selectedYear, selectedAssessment, selectedAssessmentId]);
+  // ===== LOAD INDICATORS FOR EACH TAB FROM ADMIN =====
+  useEffect(() => {
+    if (!auth.currentUser || !selectedYear || !selectedAssessmentId || !tabs.length) return;
+
+    const loadTabIndicators = async () => {
+      try {
+        // Find admin UID first
+        const usersRef = ref(db, "users");
+        const usersSnapshot = await get(usersRef);
+        
+        if (usersSnapshot.exists()) {
+          const users = usersSnapshot.val();
+          const adminUid = Object.keys(users).find(
+            uid => users[uid]?.role === "admin"
+          );
+          
+          if (adminUid) {
+            const newTabData = { ...tabData };
+            
+            for (const tab of tabs) {
+              try {
+                const indicatorsRef = ref(
+                  db,
+                  `assessment-data/${adminUid}/${selectedYear}/${selectedAssessmentId}/${tab.tabPath}/assessment`
+                );
+                
+                const snapshot = await get(indicatorsRef);
+                
+                if (snapshot.exists()) {
+                  const data = snapshot.val();
+                  const indicatorsArray = Object.keys(data).map(key => ({
+                    firebaseKey: key,
+                    ...data[key]
+                  }));
+                  
+                  newTabData[tab.id] = indicatorsArray;
+                  console.log(`📊 Loaded ${indicatorsArray.length} indicators for tab: ${tab.name}`);
+                } else {
+                  newTabData[tab.id] = [];
+                }
+              } catch (error) {
+                console.error(`Error loading indicators for tab ${tab.name}:`, error);
+                newTabData[tab.id] = [];
+              }
+            }
+            
+            setTabData(newTabData);
+          }
+        }
+      } catch (error) {
+        console.error("Error finding admin for indicators:", error);
+      }
+    };
+
+    loadTabIndicators();
+  }, [tabs, selectedYear, selectedAssessmentId, auth.currentUser]);
+
+  // Helper function to get the correct answer key with tab prefix and assessment ID
+  const getAnswerKey = (record, mainIndex, field, isSub = false, nestedIndex = null, valueType = "default") => {
+    if (nestedIndex !== null) {
+      if (valueType === "radio") return `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${mainIndex}_nested_${nestedIndex}_radio_${field}`;
+      if (valueType === "checkbox") return `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${mainIndex}_nested_${nestedIndex}_checkbox_${field}`;
+      return `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${mainIndex}_nested_${nestedIndex}_${field}`;
+    } else if (isSub) {
+      if (valueType === "radio") return `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${mainIndex}_radio_${field}`;
+      if (valueType === "checkbox") return `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${mainIndex}_checkbox_${field}`;
+      return `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${mainIndex}_${field}`;
+    } else {
+      if (valueType === "radio") return `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_${mainIndex}_radio_${field}`;
+      if (valueType === "checkbox") return `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_${mainIndex}_checkbox_${field}`;
+      return `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_${mainIndex}_${field}`;
+    }
+  };
+
+  // Radio answers are saved as index strings ("0","1","2"...). Keep fallback to legacy saved values.
+  const isRadioSelected = (answerValue, choice, choiceIndex) => {
+    const saved = String(answerValue ?? "");
+    if (saved === String(choiceIndex)) return true;
+
+    const choiceLabel =
+      choice && typeof choice === "object"
+        ? (choice.label ?? choice.value ?? choice.name ?? choice.title ?? choice.text ?? "")
+        : choice;
+    const choiceValueRaw =
+      choice && typeof choice === "object"
+        ? (choice.value ?? choice.label ?? choice.name ?? choice.title ?? choice.text ?? "")
+        : choice;
+
+    if (choiceValueRaw !== "" && choiceValueRaw !== null && choiceValueRaw !== undefined && saved === String(choiceValueRaw)) return true;
+    if (choiceLabel !== "" && choiceLabel !== null && choiceLabel !== undefined && saved === String(choiceLabel)) return true;
+
+    return false;
+  };
+
+  const handleTabChange = (tabId) => {
+    setActiveTab(tabId);
+  };
+
+// Helper function to convert image to base64
+const getBase64Image = (img) => {
+  return new Promise((resolve) => {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => {
+      canvas.width = image.width;
+      canvas.height = image.height;
+      ctx.drawImage(image, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    image.onerror = () => {
+      // Fallback in case image fails to load
+      resolve("");
+    };
+    image.src = img;
+  });
+};
+
+// Export current tab as PDF
+const exportTabToPDF = async () => {  
+  if (!selectedYear || !selectedAssessmentId || !activeTab) {    
+    alert("Please select an assessment and tab first");    
+    return;  
+  }   
   
-  const prefix = prefixMap[activeTab] || '';
+  setSavingAnswers(true);   
   
-  if (nestedIndex !== null) {
-    if (valueType === "radio") return `${prefix}${record.firebaseKey}_sub_${mainIndex}_nested_${nestedIndex}_radio_${field}`;
-    if (valueType === "checkbox") return `${prefix}${record.firebaseKey}_sub_${mainIndex}_nested_${nestedIndex}_checkbox_${field}`;
-    return `${prefix}${record.firebaseKey}_sub_${mainIndex}_nested_${nestedIndex}_${field}`;
-  } else if (isSub) {
-    if (valueType === "radio") return `${prefix}${record.firebaseKey}_sub_${mainIndex}_radio_${field}`;
-    if (valueType === "checkbox") return `${prefix}${record.firebaseKey}_sub_${mainIndex}_checkbox_${field}`;
-    return `${prefix}${record.firebaseKey}_sub_${mainIndex}_${field}`;
-  } else {
-    if (valueType === "radio") return `${prefix}${record.firebaseKey}_${mainIndex}_radio_${field}`;
-    if (valueType === "checkbox") return `${prefix}${record.firebaseKey}_${mainIndex}_checkbox_${field}`;
-    return `${prefix}${record.firebaseKey}_${mainIndex}_${field}`;
+  try {     
+    const leftLogo = await getBase64Image(dilgLogo);    
+    const rightLogo = await getBase64Image(dilgSeal);     
+    
+    const doc = new jsPDF({      
+      orientation: "portrait",      
+      unit: "pt",      
+      format: "a4"    
+    });     
+    
+    const pageWidth = doc.internal.pageSize.getWidth();    
+    const pageHeight = doc.internal.pageSize.getHeight();     
+    
+    const margin = {      
+      top: 72,      
+      bottom: 72,      
+      left: 72,      
+      right: 72    
+    };     
+    
+    doc.setFont("helvetica");     
+    
+    // Get current tab indicators from tabData
+    const currentTabIndicators = tabData[activeTab] || [];
+    console.log("Current Tab Indicators:", currentTabIndicators);
+    
+    // Get user answers from lguAnswers
+    const userAnswers = lguAnswers[0]?.data || {};
+    console.log("User Answers:", userAnswers);
+    
+    const currentTab = tabs.find((t) => t.id === activeTab);    
+    const tabName = currentTab?.name || "Assessment";     
+    
+    const municipality = lguAnswers[0]?.municipality || "Not specified";    
+    const lguName = lguAnswers[0]?.lguName || profileData.name || auth.currentUser?.email || "LGU";     
+    
+    const today = new Date();    
+    const formattedDate = `${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`;     
+    
+    // ===== LOGOS =====     
+    const logoSize = 55;    
+    const logoSize1 = 55;    
+    const logoSize2 = 100;    
+    doc.addImage(      
+      leftLogo,      
+      "PNG",      
+      margin.right + 30,      
+      margin.top - 30,      
+      logoSize2,      
+      logoSize1    
+    );     
+    
+    doc.addImage(      
+      rightLogo,      
+      "PNG",      
+      margin.right -5,      
+      margin.top - 30,      
+      logoSize,      
+      logoSize    
+    );     
+    
+    // ===== HEADER TEXT =====     
+    doc.setFontSize(11);    
+    doc.setFont("helvetica", "bold");    
+    doc.text(      
+      "DEPARTMENT OF THE INTERIOR AND LOCAL GOVERNMENT",      
+      pageWidth / 2 + 52,      
+      margin.top - 10,      
+      { align: "center" }    
+    );     
+    
+    doc.setFont("helvetica", "normal");    
+    doc.text(      
+      "MIMAROPA REGION - ",      
+      pageWidth / 2 - 110,      
+      margin.top + 5    
+    );         
+    
+    doc.setFont("helvetica", "bold");    
+    doc.text(      
+      "MARINDUQUE",      
+      pageWidth / 2 + 5,      
+      margin.top + 5    
+    );     
+    
+    // ===== ASSESSMENT DETAILS =====     
+    doc.setFontSize(11);    
+    const infoStartY = margin.top + 60;  
+    doc.setFont("helvetica", "bold"); 
+    doc.text("ASSESSMENT: ", margin.left, infoStartY - 5);  
+    
+    doc.setFont("helvetica", "normal"); 
+    doc.text(`${selectedAssessment || "Local Governance Assessment"} (${selectedYear})`,
+      margin.left + 85,
+      infoStartY -5
+    );  
+    
+    doc.setFont("helvetica", "bold"); 
+    doc.text("REGION: ", margin.left, infoStartY + 10);  
+    
+    doc.setFont("helvetica", "normal"); 
+    doc.text("MIMAROPA Region", margin.left + 55, infoStartY + 10);  
+    
+    doc.setFont("helvetica", "bold"); 
+    doc.text("PROVINCE: ", margin.left, infoStartY + 25);  
+    
+    doc.setFont("helvetica", "normal"); 
+    doc.text("Marinduque", margin.left + 70, infoStartY + 25);  
+    
+    doc.setFont("helvetica", "bold"); 
+    doc.text("MUNICIPALITY: ", margin.left, infoStartY + 40);  
+    
+    doc.setFont("helvetica", "normal"); 
+    doc.text(`${municipality}`, margin.left + 95, infoStartY + 40);  
+    
+    doc.setFont("helvetica", "bold"); 
+    doc.text("DATE: ", margin.left, infoStartY + 55);  
+    
+    doc.setFont("helvetica", "normal"); 
+    doc.text(`${formattedDate}`, margin.left + 40, infoStartY + 55);
+
+    doc.setFont("helvetica", "bold");
+    doc.text(`AREA:`, margin.left, infoStartY + 70);
+
+    doc.setFont("helvetica", "normal");
+    doc.text(`${tabName}`, margin.left + 40, infoStartY + 70);     
+    
+    // ===== TABLE HEADER =====     
+    const headers = [      
+      ["Required Data", "Mode of Verification", "LGU Condition"]    
+    ];     
+    
+    const tableData = [];     
+    
+    // Helper function to get checkbox answers
+    const getCheckboxAnswers = (indicator, path) => {
+      if (!indicator || !indicator.choices || !Array.isArray(indicator.choices)) {
+        return "";
+      }
+      
+      console.log(`Getting checkbox answers for ${indicator.title} with path:`, path);
+      
+      const checkedOptions = [];
+      
+      // Try different checkbox key patterns for each choice
+      indicator.choices.forEach((choice, idx) => {
+        // Pattern 1: Standard checkbox key
+        const checkboxKey1 = `${selectedAssessmentId}_${activeTab}_${path}_checkbox_${indicator.title}_${idx}`;
+        
+        // Pattern 2: Alternative checkbox key
+        const checkboxKey2 = `${selectedAssessmentId}_${activeTab}_${path}_${indicator.title}_checkbox_${idx}`;
+        
+        // Pattern 3: Without field type in key
+        const checkboxKey3 = `${selectedAssessmentId}_${activeTab}_${path}_${indicator.title}_${idx}`;
+        
+        // Check all patterns
+        const checkboxAnswer = userAnswers[checkboxKey1] || 
+                              userAnswers[checkboxKey2] || 
+                              userAnswers[checkboxKey3];
+        
+        console.log(`  Choice ${idx} - Key: ${checkboxKey1}, Answer:`, checkboxAnswer);
+        
+        // Check if this checkbox is selected
+        if (checkboxAnswer) {
+          // Check if it's an object with a value property
+          if (typeof checkboxAnswer === 'object' && checkboxAnswer.value === true) {
+            const choiceText = typeof choice === "object"
+              ? (choice.label || choice.value || choice.name || "")
+              : choice;
+            checkedOptions.push(choiceText);
+          } 
+          // Check if it's a direct boolean true
+          else if (checkboxAnswer === true) {
+            const choiceText = typeof choice === "object"
+              ? (choice.label || choice.value || choice.name || "")
+              : choice;
+            checkedOptions.push(choiceText);
+          }
+        }
+      });
+      
+      const result = checkedOptions.join(", ");
+      console.log(`  Final checked options:`, result);
+      
+      return result;
+    };
+    
+    // Helper function to get answer for other field types
+    const getIndicatorAnswer = (indicator, path) => {
+      if (!indicator || !path) return "";
+      
+      // Handle checkbox separately
+      if (indicator.fieldType === "checkbox") {
+        return getCheckboxAnswers(indicator, path);
+      }
+      
+      console.log(`Looking for answer for ${indicator.title} (${indicator.fieldType}) with path:`, path);
+      
+      // Try different key patterns for non-checkbox fields
+      const possibleKeys = [
+        `${selectedAssessmentId}_${activeTab}_${path}_radio_${indicator.title}`,
+        `${selectedAssessmentId}_${activeTab}_${path}_${indicator.fieldType}_${indicator.title}`,
+        `${selectedAssessmentId}_${activeTab}_${path}_${indicator.title}`,
+        `${selectedAssessmentId}_${activeTab}_${path}_value_${indicator.title}`,
+        `${selectedAssessmentId}_${activeTab}_${indicator.title}`
+      ];
+      
+      for (const key of possibleKeys) {
+        const answer = userAnswers[key];
+        
+        // Check for object with value property
+        if (answer && answer.value !== undefined && answer.value !== null) {
+          console.log(`Found answer for key: ${key}`, answer);
+          
+          if (indicator.fieldType === "multiple") {
+            const choiceIndex = parseInt(answer.value);
+            if (!isNaN(choiceIndex) && indicator.choices && indicator.choices[choiceIndex]) {
+              const choice = indicator.choices[choiceIndex];
+              return typeof choice === "object"
+                ? (choice.label || choice.value || choice.name || "")
+                : choice;
+            }
+            return answer.value;
+          }
+          
+          return answer.value;
+        }
+        
+        // Also check for direct values
+        if (answer !== undefined && answer !== null && typeof answer !== 'object') {
+          console.log(`Found direct value for key: ${key}`, answer);
+          
+          if (indicator.fieldType === "multiple") {
+            const choiceIndex = parseInt(answer);
+            if (!isNaN(choiceIndex) && indicator.choices && indicator.choices[choiceIndex]) {
+              const choice = indicator.choices[choiceIndex];
+              return typeof choice === "object"
+                ? (choice.label || choice.value || choice.name || "")
+                : choice;
+            }
+            return answer;
+          }
+          
+          return answer;
+        }
+      }
+      
+      return "";
+    };
+    
+    // Process each record
+    for (const record of currentTabIndicators) {
+      console.log("Processing record:", record);
+      
+      // Process main indicators
+      if (record.mainIndicators && Array.isArray(record.mainIndicators)) {
+        for (let i = 0; i < record.mainIndicators.length; i++) {
+          const main = record.mainIndicators[i];
+          
+          // Build path for this main indicator
+          const mainPath = `${record.firebaseKey}_${i}`;
+          const answerText = getIndicatorAnswer(main, mainPath);
+          
+          console.log(`Main answer for ${main.title} (${main.fieldType}):`, answerText);
+          
+          // Add main indicator
+          tableData.push([
+            { 
+              content: main.title || "(Main Indicator)",
+              styles: { 
+                fontStyle: "bold",
+                fillColor: [141, 179, 226] // #8DB3E2
+              }
+            },
+            { 
+              content: main.verification || ""
+            },
+            { 
+              content: answerText || ""
+            }
+          ]);
+          
+          // Process sub indicators within main indicators
+          if (main.subIndicators && Array.isArray(main.subIndicators)) {
+            for (let j = 0; j < main.subIndicators.length; j++) {
+              const sub = main.subIndicators[j];
+              
+              // Build path for this sub indicator
+              const subPath = `${record.firebaseKey}_${i}_sub_${j}`;
+              const subAnswerText = getIndicatorAnswer(sub, subPath);
+              
+              console.log(`Sub answer for ${sub.title} (${sub.fieldType}):`, subAnswerText);
+              
+              // Add sub indicator
+              tableData.push([
+                { 
+                  content: `   ${sub.title || "(Sub Indicator)"}`,
+                  styles: {
+                    fillColor: [198, 217, 241] // #C6D9F1
+                  }
+                },
+                { 
+                  content: sub.verification || ""
+                },
+                { 
+                  content: subAnswerText || ""
+                }
+              ]);
+              
+              // Process nested sub indicators
+              if (sub.nestedSubIndicators && Array.isArray(sub.nestedSubIndicators)) {
+                for (let k = 0; k < sub.nestedSubIndicators.length; k++) {
+                  const nested = sub.nestedSubIndicators[k];
+                  
+                  // Build path for this nested indicator
+                  const nestedPath = `${record.firebaseKey}_${i}_sub_${j}_nested_${k}`;
+                  const nestedAnswerText = getIndicatorAnswer(nested, nestedPath);
+                  
+                  console.log(`Nested answer for ${nested.title} (${nested.fieldType}):`, nestedAnswerText);
+                  
+                  // Add nested sub indicator
+                  tableData.push([
+                    { 
+                      content: `      ${nested.title || "(Nested Sub Indicator)"}`,
+                      styles: {
+                        fillColor: [234, 246, 252] // #EAF6FC
+                      }
+                    },
+                    { 
+                      content: nested.verification || ""
+                    },
+                    { 
+                      content: nestedAnswerText || ""
+                    }
+                  ]);
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // Process standalone sub indicators
+      if (record.subIndicators && Array.isArray(record.subIndicators)) {
+        for (let j = 0; j < record.subIndicators.length; j++) {
+          const sub = record.subIndicators[j];
+          
+          // Build path for standalone sub indicator
+          const subPath = `${record.firebaseKey}_sub_${j}`;
+          const subAnswerText = getIndicatorAnswer(sub, subPath);
+          
+          console.log(`Standalone sub answer for ${sub.title} (${sub.fieldType}):`, subAnswerText);
+          
+          // Add sub indicator
+          tableData.push([
+            { 
+              content: `   ${sub.title || "(Sub Indicator)"}`,
+              styles: {
+                fillColor: [198, 217, 241] // #C6D9F1
+              }
+            },
+            { 
+              content: sub.verification || ""
+            },
+            { 
+              content: subAnswerText || ""
+            }
+          ]);
+          
+          // Process nested sub indicators within standalone sub indicators
+          if (sub.nestedSubIndicators && Array.isArray(sub.nestedSubIndicators)) {
+            for (let k = 0; k < sub.nestedSubIndicators.length; k++) {
+              const nested = sub.nestedSubIndicators[k];
+              
+              // Build path for nested indicator within standalone sub
+              const nestedPath = `${record.firebaseKey}_sub_${j}_nested_${k}`;
+              const nestedAnswerText = getIndicatorAnswer(nested, nestedPath);
+              
+              console.log(`Standalone nested answer for ${nested.title} (${nested.fieldType}):`, nestedAnswerText);
+              
+              tableData.push([
+                { 
+                  content: `      ${nested.title || "(Nested Sub Indicator)"}`,
+                  styles: {
+                    fillColor: [234, 246, 252] // #EAF6FC
+                  }
+                },
+                { 
+                  content: nested.verification || ""
+                },
+                { 
+                  content: nestedAnswerText || ""
+                }
+              ]);
+            }
+          }
+        }
+      }
+    }
+    
+    // Add empty row at the end
+    tableData.push(["", "", ""]);     
+    
+    console.log("Final tableData:", tableData);
+    
+    const startY = infoStartY + 80;     
+    
+    // ===== TABLE =====    
+    autoTable(doc, {      
+      head: headers,      
+      body: tableData,      
+      startY: startY,      
+      margin: {        
+        left: margin.left - 30,        
+        right: margin.right       
+      },      
+      theme: "grid",      
+      styles: {        
+        font: "helvetica",        
+        fontSize: 9,        
+        cellPadding: 5,        
+        lineColor: [0, 0, 0],        
+        lineWidth: 0.5,        
+        textColor: [0, 0, 0],        
+        valign: "middle",        
+        halign: "left",        
+        lineHeight: 1.15      
+      },      
+      headStyles: {        
+        fillColor: [242, 219, 219],        
+        textColor: [0, 0, 0],        
+        fontStyle: "bold",        
+        halign: "center",        
+        fontSize: 11,        
+        lineWidth: 0.5,        
+        lineColor: [0, 0, 0]      
+      },      
+      columnStyles: {        
+        0: { cellWidth: 190 },        
+        1: { cellWidth: 160 },        
+        2: { cellWidth: 160 }      
+      },       
+      
+      didDrawPage: function () {         
+        doc.setFontSize(10);        
+        doc.setFont("helvetica", "bold");         
+        
+        doc.text(          
+          "“Matino, Mahusay at Maaasahan”",          
+          pageWidth / 2,          
+          pageHeight - margin.bottom + 25,          
+          { align: "center" }        
+        );         
+        
+        doc.setFont("helvetica", "normal");        
+        doc.text(          
+          "Telephone Number (042)754 - 5881",          
+          pageWidth / 2,          
+          pageHeight - margin.bottom + 40,          
+          { align: "center" }        
+        );      
+      }    
+    });     
+    
+    const fileName = `${selectedAssessment || "Assessment"}_${tabName}_${municipality}_${selectedYear}.pdf`      
+      .replace(/\s+/g, "_")      
+      .replace(/[^\w\-_.]/g, "")      
+      .toLowerCase();     
+    
+    doc.save(fileName);   
+    
+  } catch (error) {     
+    console.error("Error generating PDF:", error);    
+    alert("Failed to generate PDF: " + error.message);   
+  } finally {     
+    setSavingAnswers(false);    
+    setShowExportModal(false);   
+  } 
+};
+
+// Export all tabs as PDF
+const exportAllTabsToPDF = async () => {
+  if (!selectedYear || !selectedAssessmentId) {
+    alert("Please select an assessment first");
+    return;
+  }
+
+  if (!tabs.length) {
+    alert("No tabs available to export");
+    return;
+  }
+
+  setSavingAnswers(true);
+
+  try {
+    const leftLogo = await getBase64Image(dilgLogo);
+    const rightLogo = await getBase64Image(dilgSeal);
+    
+    // Get user answers from lguAnswers
+    const userAnswers = lguAnswers[0]?.data || {};
+    
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'pt',
+      format: 'a4'
+    });
+    
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    
+    const margin = {
+      top: 72,
+      bottom: 72,
+      left: 72,
+      right: 72
+    };
+    
+    doc.setFont('helvetica');
+    
+    const municipality = lguAnswers[0]?.municipality || "Not specified";
+    const lguName = lguAnswers[0]?.lguName || profileData.name || auth.currentUser?.email || "LGU";
+    
+    const today = new Date();
+    const formattedDate = `${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`;
+    
+    // Helper function to get checkbox answers (improved version)
+    const getCheckboxAnswers = (indicator, tabId, path) => {
+      if (!indicator || !indicator.choices || !Array.isArray(indicator.choices)) {
+        return "";
+      }
+      
+      console.log(`Getting checkbox answers for ${indicator.title} with path:`, path);
+      
+      const checkedOptions = [];
+      
+      // Try different checkbox key patterns for each choice
+      indicator.choices.forEach((choice, idx) => {
+        // Pattern 1: Standard checkbox key with field type
+        const checkboxKey1 = `${selectedAssessmentId}_${tabId}_${path}_checkbox_${indicator.title}_${idx}`;
+        
+        // Pattern 2: Alternative checkbox key order
+        const checkboxKey2 = `${selectedAssessmentId}_${tabId}_${path}_${indicator.title}_checkbox_${idx}`;
+        
+        // Pattern 3: Without field type in key
+        const checkboxKey3 = `${selectedAssessmentId}_${tabId}_${path}_${indicator.title}_${idx}`;
+        
+        // Check all patterns
+        const checkboxAnswer = userAnswers[checkboxKey1] || 
+                              userAnswers[checkboxKey2] || 
+                              userAnswers[checkboxKey3];
+        
+        console.log(`  Choice ${idx} - Key: ${checkboxKey1}, Answer:`, checkboxAnswer);
+        
+        // Check if this checkbox is selected
+        if (checkboxAnswer) {
+          // Check if it's an object with a value property
+          if (typeof checkboxAnswer === 'object' && checkboxAnswer.value === true) {
+            const choiceText = typeof choice === "object"
+              ? (choice.label || choice.value || choice.name || "")
+              : choice;
+            checkedOptions.push(choiceText);
+          } 
+          // Check if it's a direct boolean true
+          else if (checkboxAnswer === true) {
+            const choiceText = typeof choice === "object"
+              ? (choice.label || choice.value || choice.name || "")
+              : choice;
+            checkedOptions.push(choiceText);
+          }
+        }
+      });
+      
+      const result = checkedOptions.join(", ");
+      console.log(`  Final checked options:`, result);
+      
+      return result;
+    };
+    
+    // Helper function to get answer for other field types
+    const getIndicatorAnswer = (indicator, tabId, path) => {
+      if (!indicator || !path) return "";
+      
+      // Handle checkbox separately
+      if (indicator.fieldType === "checkbox") {
+        return getCheckboxAnswers(indicator, tabId, path);
+      }
+      
+      console.log(`Looking for answer for ${indicator.title} (${indicator.fieldType}) with path:`, path);
+      
+      // Try different key patterns for non-checkbox fields
+      const possibleKeys = [
+        `${selectedAssessmentId}_${tabId}_${path}_radio_${indicator.title}`,
+        `${selectedAssessmentId}_${tabId}_${path}_${indicator.fieldType}_${indicator.title}`,
+        `${selectedAssessmentId}_${tabId}_${path}_${indicator.title}`,
+        `${selectedAssessmentId}_${tabId}_${path}_value_${indicator.title}`,
+        `${selectedAssessmentId}_${tabId}_${indicator.title}`
+      ];
+      
+      for (const key of possibleKeys) {
+        const answer = userAnswers[key];
+        
+        // Check for object with value property
+        if (answer && answer.value !== undefined && answer.value !== null) {
+          console.log(`Found answer for key: ${key}`, answer);
+          
+          if (indicator.fieldType === "multiple") {
+            const choiceIndex = parseInt(answer.value);
+            if (!isNaN(choiceIndex) && indicator.choices && indicator.choices[choiceIndex]) {
+              const choice = indicator.choices[choiceIndex];
+              return typeof choice === "object"
+                ? (choice.label || choice.value || choice.name || "")
+                : choice;
+            }
+            return answer.value;
+          }
+          
+          return answer.value;
+        }
+        
+        // Also check for direct values
+        if (answer !== undefined && answer !== null && typeof answer !== 'object') {
+          console.log(`Found direct value for key: ${key}`, answer);
+          
+          if (indicator.fieldType === "multiple") {
+            const choiceIndex = parseInt(answer);
+            if (!isNaN(choiceIndex) && indicator.choices && indicator.choices[choiceIndex]) {
+              const choice = indicator.choices[choiceIndex];
+              return typeof choice === "object"
+                ? (choice.label || choice.value || choice.name || "")
+                : choice;
+            }
+            return answer;
+          }
+          
+          return answer;
+        }
+      }
+      
+      return "";
+    };
+    
+    // ===== PROCESS EACH TAB =====
+    for (let t = 0; t < tabs.length; t++) {
+      // Add new page for each tab except the first
+      if (t > 0) {
+        doc.addPage();
+      }
+      
+      const tab = tabs[t];
+      const currentTabIndicators = tabData[tab.id] || [];
+      const tabName = tab.name || "Untitled Tab";
+      const tabId = tab.id;
+      
+      console.log(`Exporting tab: ${tabName}`, currentTabIndicators);
+      
+      // ===== LOGOS =====
+      const logoSize = 55;
+      const logoSize1 = 55;
+      const logoSize2 = 100;
+      doc.addImage(
+        leftLogo,
+        "PNG",
+        margin.right + 30,
+        margin.top - 30,
+        logoSize2,
+        logoSize1
+      );
+      
+      doc.addImage(
+        rightLogo,
+        "PNG",
+        margin.right -5,
+        margin.top - 30,
+        logoSize,
+        logoSize
+      );
+      
+      // ===== HEADER TEXT =====
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text(
+        "DEPARTMENT OF THE INTERIOR AND LOCAL GOVERNMENT",
+        pageWidth / 2 + 52,
+        margin.top - 10,
+        { align: "center" }
+      );
+      
+      doc.setFont("helvetica", "normal");
+      doc.text(
+        "MIMAROPA REGION - ",
+        pageWidth / 2 - 110,
+        margin.top + 5
+      );
+      
+      doc.setFont("helvetica", "bold");
+      doc.text(
+        "MARINDUQUE",
+        pageWidth / 2 + 5,
+        margin.top + 5
+      );
+      
+      // ===== ASSESSMENT DETAILS =====
+      doc.setFontSize(11);
+      const infoStartY = margin.top + 60;
+      
+      doc.setFont("helvetica", "bold");
+      doc.text("ASSESSMENT: ", margin.left, infoStartY - 5);
+      
+      doc.setFont("helvetica", "normal");
+      doc.text(`${selectedAssessment || "Local Governance Assessment"} (${selectedYear})`,
+        margin.left + 85,
+        infoStartY -5
+      );
+      
+      doc.setFont("helvetica", "bold");
+      doc.text("REGION: ", margin.left, infoStartY + 10);
+      
+      doc.setFont("helvetica", "normal");
+      doc.text("MIMAROPA Region", margin.left + 55, infoStartY + 10);
+      
+      doc.setFont("helvetica", "bold");
+      doc.text("PROVINCE: ", margin.left, infoStartY + 25);
+      
+      doc.setFont("helvetica", "normal");
+      doc.text("Marinduque", margin.left + 70, infoStartY + 25);
+      
+      doc.setFont("helvetica", "bold");
+      doc.text("MUNICIPALITY: ", margin.left, infoStartY + 40);
+      
+      doc.setFont("helvetica", "normal");
+      doc.text(`${municipality}`, margin.left + 95, infoStartY + 40);
+      
+      doc.setFont("helvetica", "bold");
+      doc.text("DATE: ", margin.left, infoStartY + 55);
+      
+      doc.setFont("helvetica", "normal");
+      doc.text(`${formattedDate}`, margin.left + 40, infoStartY + 55);
+      
+      // Add area name for this tab with styling
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text(`AREA: ${tabName}`, margin.left, infoStartY + 75);
+      
+      // ===== TABLE HEADER =====
+      const headers = [
+        ["Required Data", "Mode of Verification", "LGU Condition"]
+      ];
+      
+      const tableData = [];
+      
+      // Process each record for this tab
+      for (const record of currentTabIndicators) {
+        // Process main indicators
+        if (record.mainIndicators && Array.isArray(record.mainIndicators)) {
+          for (let i = 0; i < record.mainIndicators.length; i++) {
+            const main = record.mainIndicators[i];
+            
+            // Build path for this main indicator
+            const mainPath = `${record.firebaseKey}_${i}`;
+            const answerText = getIndicatorAnswer(main, tabId, mainPath);
+            
+            console.log(`Main answer for ${main.title} (${main.fieldType}):`, answerText);
+            
+            // Add main indicator with background color
+            tableData.push([
+              {
+                content: main.title || "(Main Indicator)",
+                styles: {
+                  fontStyle: "bold",
+                  fillColor: [141, 179, 226] // #8DB3E2
+                }
+              },
+              {
+                content: main.verification || ""
+              },
+              {
+                content: answerText || ""
+              }
+            ]);
+            
+            // Process sub indicators within main indicators
+            if (main.subIndicators && Array.isArray(main.subIndicators)) {
+              for (let j = 0; j < main.subIndicators.length; j++) {
+                const sub = main.subIndicators[j];
+                
+                // Build path for this sub indicator
+                const subPath = `${record.firebaseKey}_${i}_sub_${j}`;
+                const subAnswerText = getIndicatorAnswer(sub, tabId, subPath);
+                
+                console.log(`Sub answer for ${sub.title} (${sub.fieldType}):`, subAnswerText);
+                
+                // Add sub indicator with background color
+                tableData.push([
+                  {
+                    content: `   ${sub.title || "(Sub Indicator)"}`,
+                    styles: {
+                      fillColor: [198, 217, 241] // #C6D9F1
+                    }
+                  },
+                  {
+                    content: sub.verification || ""
+                  },
+                  {
+                    content: subAnswerText || ""
+                  }
+                ]);
+                
+                // Process nested sub indicators
+                if (sub.nestedSubIndicators && Array.isArray(sub.nestedSubIndicators)) {
+                  for (let k = 0; k < sub.nestedSubIndicators.length; k++) {
+                    const nested = sub.nestedSubIndicators[k];
+                    
+                    // Build path for this nested indicator
+                    const nestedPath = `${record.firebaseKey}_${i}_sub_${j}_nested_${k}`;
+                    const nestedAnswerText = getIndicatorAnswer(nested, tabId, nestedPath);
+                    
+                    console.log(`Nested answer for ${nested.title} (${nested.fieldType}):`, nestedAnswerText);
+                    
+                    // Add nested sub indicator with background color
+                    tableData.push([
+                      {
+                        content: `      ${nested.title || "(Nested Sub Indicator)"}`,
+                        styles: {
+                          fillColor: [234, 246, 252] // #EAF6FC
+                        }
+                      },
+                      {
+                        content: nested.verification || ""
+                      },
+                      {
+                        content: nestedAnswerText || ""
+                      }
+                    ]);
+                  }
+                }
+              }
+            }
+          }
+        }
+        
+        // Process standalone sub indicators
+        if (record.subIndicators && Array.isArray(record.subIndicators)) {
+          for (let j = 0; j < record.subIndicators.length; j++) {
+            const sub = record.subIndicators[j];
+            
+            // Build path for standalone sub indicator
+            const subPath = `${record.firebaseKey}_sub_${j}`;
+            const subAnswerText = getIndicatorAnswer(sub, tabId, subPath);
+            
+            console.log(`Standalone sub answer for ${sub.title} (${sub.fieldType}):`, subAnswerText);
+            
+            // Add sub indicator with background color
+            tableData.push([
+              {
+                content: `   ${sub.title || "(Sub Indicator)"}`,
+                styles: {
+                  fillColor: [198, 217, 241] // #C6D9F1
+                }
+              },
+              {
+                content: sub.verification || ""
+              },
+              {
+                content: subAnswerText || ""
+              }
+            ]);
+            
+            // Process nested sub indicators within standalone sub indicators
+            if (sub.nestedSubIndicators && Array.isArray(sub.nestedSubIndicators)) {
+              for (let k = 0; k < sub.nestedSubIndicators.length; k++) {
+                const nested = sub.nestedSubIndicators[k];
+                
+                // Build path for nested indicator within standalone sub
+                const nestedPath = `${record.firebaseKey}_sub_${j}_nested_${k}`;
+                const nestedAnswerText = getIndicatorAnswer(nested, tabId, nestedPath);
+                
+                console.log(`Standalone nested answer for ${nested.title} (${nested.fieldType}):`, nestedAnswerText);
+                
+                tableData.push([
+                  {
+                    content: `      ${nested.title || "(Nested Sub Indicator)"}`,
+                    styles: {
+                      fillColor: [234, 246, 252] // #EAF6FC
+                    }
+                  },
+                  {
+                    content: nested.verification || ""
+                  },
+                  {
+                    content: nestedAnswerText || ""
+                  }
+                ]);
+              }
+            }
+          }
+        }
+      }
+      
+      // Add empty row at the end of each tab's table
+      tableData.push(["", "", ""]);
+      
+      const startY = infoStartY + 90;
+      
+      // ===== TABLE =====
+      autoTable(doc, {
+        head: headers,
+        body: tableData,
+        startY: startY,
+        margin: {
+          left: margin.left - 30,
+          right: margin.right
+        },
+        theme: "grid",
+        styles: {
+          font: "helvetica",
+          fontSize: 9,
+          cellPadding: 5,
+          lineColor: [0, 0, 0],
+          lineWidth: 0.5,
+          textColor: [0, 0, 0],
+          valign: "middle",
+          halign: "left",
+          lineHeight: 1.15
+        },
+        headStyles: {
+          fillColor: [242, 219, 219], // #F2DBDB
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+          halign: "center",
+          fontSize: 11,
+          lineWidth: 0.5,
+          lineColor: [0, 0, 0]
+        },
+        columnStyles: {
+          0: { cellWidth: 190 },
+          1: { cellWidth: 160 },
+          2: { cellWidth: 160 }
+        },
+        
+        didDrawPage: function (data) {
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "bold");
+          
+          doc.text(
+            "“Matino, Mahusay at Maaasahan”",
+            pageWidth / 2,
+            pageHeight - margin.bottom + 25,
+            { align: "center" }
+          );
+          
+          doc.setFont("helvetica", "normal");
+          doc.text(
+            "Telephone Number (042)754 - 5881",
+            pageWidth / 2,
+            pageHeight - margin.bottom + 40,
+            { align: "center" }
+          );
+        }
+      });
+    }
+    
+    // ===== SAVE PDF =====
+    const fileName = `${selectedAssessment || "Assessment"}_Complete_${municipality}_${selectedYear}.pdf`
+      .replace(/\s+/g, '_')
+      .replace(/[^\w\-_.]/g, '')
+      .toLowerCase();
+    
+    doc.save(fileName);
+    
+  } catch (error) {
+    console.error("Error generating complete PDF:", error);
+    alert("Failed to generate complete PDF: " + error.message);
+  } finally {
+    setSavingAnswers(false);
+    setShowExportModal(false);
   }
 };
 
-// Radio answers are saved as index strings ("0","1","2"...). Keep fallback to legacy saved values.
-const isRadioSelected = (answerValue, choice, choiceIndex) => {
-  const saved = String(answerValue ?? "");
-  if (saved === String(choiceIndex)) return true;
 
-  const choiceLabel =
-    choice && typeof choice === "object"
-      ? (choice.label ?? choice.value ?? choice.name ?? choice.title ?? choice.text ?? "")
-      : choice;
-  const choiceValueRaw =
-    choice && typeof choice === "object"
-      ? (choice.value ?? choice.label ?? choice.name ?? choice.title ?? choice.text ?? "")
-      : choice;
 
-  if (choiceValueRaw !== "" && choiceValueRaw !== null && choiceValueRaw !== undefined && saved === String(choiceValueRaw)) return true;
-  if (choiceLabel !== "" && choiceLabel !== null && choiceLabel !== undefined && saved === String(choiceLabel)) return true;
 
-  return false;
-};
-
-const handleTabChange = (tabId) => {
-  setActiveTab(tabId);
-};
-
-// Add this function to handle verification
 const handleVerifyAssessment = async () => {
   if (!lguAnswers.length || !forwardedAssessment) {
     alert("No assessment data to verify");
@@ -162,7 +1280,7 @@ const handleVerifyAssessment = async () => {
     const lgu = lguAnswers[0];
     
     // Clean the LGU name for Firebase path
-    const cleanLguName = lgu.lguName.replace(/[.#$\[\]]/g, '_');
+    const cleanLguName = `${lgu.lguName.replace(/[.#$\[\]]/g, '_')}_${selectedAssessmentId}`;
     
     // Get the MLGO's UID from the forwarded assessment
     const mlgoUid = forwardedAssessment.lguUid || lgu.lguUid;
@@ -174,6 +1292,10 @@ const handleVerifyAssessment = async () => {
     }
     
     console.log("Verifying assessment for MLGO with UID:", mlgoUid);
+    
+    // Get the current tab's remark
+    const currentTabRemark = remarks[activeTab] || "";
+    const allTabRemarks = { ...remarks };
     
     // 1. Get the current data from answers node first
     const answersRef = ref(db, `answers/${selectedYear}/LGU/${cleanLguName}`);
@@ -200,7 +1322,7 @@ const handleVerifyAssessment = async () => {
         verifiedAt: Date.now(),
         verifiedBy: auth.currentUser?.email,
         verifiedByName: profileData.name || auth.currentUser?.email,
-        remarks: remarks[activeTab] || "Assessment verified" // CHANGED: use tab-specific remarks
+        remarks: currentTabRemark || "Assessment verified"
         
         // NO forwarding or return flags here
       };
@@ -218,6 +1340,8 @@ const handleVerifyAssessment = async () => {
     const verifiedData = {
       lguUid: mlgoUid,
       year: selectedYear,
+      assessmentId: selectedAssessmentId,
+      assessment: selectedAssessment,
       lguName: lgu.lguName,
       municipality: lgu.municipality,
       verifiedAt: Date.now(),
@@ -228,7 +1352,7 @@ const handleVerifyAssessment = async () => {
       deadline: lgu.deadline,
       submittedBy: lgu.submittedBy,
       forwardedBy: forwardedAssessment.forwardedBy,
-      remarks: remarks[activeTab] || "Assessment verified", // CHANGED: use tab-specific remarks
+      remarks: currentTabRemark || "Assessment verified",
       attachmentsByIndicator: lgu.attachmentsByIndicator || {}
     };
     
@@ -246,7 +1370,7 @@ const handleVerifyAssessment = async () => {
       
       // Find and delete the specific forwarded record
       for (const [key, item] of Object.entries(forwardedData)) {
-        if (item.lguUid === mlgoUid && item.year === selectedYear) {
+        if (item.lguUid === mlgoUid && item.year === selectedYear && item.assessmentId === selectedAssessmentId) {
           await set(ref(db, `forwarded/${auth.currentUser.uid}/${key}`), null);
           console.log("✅ Removed from forwarded node");
           break;
@@ -254,76 +1378,64 @@ const handleVerifyAssessment = async () => {
       }
     }
     
-// 4. Create a notification for the MLGO
-const mlgoNotificationRef = ref(db, `notifications/${selectedYear}/MLGO/${mlgoUid}`);
-const mlgoNotificationId = Date.now().toString();
-const mlgoNotificationData = {
-  id: mlgoNotificationId,
-  type: "assessment_verified",
-  title: `Assessment Form (${selectedYear}) has been verified by the Provincial Office.`,
-  message: `The assessment for ${lgu.lguName} has been verified.`,
-  from: auth.currentUser?.email,
-  fromName: profileData.name || auth.currentUser?.email,
-  timestamp: Date.now(),
-  read: false,
-  year: selectedYear,
-  municipality: lgu.municipality || "",
-  tabName: getTabName(activeTab) || "",
-  tabRemarks: (remarks && remarks[activeTab]) || "", // FIXED: Provide fallback empty string
-  action: "view_verified_assignment"
-};
-await set(ref(db, `notifications/${selectedYear}/MLGO/${mlgoUid}/${mlgoNotificationId}`), mlgoNotificationData);
+    // 4. Create a notification for the MLGO
+    const notificationRef = ref(db, `notifications/${selectedYear}/MLGO/${mlgoUid}`);
+    const notificationId = Date.now().toString();
+    const notificationData = {
+      id: notificationId,
+      type: "assessment_verified",
+      title: `"${selectedAssessment}" Assessment (${selectedYear}) has been verified by PO.`,
+      message: currentTabRemark || "Assessment has been verified by the Provincial Office.",
+      from: auth.currentUser?.email || "",
+      fromName: profileData.name || auth.currentUser?.email || "",
+      fromMunicipality: "",
+      timestamp: Date.now(),
+      read: false,
+      year: selectedYear,
+      assessment: selectedAssessment,
+      assessmentId: selectedAssessmentId,
+      municipality: lgu.municipality,
+      lguName: lgu.lguName,
+      tabName: activeTab ? tabs.find(t => t.id === activeTab)?.name || "" : "",
+      tabRemarks: currentTabRemark,
+      action: "view_verified_assessment"
+    };
+    
 
-// 5. Create a notification for the LGU (using UID from metadata)
-if (lguUidForNotification) {
-  const lguNotificationRef = ref(db, `notifications/${selectedYear}/LGU/${lguUidForNotification}`);
-  const lguNotificationId = Date.now().toString();
-  const lguNotificationData = {
-    id: lguNotificationId,
-    type: "assessment_verified",
-    title: `Assessment Form (${selectedYear}) has been verified by the Provincial Office.`,
-    message: `Your assessment has been verified.`,
-    from: auth.currentUser?.email,
-    fromName: profileData.name || auth.currentUser?.email,
-    timestamp: Date.now(),
-    read: false,
-    year: selectedYear,
-    municipality: lgu.municipality || "",
-    tabName: getTabName(activeTab) || "",
-    tabRemarks: (remarks && remarks[activeTab]) || "", // FIXED: Provide fallback empty string
-    action: "view_verified_assignment"
-  };
-  
-  await set(ref(db, `notifications/${selectedYear}/LGU/${lguUidForNotification}/${lguNotificationId}`), lguNotificationData);
-}
-// 5. Create a notification for the LGU (using UID from metadata)
-if (lguUidForNotification) {
-  const lguNotificationRef = ref(db, `notifications/${selectedYear}/LGU/${lguUidForNotification}`);
-  const lguNotificationId = Date.now().toString();
-  const lguNotificationData = {
-    id: lguNotificationId,
-    type: "assessment_verified",
-    title: `Assessment Form (${selectedYear}) has been verified by the Provincial Office.`,
-    message: `Your assessment has been verified.`,
-    from: auth.currentUser?.email,
-    fromName: profileData.name || auth.currentUser?.email,
-    timestamp: Date.now(),
-    read: false,
-    year: selectedYear,
-    municipality: lgu.municipality,
-    tabName: getTabName(activeTab), // ADDED: include tab name
-    tabRemarks: (remarks && remarks[activeTab]) || "", // ADDED: include tab-specific remarks
-    action: "view_verified_assessment"
-  };
-  
-  await set(ref(db, `notifications/${selectedYear}/LGU/${lguUidForNotification}/${lguNotificationId}`), lguNotificationData);
-}
+    console.log("Saving notification for MLGO:", notificationData);
+    await set(ref(db, `notifications/${selectedYear}/MLGO/${mlgoUid}/${notificationId}`), notificationData);
+    console.log("✅ Notification created for MLGO");
+
+    // 5. Create a notification for the LGU (using UID from metadata)
+    if (lguUidForNotification) {
+      const lguNotificationRef = ref(db, `notifications/${selectedYear}/LGU/${lguUidForNotification}`);
+      const lguNotificationId = Date.now().toString();
+      const lguNotificationData = {
+        id: lguNotificationId,
+        type: "assessment_verified",
+        title: `Assessment "${selectedAssessment}" (${selectedYear}) has been verified by the Provincial Office.`,
+        message: `Your assessment has been verified.`,
+        from: auth.currentUser?.email,
+        fromName: profileData.name || auth.currentUser?.email,
+        timestamp: Date.now(),
+        read: false,
+        year: selectedYear,
+        assessmentId: selectedAssessmentId,
+        assessment: selectedAssessment,
+        municipality: lgu.municipality || "",
+        tabName: activeTab ? tabs.find(t => t.id === activeTab)?.name || "" : "",
+        tabRemarks: currentTabRemark || "",
+        action: "view_verified_assessment"
+      };
+      
+      await set(ref(db, `notifications/${selectedYear}/LGU/${lguUidForNotification}/${lguNotificationId}`), lguNotificationData);
+    }
     
     console.log("✅ Notifications created");
     
     alert("Assessment verified successfully!");
     setIsVerified(true);
-    setRemarks(prev => ({ ...prev, [activeTab]: "" })); // CHANGED: clear tab-specific remarks
+    setRemarks(prev => ({ ...prev, [activeTab]: "" }));
     
     // Navigate back to dashboard after successful verification
     navigate("/dashboard");
@@ -336,134 +1448,108 @@ if (lguUidForNotification) {
   }
 };
 
-// Load verified flag from localStorage on component mount
-useEffect(() => {
-  const savedFlag = localStorage.getItem('verifiedFlag');
-  if (savedFlag) {
+  // Load verified flag from localStorage on component mount
+  useEffect(() => {
+    const savedFlag = localStorage.getItem('verifiedFlag');
+    if (savedFlag) {
+      try {
+        setVerifiedFlag(JSON.parse(savedFlag));
+      } catch (e) {
+        console.error("Error parsing saved flags:", e);
+      }
+    }
+  }, []);
+
+  // Add this function to handle downloads
+  const downloadAttachment = (attachment) => {
+    console.log('📎 Downloading attachment:', attachment);
+    
     try {
-      setVerifiedFlag(JSON.parse(savedFlag));
-    } catch (e) {
-      console.error("Error parsing saved flags:", e);
-    }
-  }
-}, []);
-
-// Add this function to handle downloads
-const downloadAttachment = (attachment) => {
-  console.log('📎 Downloading attachment:', attachment);
-  
-  try {
-    // Log all properties to see what's available
-    console.log('Available properties:', Object.keys(attachment));
-    
-    // Try to find the file data - it might be in different places
-    let fileUrl = null;
-    let fileName = 'download';
-    
-    // Check each property to see if it contains file data
-    for (const key of Object.keys(attachment)) {
-      const value = attachment[key];
-      console.log(`Property "${key}":`, typeof value, value ? 'has value' : 'empty');
+      let fileUrl = null;
+      let fileName = 'download';
       
-      // If it's a string that looks like a data URL or regular URL
-      if (typeof value === 'string' && (value.startsWith('data:') || value.startsWith('http'))) {
-        fileUrl = value;
-        console.log(`Found potential file URL in property: ${key}`);
+      for (const key of Object.keys(attachment)) {
+        const value = attachment[key];
+        
+        if (typeof value === 'string' && (value.startsWith('data:') || value.startsWith('http'))) {
+          fileUrl = value;
+          console.log(`Found potential file URL in property: ${key}`);
+        }
+        
+        if (key === 'name' || key === 'fileName' || key === 'filename') {
+          fileName = value;
+        }
       }
       
-      // Look for filename
-      if (key === 'name' || key === 'fileName' || key === 'filename') {
-        fileName = value;
-      }
-    }
-    
-    if (fileUrl) {
-      if (fileUrl.startsWith('data:')) {
-        // Handle base64 data URL
-        const link = document.createElement('a');
-        link.href = fileUrl;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        console.log('✅ Download initiated for base64 data');
+      if (fileUrl) {
+        if (fileUrl.startsWith('data:')) {
+          const link = document.createElement('a');
+          link.href = fileUrl;
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          console.log('✅ Download initiated for base64 data');
+        } else {
+          window.open(fileUrl, '_blank');
+          console.log('✅ Opened URL in new tab');
+        }
       } else {
-        // Regular URL - open in new tab
-        window.open(fileUrl, '_blank');
-        console.log('✅ Opened URL in new tab');
+        console.error('No file URL found in attachment');
+        alert('No file data available. Check console for attachment properties.');
       }
-    } else {
-      console.error('No file URL found in attachment');
-      alert('No file data available. Check console for attachment properties.');
+    } catch (error) {
+      console.error('Download error:', error);
+      alert('Failed to download file: ' + error.message);
     }
-  } catch (error) {
-    console.error('Download error:', error);
-    alert('Failed to download file: ' + error.message);
-  }
-};
+  };
 
-
+// ===== LOAD LGU ANSWERS =====
 useEffect(() => {
-  const loadAssessmentData = async () => {
-    if (!auth.currentUser || !selectedYear || !location.state?.lguUid) {
-      setLoading(false);
-      return;
-    }
+  if (!auth.currentUser || !selectedYear || !location.state?.lguUid || !selectedAssessmentId) {
+    setLoading(false);
+    return;
+  }
 
+  const loadLGUAnswers = async () => {
     try {
       setLoading(true);
       
       // Get the municipality from state
       const municipality = location.state.municipality;
-      console.log("Looking for municipality in verified:", municipality);
+      const lguName = location.state.lguName || municipality;
+      const cleanName = `${lguName.replace(/[.#$\[\]]/g, '_')}_${selectedAssessmentId}`;
       
-      if (municipality) {
-        // Reference to the verified node for this year
-        const verifiedRef = ref(db, `verified/${selectedYear}/LGU`);
-        const verifiedSnapshot = await get(verifiedRef);
+      console.log("Looking for assessment in verified:", municipality);
+      
+      // First check if this is a verified assessment
+      if (location.state?.isVerified) {
+        console.log("📋 Loading verified assessment from state:", location.state);
         
-        if (verifiedSnapshot.exists()) {
-          const verifiedLgus = verifiedSnapshot.val();
-          let foundVerifiedData = null;
-          let foundLguKey = null;
-          
-          // Search through all LGUs to find one with matching municipality
-          Object.keys(verifiedLgus).forEach(lguKey => {
-            const item = verifiedLgus[lguKey];
-            // Check if the municipality field matches
-            if (item.municipality === municipality) {
-              foundVerifiedData = item;
-              foundLguKey = lguKey;
-              console.log("✅ Found verified data by municipality:", item);
-            }
-          });
-          
-          if (foundVerifiedData) {
-            const lguData = {
-              id: 1,
-              lguName: foundVerifiedData.lguName || foundLguKey,
-              year: selectedYear,
-              status: "Verified",
-              submission: foundVerifiedData.submission || location.state.submission,
-              deadline: foundVerifiedData.deadline || location.state.deadline || "Not set",
-              data: foundVerifiedData.originalData || {},
-              municipality: foundVerifiedData.municipality || municipality,
-              submittedBy: foundVerifiedData.submittedBy || location.state.submittedBy,
-              verifiedBy: foundVerifiedData.verifiedBy,
-              verifiedAt: foundVerifiedData.verifiedAt,
-              lguUid: foundVerifiedData.lguUid || location.state.lguUid,
-              attachmentsByIndicator: foundVerifiedData.attachmentsByIndicator || {}
-            };
-            
-            setLguAnswers([lguData]);
-            setForwardedAssessment(lguData);
-            setIsVerified(true);
-            setLoading(false);
-            return;
-          } else {
-            console.log("❌ No verified data found for municipality:", municipality);
-          }
-        }
+        const verifiedLgu = {
+          id: 1,
+          lguName: lguName,
+          year: selectedYear,
+          assessmentId: selectedAssessmentId,
+          assessment: selectedAssessment,
+          status: "Verified",
+          submission: location.state.submission || new Date().toLocaleDateString(),
+          deadline: location.state.deadline || "Not set",
+          data: location.state.data || {},
+          municipality: municipality,
+          lguUid: location.state.lguUid,
+          isVerified: true,
+          verifiedBy: location.state.verifiedBy,
+          verifiedAt: location.state.verifiedAt,
+          attachmentsByIndicator: location.state.attachmentsByIndicator || {}
+        };
+        
+        setLguAnswers([verifiedLgu]);
+        setForwardedAssessment(verifiedLgu);
+        setIsVerified(true);
+        setIsReturned(false); // Verified assessments are not returned
+        setLoading(false);
+        return;
       }
       
       // If not found in verified, fetch from forwarded
@@ -477,7 +1563,9 @@ useEffect(() => {
         let foundAssessment = null;
         Object.keys(forwardedData).forEach(key => {
           const item = forwardedData[key];
-          if (item.lguUid === location.state.lguUid && item.year === selectedYear) {
+          if (item.lguUid === location.state.lguUid && 
+              item.year === selectedYear && 
+              item.assessmentId === selectedAssessmentId) {
             foundAssessment = item;
           }
         });
@@ -489,9 +1577,11 @@ useEffect(() => {
             id: 1,
             lguName: foundAssessment.lguName || municipality,
             year: foundAssessment.year,
+            assessmentId: foundAssessment.assessmentId,
+            assessment: foundAssessment.assessment,
             status: foundAssessment.status || "Pending",
             submission: foundAssessment.submission || new Date().toLocaleDateString(),
-            deadline: foundAssessment.deadline || "Not set",
+            deadline: location.state?.deadline || foundAssessment.deadline || "Not set",  // <-- USE THE PASSED DEADLINE FIRST
             data: foundAssessment.originalData || {},
             municipality: municipality,
             submittedBy: foundAssessment.submittedBy || "Unknown",
@@ -500,6 +1590,92 @@ useEffect(() => {
             lguUid: foundAssessment.lguUid,
             attachmentsByIndicator: {}
           };
+          
+          // IMPORTANT: Check if this assessment has been returned before
+          // We need to check the answers node to see if it has return flags
+          const answersRef = ref(db, `answers/${selectedYear}/LGU/${cleanName}`);
+          const answersSnapshot = await get(answersRef);
+          
+          let hasBeenReturned = false;
+          if (answersSnapshot.exists()) {
+            const answersData = answersSnapshot.val();
+            const metadata = answersData._metadata || {};
+            
+            // Check if this assessment was returned to MLGO
+            // If it was returned, the buttons should be enabled (not disabled)
+            // The returned flag is only for when PO has already returned it in this session
+            hasBeenReturned = metadata.returnedToMLGO === true;
+            
+            console.log("Metadata check:", {
+              returnedToMLGO: metadata.returnedToMLGO,
+              hasBeenReturned
+            });
+          }
+          
+          // Set isReturned based on whether this assessment was returned in this session
+          // We need to check location state or some other indicator
+          // For now, default to false for new forwarded assessments
+          setIsReturned(false);
+          
+          // Load attachments
+          const attachmentsRef = ref(
+            db,
+            `attachments/${selectedYear}/LGU/${cleanName}`
+          );
+          const attachmentsSnapshot = await get(attachmentsRef);
+          
+          if (attachmentsSnapshot.exists()) {
+            const attachments = attachmentsSnapshot.val();
+            const attachmentsByIndicator = {};
+            
+            Object.keys(attachments).forEach(key => {
+              const attachment = attachments[key];
+              
+              const keyParts = key.split('_');
+              
+              if (key.includes('_sub_')) {
+                const recordKey = keyParts[2];
+                const subIndex = keyParts[4];
+                const title = keyParts.slice(5, -1).join('_');
+                
+                const indicatorId = `${recordKey}_sub_${subIndex}_${title}`;
+                
+                if (!attachmentsByIndicator[indicatorId]) {
+                  attachmentsByIndicator[indicatorId] = [];
+                }
+                
+                attachmentsByIndicator[indicatorId].push({
+                  key: key,
+                  name: attachment.fileName || attachment.name || 'Attachment',
+                  url: attachment.url || attachment.fileData,
+                  fileData: attachment.fileData || attachment.url,
+                  fileSize: attachment.fileSize,
+                  uploadedAt: attachment.uploadedAt
+                });
+              } else {
+                const recordKey = keyParts[2];
+                const mainIndex = keyParts[3];
+                const title = keyParts.slice(4, -1).join('_');
+                
+                const indicatorId = `${recordKey}_${mainIndex}_${title}`;
+                
+                if (!attachmentsByIndicator[indicatorId]) {
+                  attachmentsByIndicator[indicatorId] = [];
+                }
+                
+                attachmentsByIndicator[indicatorId].push({
+                  key: key,
+                  name: attachment.fileName || attachment.name || 'Attachment',
+                  url: attachment.url || attachment.fileData,
+                  fileData: attachment.fileData || attachment.url,
+                  fileSize: attachment.fileSize,
+                  uploadedAt: attachment.uploadedAt
+                });
+              }
+            });
+            
+            lguData.attachmentsByIndicator = attachmentsByIndicator;
+          }
           
           setLguAnswers([lguData]);
           setForwardedAssessment(foundAssessment);
@@ -518,511 +1694,374 @@ useEffect(() => {
     }
   };
 
-  if (location.state?.lguUid && selectedYear) {
-    loadAssessmentData();
+  if (location.state?.lguUid && selectedYear && selectedAssessmentId) {
+    loadLGUAnswers();
   } else {
     setLoading(false);
   }
-}, [auth.currentUser, selectedYear, location.state]);
+}, [auth.currentUser, selectedYear, selectedAssessmentId, location.state]);
 
-const handleForwardToPO = async () => {
-  if (!lguAnswers.length) {
-    alert("No assessment data to forward");
+const handleReturnAssessment = async () => {
+  // Check both lguAnswers and forwardedAssessment
+  if (!lguAnswers.length || !forwardedAssessment) {
+    console.log("Missing data:", { 
+      lguAnswersLength: lguAnswers.length, 
+      forwardedAssessment: forwardedAssessment 
+    });
+    alert("No assessment data to return. Please make sure you're viewing a forwarded assessment.");
     return;
   }
 
-  const confirmForward = window.confirm(
-    "Are you sure you want to forward this assessment to the Provincial Office?"
+  const confirmReturn = window.confirm(
+    "Are you sure you want to return this assessment to the MLGO? This will make it editable again for them."
   );
   
-  if (!confirmForward) return;
+  if (!confirmReturn) return;
 
   try {
     setLoading(true);
     const lgu = lguAnswers[0];
     
-    // Find admin UID (PO)
-    const usersRef = ref(db, "users");
-    const usersSnapshot = await get(usersRef);
-    let poUid = null;
+    // Clean the LGU name for Firebase path
+    const originalLguName = lgu.lguName.replace(/[.#$\[\]]/g, '_');
+    const cleanLguName = `${originalLguName}_${selectedAssessmentId}`;
     
-    if (usersSnapshot.exists()) {
-      const users = usersSnapshot.val();
-      poUid = Object.keys(users).find(
-        uid => users[uid]?.role === "admin"
-      );
-    }
+    // Get the MLGO's UID from the forwarded assessment
+    const mlgoUid = forwardedAssessment.lguUid || lgu.lguUid;
     
-    if (!poUid) {
-      alert("No Provincial Office admin found");
+    if (!mlgoUid) {
+      console.error("No MLGO UID found in:", { forwardedAssessment, lgu });
+      alert("MLGO information not found. Cannot return assessment.");
       return;
     }
     
-    // CRITICAL FIX: Get the current user's UID
-    const currentUserUid = auth.currentUser?.uid;
+    console.log("Returning assessment to MLGO with UID:", mlgoUid);
     
-    if (!currentUserUid) {
-      alert("You must be logged in to forward assessments");
-      return;
+    // Get the current tab's remark and all tab remarks
+    const currentTabRemark = remarks[activeTab] || "";
+    const allTabRemarks = { ...remarks };
+    
+    // ===== CRITICAL: Get the original data from forwardedAssessment =====
+    // This is the key - we need to preserve the EXACT structure of answers
+    let originalAnswers = {};
+    let originalMetadata = {};
+    
+    // Check if forwardedAssessment.originalData exists and has the right structure
+    if (forwardedAssessment.originalData) {
+      if (forwardedAssessment.originalData._metadata) {
+        // If it has metadata, extract answers and metadata separately
+        originalMetadata = forwardedAssessment.originalData._metadata;
+        const { _metadata, ...answers } = forwardedAssessment.originalData;
+        originalAnswers = answers;
+      } else {
+        // If no metadata, assume everything is answers
+        originalAnswers = forwardedAssessment.originalData;
+      }
+    } else if (lgu.data) {
+      // Fallback to lgu.data
+      originalAnswers = lgu.data;
     }
     
-    console.log("Current user UID (sub-admin):", currentUserUid);
+    console.log("Original answers count:", Object.keys(originalAnswers).length);
+    console.log("Sample answer keys:", Object.keys(originalAnswers).slice(0, 5));
     
-    const forwardData = {
-      lguUid: currentUserUid, // Store the sub-admin's UID (NOT "No UID")
+    // 1. Save to RETURNED node with ALL remarks
+    const returnedData = {
+      originalLguName: lgu.lguName,
+      lguUid: mlgoUid,
       year: selectedYear,
-      status: "Pending",
-      submission: new Date().toLocaleDateString('en-US', {
-        month: 'long',
-        day: '2-digit',
-        year: 'numeric'
-      }),
-      deadline: submissionDeadline ? new Date(submissionDeadline).toLocaleDateString('en-US', {
-        month: 'long',
-        day: '2-digit',
-        year: 'numeric'
-      }) : "Not set",
-      originalData: lgu.data,
-      forwardedAt: Date.now(),
-      forwardedBy: auth.currentUser?.email,
-      submittedBy: lgu.submittedBy || auth.currentUser?.email,
-      lguName: lgu.lguName
+      assessmentId: selectedAssessmentId,
+      assessment: selectedAssessment,
+      municipality: lgu.municipality,
+      returnedAt: Date.now(),
+      returnedBy: auth.currentUser?.email,
+      returnedByName: profileData.name || auth.currentUser?.email,
+      originalData: forwardedAssessment.originalData || lgu.data,
+      submission: lgu.submission,
+      deadline: lgu.deadline,
+      submittedBy: lgu.submittedBy || forwardedAssessment.submittedBy,
+      // Store ALL tab remarks
+      poRemarks: allTabRemarks,
+      // Also store current tab remark for quick access
+      currentTabRemark: currentTabRemark,
+      attachmentsByIndicator: lgu.attachmentsByIndicator || {},
+      status: "returned",
+      forwardedBy: forwardedAssessment.forwardedBy,
+      forwardedAt: forwardedAssessment.forwardedAt
+    };
+
+    // Save to returned node (organized by year then MLGO UID)
+    const returnedRef = ref(db, `returned/${selectedYear}/MLGO/${mlgoUid}/${selectedAssessmentId}`);
+    await set(returnedRef, returnedData);
+    console.log("✅ Saved to returned node with remarks:", allTabRemarks);
+    
+    // 2. Update answers node with return flags but PRESERVE ALL original answers
+    const answersRef = ref(db, `answers/${selectedYear}/LGU/${cleanLguName}`);
+    
+    // Get existing metadata if any (from the current answers node)
+    const answersSnapshot = await get(answersRef);
+    let existingMetadata = {};
+    if (answersSnapshot.exists()) {
+      const data = answersSnapshot.val();
+      existingMetadata = data._metadata || {};
+    }
+    
+    // Create updated metadata that preserves everything from original metadata
+    const updatedMetadata = {
+      ...originalMetadata,  // Keep ALL original metadata from forwarded assessment
+      ...existingMetadata,  // Also keep any existing metadata (but original will override if conflict)
+      
+      // Essential user info (ensure these are set)
+      uid: originalMetadata.uid || existingMetadata.uid || mlgoUid,
+      email: originalMetadata.email || existingMetadata.email || forwardedAssessment.submittedBy || "",
+      name: originalMetadata.name || existingMetadata.name || lgu.lguName,
+      municipality: originalMetadata.municipality || existingMetadata.municipality || lgu.municipality,
+      
+      // Return flags (add these)
+      returnedToMLGO: true,
+      returnedAt: Date.now(),
+      returnedBy: auth.currentUser?.email,
+      returnedByName: profileData.name || auth.currentUser?.email,
+      poRemarks: allTabRemarks,
+      remarks: currentTabRemark || "Assessment returned for revision",
+      
+      // Important: Set submitted to false so MLGO can edit
+      submitted: false,
+      forwarded: false,
+      forwardedToPO: false,
+      
+      // Preserve last saved info
+      lastSaved: Date.now(),
+      
+      // Keep assessment info
+      year: originalMetadata.year || selectedYear,
+      assessment: originalMetadata.assessment || selectedAssessment,
+      assessmentId: originalMetadata.assessmentId || selectedAssessmentId,
+      
+      // Preserve the deadline
+      deadline: originalMetadata.deadline || lgu.deadline
     };
     
-    console.log("Forwarding data with sub-admin UID:", forwardData.lguUid);
+    // ===== CRITICAL: Use the ORIGINAL answers structure exactly as it was =====
+    // This ensures all answer keys (including _radio_, _checkbox_ suffixes) are preserved
+    const answersData = {
+      ...originalAnswers,  // This contains ALL answers with their proper keys
+      _metadata: updatedMetadata
+    };
     
-    // Save to Firebase under the PO's node
-    const forwardedRef = ref(db, `forwarded/${poUid}`);
-    const newForwardedRef = push(forwardedRef);
-    await set(newForwardedRef, forwardData);
+    await set(answersRef, answersData);
+    console.log("✅ Updated answers node with return metadata (preserved ALL original answers)");
+    console.log("Total answers preserved:", Object.keys(originalAnswers).length);
     
-    console.log("Forwarded to PO successfully:", forwardData);
-    alert("Assessment forwarded to Provincial Office successfully!");
+    // 3. Remove from forwarded node
+    const forwardedRef = ref(db, `forwarded/${auth.currentUser.uid}`);
+    const forwardedSnapshot = await get(forwardedRef);
+    
+    if (forwardedSnapshot.exists()) {
+      const forwardedData = forwardedSnapshot.val();
+      
+      // Find and delete the specific forwarded record
+      for (const [key, item] of Object.entries(forwardedData)) {
+        if (item.lguUid === mlgoUid && item.year === selectedYear && item.assessmentId === selectedAssessmentId) {
+          await set(ref(db, `forwarded/${auth.currentUser.uid}/${key}`), null);
+          console.log("✅ Removed from forwarded node");
+          break;
+        }
+      }
+    }
+    
+// In handleReturnAssessment function, replace the notification section with:
+
+console.log("🔍 DEBUG - Creating return notification:");
+console.log("MLGO UID from forwardedAssessment:", mlgoUid);
+
+// Also try to get the MLGO's UID from the answers node as a fallback
+let correctMlgoUid = mlgoUid;
+
+try {
+  // Try to find the correct MLGO UID from the answers node
+  const answersRef = ref(db, `answers/${selectedYear}/LGU/${cleanLguName}`);
+  const answersSnapshot = await get(answersRef);
+  if (answersSnapshot.exists()) {
+    const metadata = answersSnapshot.val()._metadata;
+    if (metadata && metadata.uid) {
+      correctMlgoUid = metadata.uid;
+      console.log("Found MLGO UID from metadata:", correctMlgoUid);
+    }
+  }
+} catch (error) {
+  console.log("Could not get MLGO UID from metadata, using original:", mlgoUid);
+}
+
+const notificationReturnId = Date.now().toString();
+const notificationReturnData = {
+  id: notificationReturnId,
+  type: "assessment_returned_from_po",
+  title: `"${selectedAssessment}" Assessment (${selectedYear}) was returned by PO.`,
+  message: currentTabRemark || "Assessment returned by PO. Please review the remarks for each tab.",
+  from: auth.currentUser?.email,
+  fromName: profileData.name || auth.currentUser?.email,
+  timestamp: Date.now(),
+  read: false,
+  year: selectedYear,
+  assessmentId: selectedAssessmentId,
+  assessment: selectedAssessment,
+  lguName: lgu.lguName,
+  municipality: lgu.lguName,
+  poRemarks: allTabRemarks,
+  currentTabRemark: currentTabRemark,
+  tabName: activeTab ? tabs.find(t => t.id === activeTab)?.name || "" : "",
+  tabRemarks: currentTabRemark,
+  returnedPath: `returned/${selectedYear}/MLGO/${correctMlgoUid}/${selectedAssessmentId}`,
+  action: "view_returned_assessment"
+};
+
+console.log("Saving notification for MLGO UID:", correctMlgoUid);
+
+try {
+  // Save to both possible UIDs to ensure it reaches the MLGO
+  await set(ref(db, `notifications/${selectedYear}/MLGO/${mlgoUid}/${notificationReturnId}`), notificationReturnData);
+  console.log("✅ Saved to original UID:", mlgoUid);
+  
+  if (correctMlgoUid !== mlgoUid) {
+    await set(ref(db, `notifications/${selectedYear}/MLGO/${correctMlgoUid}/${notificationReturnId}`), notificationReturnData);
+    console.log("✅ Saved to correct UID from metadata:", correctMlgoUid);
+  }
+  
+  console.log("✅ Return notification saved successfully");
+} catch (error) {
+  console.error("❌ Error saving notification:", error);
+}
+
+    console.log("✅ Notification created for MLGO with remarks");
+    
+    // Set returned flag to true to disable buttons
+    setIsReturned(true);
+    
+    alert("Assessment returned to MLGO successfully.");
+    
+    // Clear the current tab's remarks after successful return
+    setRemarks(prev => ({ ...prev, [activeTab]: "" }));
+    
+    // Navigate back to dashboard
+    navigate("/dashboard", { 
+      state: { 
+        returnedAssessment: true,
+        year: selectedYear,
+        assessmentId: selectedAssessmentId,
+        lguUid: mlgoUid
+      } 
+    });
     
   } catch (error) {
-    console.error("Error forwarding to PO:", error);
-    alert("Failed to forward assessment: " + error.message);
+    console.error("Error returning assessment:", error);
+    alert("Failed to return assessment: " + error.message);
   } finally {
     setLoading(false);
   }
 };
-// Add this after your fetchLGUAnswers useEffect
-useEffect(() => {
-  if (lguAnswers.length > 0) {
-    console.log('🔍 RAW LGU ANSWERS:', lguAnswers);
-    lguAnswers.forEach((lgu, index) => {
-      console.log(`LGU ${index}:`, lgu.lguName || lgu.municipality || 'Unknown');
-      console.log('AttachmentsByIndicator:', lgu.attachmentsByIndicator);
-    });
-  }
-}, [lguAnswers]);
 
-  const [data, setData] = useState([]);
 
-  const handleReturnAssessment = async () => {
-    // Check both lguAnswers and forwardedAssessment
-    if (!lguAnswers.length || !forwardedAssessment) {
-      console.log("Missing data:", { 
-        lguAnswersLength: lguAnswers.length, 
-        forwardedAssessment: forwardedAssessment 
-      });
-      alert("No assessment data to return. Please make sure you're viewing a forwarded assessment.");
-      return;
-    }
-  
-    const confirmReturn = window.confirm(
-      "Are you sure you want to return this assessment to the MLGO? This will make it editable again for them."
-    );
-    
-    if (!confirmReturn) return;
-  
-    try {
-      setLoading(true);
-      const lgu = lguAnswers[0];
-      
-      // Clean the LGU name for Firebase path
-      const cleanLguName = lgu.lguName.replace(/[.#$\[\]]/g, '_');
-      
-      // Get the MLGO's UID from the forwarded assessment
-      const mlgoUid = forwardedAssessment.lguUid || lgu.lguUid;
-      
-      if (!mlgoUid) {
-        console.error("No MLGO UID found in:", { forwardedAssessment, lgu });
-        alert("MLGO information not found. Cannot return assessment.");
-        return;
-      }
-      
-      console.log("Returning assessment to MLGO with UID:", mlgoUid);
-      
-      // 1. Update the original answers in the answers node
-      const answersRef = ref(db, `answers/${selectedYear}/LGU/${cleanLguName}`);
-      const snapshot = await get(answersRef);
-      
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const profileRef = ref(db, `profiles/${auth.currentUser.uid}`);
+    onValue(profileRef, (snapshot) => {
       if (snapshot.exists()) {
-        const currentData = snapshot.val();
-        
-        // Save ALL tab remarks from the PO
-        const updatedData = {
-          ...currentData,
-          _metadata: {
-            ...currentData._metadata,
-            submitted: false,
-            forwarded: false,
-            returnedToMLGO: true,
-            returnedAt: Date.now(),
-            returnedBy: auth.currentUser?.email,
-            returnedByName: profileData.name || auth.currentUser?.email,
-            poRemarks: remarks, // CHANGED: Save ALL tab remarks as an object
-            remarks: remarks[activeTab] || "Assessment returned for revision" // Keep single remark for backward compatibility
-          }
-        };
-        
-        await set(answersRef, updatedData);
-        console.log("✅ Updated answers node with return metadata and PO remarks:", remarks);
-        
-        // 2. Remove from forwarded node
-        const forwardedRef = ref(db, `forwarded/${auth.currentUser.uid}`);
-        const forwardedSnapshot = await get(forwardedRef);
-        
-        if (forwardedSnapshot.exists()) {
-          const forwardedData = forwardedSnapshot.val();
-          
-          // Find and delete the specific forwarded record
-          for (const [key, item] of Object.entries(forwardedData)) {
-            if (item.lguUid === mlgoUid && item.year === selectedYear) {
-              await set(ref(db, `forwarded/${auth.currentUser.uid}/${key}`), null);
-              console.log("✅ Removed from forwarded node");
-              break;
-            }
-          }
-        }
-        
-        // 3. Create a notification for the MLGO with ALL tab-specific remarks
-        const notificationRef = ref(db, `notifications/${selectedYear}/MLGO/${mlgoUid}`);
-        const notificationId = Date.now().toString();
-        const notificationData = {
-          id: notificationId,
-          type: "assessment_returned_from_po",
-          title: `Assessment (${selectedYear}) was returned by Provincial Office`,
-          message: `Assessment returned by PO. Please review the remarks for each tab.`,
-          from: auth.currentUser?.email,
-          fromName: profileData.name || auth.currentUser?.email,
-          timestamp: Date.now(),
-          read: false,
-          year: selectedYear,
-          lguName: lgu.lguName,
-          municipality: lgu.lguName,
-          poRemarks: remarks, // CHANGED: Include ALL tab remarks in notification
-          action: "view_returned_assessment"
-        };
-        
-        await set(ref(db, `notifications/${selectedYear}/MLGO/${mlgoUid}/${notificationId}`), notificationData);
-        console.log("✅ Notification created for MLGO with ALL tab remarks");
-        
-        alert("Assessment returned to MLGO successfully.");
-        setRemarks(prev => ({ ...prev, [activeTab]: "" })); // Clear current tab's remarks
-        
-        // Navigate back to dashboard
-        navigate("/dashboard");
+        const profile = snapshot.val();
+        setProfileData(profile);
+        setEditProfileData(profile);
+
+        // For admin, always set profile complete
+        setProfileComplete(true);
+        setShowEditProfileModal(false);
       } else {
-        alert("Could not find the original assessment data.");
+        // No profile exists yet, but admin doesn't need one
+        setProfileComplete(true);
+        setShowEditProfileModal(false);
       }
-    } catch (error) {
-      console.error("Error returning assessment:", error);
-      alert("Failed to return assessment: " + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-useEffect(() => {
-  if (!auth.currentUser) return;
-
-  const profileRef = ref(db, `profiles/${auth.currentUser.uid}`);
-  onValue(profileRef, (snapshot) => {
-    if (snapshot.exists()) {
-      const profile = snapshot.val();
-      setProfileData(profile);
-      setEditProfileData(profile);
-
-      // For admin, always set profile complete
-      setProfileComplete(true);
-      setShowEditProfileModal(false);
-    } else {
-      // No profile exists yet, but admin doesn't need one
-      setProfileComplete(true);
-      setShowEditProfileModal(false);
-    }
-  });
-}, []);
-
-// Fetch user role and municipality from users node
-useEffect(() => {
-  if (!auth.currentUser) return;
-
-  const fetchUserRole = async () => {
-    try {
-      // Get user role from users node
-      const userRef = ref(db, `users/${auth.currentUser.uid}`);
-      const userSnapshot = await get(userRef);
-      
-      if (userSnapshot.exists()) {
-        const userData = userSnapshot.val();
-        setUserRole(userData.role || "user");
-        console.log("User role:", userData.role);
-      } else {
-        console.log("No user data found in users node");
-        setUserRole("user");
-      }
-      
-      // Get municipality from profile
-      if (profileData.municipality) {
-        setUserMunicipality(profileData.municipality);
-      }
-    } catch (error) {
-      console.error("Error fetching user role:", error);
-    }
-  };
-
-  fetchUserRole();
-}, [profileData]);
-
-
-
-// Fetch LGU answers with role-based filtering
-useEffect(() => {
-  if (!auth.currentUser || !adminUid || !selectedYear || !userRole) return;
-/*
-  const fetchLGUAnswers = async () => {
-    try {
-      setLoading(true);
-      const answersRef = ref(db, `answers/${selectedYear}/LGU`);
-      
-      onValue(answersRef, async (snapshot) => {
-        if (snapshot.exists()) {
-          const answers = snapshot.val();
-          
-          // Apply role-based filtering
-          const filteredAnswers = filterLGUAnswersByRole(answers, userRole, userMunicipality);
-          
-// In fetchLGUAnswers, modify the attachments fetching part
-for (let i = 0; i < filteredAnswers.length; i++) {
-  const lgu = filteredAnswers[i];
-  
-  // Clean the LGU name for Firebase path
-  const cleanName = lgu.lguName.replace(/[.#$\[\]]/g, '_');
-  
-  // Reference to attachments in Firebase
-  const attachmentsRef = ref(
-    db,
-    `attachments/${selectedYear}/LGU/${cleanName}`
-  );
-  
-  const attachmentsSnapshot = await get(attachmentsRef);
-  
-// In fetchLGUAnswers function, replace the attachments fetching part:
-
-if (attachmentsSnapshot.exists()) {
-  const attachments = attachmentsSnapshot.val();
-  
-  // Create a map to store attachments by their indicator path
-  const attachmentsByIndicator = {};
-  
-  Object.keys(attachments).forEach(key => {
-    const attachment = attachments[key];
-    
-    console.log('Raw attachment from Firebase:', key, attachment); // Debug log
-    
-    const keyParts = key.split('_');
-    
-    // Determine if this is a main or sub indicator
-    if (key.includes('_sub_')) {
-      // This is a sub-indicator attachment
-      const recordKey = keyParts[0];
-      const subIndex = keyParts[2];
-      const title = keyParts.slice(3, -1).join('_');
-      
-      const indicatorId = `${recordKey}_sub_${subIndex}_${title}`;
-      
-      if (!attachmentsByIndicator[indicatorId]) {
-        attachmentsByIndicator[indicatorId] = [];
-      }
-      
-      attachmentsByIndicator[indicatorId].push({
-        key: key,
-        name: attachment.fileName || attachment.name || 'Attachment',
-        // Include both url and fileData to be safe
-        url: attachment.url || attachment.fileData,
-        fileData: attachment.fileData || attachment.url,
-        fileSize: attachment.fileSize,
-        uploadedAt: attachment.uploadedAt
-      });
-    } else {
-      // This is a main indicator attachment
-      const recordKey = keyParts[0];
-      const mainIndex = keyParts[1];
-      const title = keyParts.slice(2, -1).join('_');
-      
-      const indicatorId = `${recordKey}_${mainIndex}_${title}`;
-      
-      if (!attachmentsByIndicator[indicatorId]) {
-        attachmentsByIndicator[indicatorId] = [];
-      }
-      
-      attachmentsByIndicator[indicatorId].push({
-        key: key,
-        name: attachment.fileName || attachment.name || 'Attachment',
-        // Include both url and fileData to be safe
-        url: attachment.url || attachment.fileData,
-        fileData: attachment.fileData || attachment.url,
-        fileSize: attachment.fileSize,
-        uploadedAt: attachment.uploadedAt
-      });
-    }
-  });
-  
-  lgu.attachmentsByIndicator = attachmentsByIndicator;
-  console.log("Mapped attachments:", attachmentsByIndicator);
-} else {
-  lgu.attachmentsByIndicator = {};
-}
-}
-          
-          setLguAnswers(filteredAnswers);
-          setData(filteredAnswers);
-        } else {
-          setLguAnswers([]);
-          setData([]);
-        }
-        setLoading(false);
-      });
-    } catch (error) {
-      console.error("Error fetching LGU answers:", error);
-      setLoading(false);
-    }
-  };
-
-  fetchLGUAnswers();*/
-}, [adminUid, selectedYear, submissionDeadline, userRole, userMunicipality]);
-
-const handleFileUpload = async (file, recordKey, indicatorIndex, indicatorTitle, isSub = false) => {
-  try {
-    const user = auth.currentUser;
-    const lguName = userMunicipality;
-    const year = selectedYear;
-    
-    // Create a unique key that identifies this specific indicator
-    const timestamp = Date.now();
-    let attachmentKey;
-    
-    if (isSub) {
-      attachmentKey = `${recordKey}_sub_${indicatorIndex}_${indicatorTitle}_${timestamp}`;
-    } else {
-      attachmentKey = `${recordKey}_${indicatorIndex}_${indicatorTitle}_${timestamp}`;
-    }
-    
-    // Upload to Firebase Storage or save as base64
-    // Then save the reference in Realtime Database
-    const attachmentRef = ref(db, `attachments/${year}/LGU/${lguName}/${attachmentKey}`);
-    
-    await set(attachmentRef, {
-      fileName: file.name,
-      fileSize: file.size,
-      fileType: file.type,
-      url: fileData, // Your file URL or base64 data
-      uploadedAt: new Date().toISOString(),
-      uploadedBy: user.email
     });
-    
-    console.log("Attachment saved with key:", attachmentKey);
-  } catch (error) {
-    console.error("Upload error:", error);
-  }
-};
+  }, []);
 
-const handleDownload = (attachment) => {
-  if (attachment.url.startsWith('data:')) {
-    // Handle base64 data URL
-    const link = document.createElement('a');
-    link.href = attachment.url;
-    link.download = attachment.name || attachment.fileName || 'download';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } else {
-    // Regular URL - open in new tab
-    window.open(attachment.url, '_blank');
-  }
-};
+  // Fetch user role and municipality from users node
+  useEffect(() => {
+    if (!auth.currentUser) return;
 
-// This function is now mostly unused but keep it for compatibility
-const filterLGUAnswersByRole = (answers, role, municipality) => {
-  if (!answers) return [];
-  
-  // If we have forwarded assessment, just return it
-  if (forwardedAssessment) {
-    return [{
-      id: 1,
-      lguName: forwardedAssessment.lguName || "LGU",
-      year: selectedYear,
-      status: "Pending",
-      submission: forwardedAssessment.submission || new Date().toLocaleDateString(),
-      submittedBy: forwardedAssessment.submittedBy || "Unknown",
-      deadline: forwardedAssessment.deadline || "Not set",
-      data: forwardedAssessment.originalData || {},
-      municipality: location.state?.municipality || "Unknown"
-    }];
-  }
-  
-  return [];
-};
-
-// Fetch admin UID
-useEffect(() => {
-  if (!auth.currentUser) return;
-
-  const fetchAdminUid = async () => {
-    try {
-      const usersRef = ref(db, "users");
-      const usersSnapshot = await get(usersRef);
-      
-      if (usersSnapshot.exists()) {
-        const users = usersSnapshot.val();
-        const adminId = Object.keys(users).find(
-          uid => users[uid]?.role === "admin"
-        );
+    const fetchUserRole = async () => {
+      try {
+        // Get user role from users node
+        const userRef = ref(db, `users/${auth.currentUser.uid}`);
+        const userSnapshot = await get(userRef);
         
-        if (adminId) {
-          setAdminUid(adminId);
-          console.log("Admin UID found:", adminId);
+        if (userSnapshot.exists()) {
+          const userData = userSnapshot.val();
+          setUserRole(userData.role || "user");
+          console.log("User role:", userData.role);
+        } else {
+          console.log("No user data found in users node");
+          setUserRole("user");
         }
+        
+        // Get municipality from profile
+        if (profileData.municipality) {
+          setUserMunicipality(profileData.municipality);
+        }
+      } catch (error) {
+        console.error("Error fetching user role:", error);
       }
-    } catch (error) {
-      console.error("Error fetching admin UID:", error);
-    }
-  };
+    };
 
-  fetchAdminUid();
-}, []);
+    fetchUserRole();
+  }, [profileData]);
 
-// Fetch submission deadline
+  // Fetch admin UID
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    const fetchAdminUid = async () => {
+      try {
+        const usersRef = ref(db, "users");
+        const usersSnapshot = await get(usersRef);
+        
+        if (usersSnapshot.exists()) {
+          const users = usersSnapshot.val();
+          const adminId = Object.keys(users).find(
+            uid => users[uid]?.role === "admin"
+          );
+          
+          if (adminId) {
+            setAdminUid(adminId);
+            console.log("Admin UID found:", adminId);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching admin UID:", error);
+      }
+    };
+
+    fetchAdminUid();
+  }, []);
+
+  // Fetch submission deadline
+ // Fetch submission deadline for this specific assessment
 useEffect(() => {
-  if (!auth.currentUser || !adminUid || !selectedYear) return;
+  if (!auth.currentUser || !adminUid || !selectedYear || !selectedAssessmentId) return;
 
   const fetchDeadline = async () => {
     try {
       const deadlineRef = ref(
         db,
-        `financial/${adminUid}/${selectedYear}/metadata/deadline`
+        `financial/${adminUid}/${selectedYear}/assessments/${selectedAssessmentId}/deadline`  // <-- CORRECT PATH
       );
       
       onValue(deadlineRef, (snapshot) => {
         if (snapshot.exists()) {
           const deadline = snapshot.val();
-          console.log("Deadline found:", deadline);
+          console.log("Deadline found for assessment:", deadline);
           setSubmissionDeadline(deadline);
         } else {
-          console.log("No deadline found");
+          console.log("No deadline found for this assessment");
           setSubmissionDeadline("");
         }
       });
@@ -1032,218 +2071,77 @@ useEffect(() => {
   };
 
   fetchDeadline();
-}, [adminUid, selectedYear]);
+}, [adminUid, selectedYear, selectedAssessmentId]); // Added selectedAssessmentId dependency
 
-// REPLACE YOUR EXISTING fetchIndicators useEffect WITH THIS:
-useEffect(() => {
-  if (!auth.currentUser || !selectedYear || !adminUid) return;
+  useEffect(() => {
+    if (!auth.currentUser) return;
 
-  const fetchAllIndicators = async () => {
-    try {
-      console.log(`Fetching ALL indicators for year ${selectedYear}...`);
-      
-      // Define all 10 categories with their paths
-      const categories = [
-        { key: 'financial', path: 'financial-administration-and-sustainability' },
-        { key: 'disaster', path: 'disaster-preparedness' },
-        { key: 'social', path: 'social-protection-and-sensitivity' },
-        { key: 'health', path: 'health-compliance-and-responsiveness' },
-        { key: 'education', path: 'sustainable-education' },
-        { key: 'business', path: 'business-friendliness-and-competitiveness' },
-        { key: 'safety', path: 'safety-peace-and-order' },
-        { key: 'environmental', path: 'environmental-management' },
-        { key: 'tourism', path: 'tourism-heritage-development-culture-and-arts' },
-        { key: 'youth', path: 'youth-development' }
-      ];
-      
-      // Fetch each category
-      for (const category of categories) {
-        let indicatorsRef;
-        
-        if (category.key === 'financial') {
-          indicatorsRef = ref(
-            db, 
-            `financial/${adminUid}/${selectedYear}/${category.path}/assessment`
-          );
-        } else {
-          indicatorsRef = ref(
-            db,
-            `${category.key}/${adminUid}/${selectedYear}/${category.path}/assessment`
-          );
-        }
-        
-        const snapshot = await get(indicatorsRef);
-        
-        if (snapshot.exists()) {
-          const data = snapshot.val();
-          const indicatorsArray = Object.keys(data).map(key => ({
-            firebaseKey: key,
-            ...data[key]
-          }));
-          
-          console.log(`📊 Loaded ${category.key} indicators:`, indicatorsArray.length);
-          
-          // Set the appropriate state based on category
-          switch(category.key) {
-            case 'financial':
-              setIndicators(indicatorsArray);
-              break;
-            case 'disaster':
-              setDisasterIndicators(indicatorsArray);
-              break;
-            case 'social':
-              setSocialIndicators(indicatorsArray);
-              break;
-            case 'health':
-              setHealthIndicators(indicatorsArray);
-              break;
-            case 'education':
-              setEducationIndicators(indicatorsArray);
-              break;
-            case 'business':
-              setBusinessIndicators(indicatorsArray);
-              break;
-            case 'safety':
-              setSafetyIndicators(indicatorsArray);
-              break;
-            case 'environmental':
-              setEnvironmentalIndicators(indicatorsArray);
-              break;
-            case 'tourism':
-              setTourismIndicators(indicatorsArray);
-              break;
-            case 'youth':
-              setYouthIndicators(indicatorsArray);
-              break;
-            default:
-              break;
-          }
-        } else {
-          // Set empty array if no data
-          switch(category.key) {
-            case 'financial':
-              setIndicators([]);
-              break;
-            case 'disaster':
-              setDisasterIndicators([]);
-              break;
-            case 'social':
-              setSocialIndicators([]);
-              break;
-            case 'health':
-              setHealthIndicators([]);
-              break;
-            case 'education':
-              setEducationIndicators([]);
-              break;
-            case 'business':
-              setBusinessIndicators([]);
-              break;
-            case 'safety':
-              setSafetyIndicators([]);
-              break;
-            case 'environmental':
-              setEnvironmentalIndicators([]);
-              break;
-            case 'tourism':
-              setTourismIndicators([]);
-              break;
-            case 'youth':
-              setYouthIndicators([]);
-              break;
-            default:
-              break;
-          }
-        }
+    const yearsRef = ref(db, `years/${auth.currentUser.uid}`);
+
+    onValue(yearsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setYears(snapshot.val());
+      } else {
+        set(ref(db, `years/${auth.currentUser.uid}`), years);
       }
-      
-      console.log("✅ All indicators fetched successfully");
-    } catch (error) {
-      console.error("Error fetching indicators:", error);
-    }
-  };
-
-  fetchAllIndicators();
-}, [selectedYear, adminUid, db]);
-
-
-
-useEffect(() => {
-  if (!auth.currentUser) return;
-
-  const yearsRef = ref(db, `years/${auth.currentUser.uid}`);
-
-  onValue(yearsRef, (snapshot) => {
-    if (snapshot.exists()) {
-      setYears(snapshot.val());
-    } else {
-      // initialize default years once
-      set(ref(db, `years/${auth.currentUser.uid}`), years);
-    }
-  });
-}, []);
-
-
-
-
-
-const handleSaveProfile = async () => {
-  if (!auth.currentUser) return;
-
-  // Check if user is admin
-  const userRef = ref(db, `users/${auth.currentUser.uid}`);
-  const userSnapshot = await get(userRef);
-  const isAdmin = userSnapshot.exists() && userSnapshot.val().role === "admin";
-
-  // Only validate for non-admin users
-  if (!isAdmin) {
-    if (!editProfileData?.name?.trim()) {
-      alert("Please enter your name");
-      return;
-    }
-
-    if (!editProfileData?.municipality?.trim()) {
-      alert("Please select your municipality");
-      return;
-    }
-  }
-
-  try {
-    setSavingProfile(true);
-
-    await set(ref(db, `profiles/${auth.currentUser.uid}`), {
-      ...editProfileData,
-      email: auth.currentUser.email
     });
+  }, []);
 
-    setProfileData(editProfileData);
-    setProfileComplete(true);
+  const handleSaveProfile = async () => {
+    if (!auth.currentUser) return;
 
-    alert("Profile updated successfully!");
-    setShowEditProfileModal(false);
-  } catch (error) {
-    console.error(error);
-    alert("Failed to save profile");
-  } finally {
-    setSavingProfile(false);
-  }
-};
+    // Check if user is admin
+    const userRef = ref(db, `users/${auth.currentUser.uid}`);
+    const userSnapshot = await get(userRef);
+    const isAdmin = userSnapshot.exists() && userSnapshot.val().role === "admin";
 
-const handleImageUpload = (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+    // Only validate for non-admin users
+    if (!isAdmin) {
+      if (!editProfileData?.name?.trim()) {
+        alert("Please enter your name");
+        return;
+      }
 
-  const reader = new FileReader();
-  reader.onloadend = () => {
-    setEditProfileData({ ...editProfileData, image: reader.result });
+      if (!editProfileData?.municipality?.trim()) {
+        alert("Please select your municipality");
+        return;
+      }
+    }
+
+    try {
+      setSavingProfile(true);
+
+      await set(ref(db, `profiles/${auth.currentUser.uid}`), {
+        ...editProfileData,
+        email: auth.currentUser.email
+      });
+
+      setProfileData(editProfileData);
+      setProfileComplete(true);
+
+      alert("Profile updated successfully!");
+      setShowEditProfileModal(false);
+    } catch (error) {
+      console.error(error);
+      alert("Failed to save profile");
+    } finally {
+      setSavingProfile(false);
+    }
   };
-  reader.readAsDataURL(file);
-};
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setEditProfileData({ ...editProfileData, image: reader.result });
+    };
+    reader.readAsDataURL(file);
+  };
 
   const municipalities = ["Boac", "Mogpog", "Sta. Cruz", "Torrijos", "Buenavista", "Gasan"];
   const [years, setYears] = useState(["2021","2022","2023","2024","2025","2026"]);
-  
-
   
   const statuses = ["Verified", "Draft", "Incomplete"];
 
@@ -1262,148 +2160,82 @@ const handleImageUpload = (e) => {
     setCurrentPage(1);
   };
 
-// Safely get the data source - ensure we always have an array
-const dataSource = (lguAnswers && lguAnswers.length > 0) ? lguAnswers : (data || []);
+  // Get current tab indicators
+  const getCurrentTabIndicators = () => {
+    if (!activeTab) return [];
+    return tabData[activeTab] || [];
+  };
 
-const filteredData = dataSource.filter((item) => {
-  // Skip if item is undefined or null
-  if (!item) return false;
-  
-  // Create a search string that combines multiple fields for better matching
-  const searchTerm = search.toLowerCase().trim();
-  
-  // If search is empty, just apply filters
-  if (!searchTerm) {
-    return (
-      (!filters.year || item.year === filters.year) &&
-      (!filters.status || (item.status && item.status.toLowerCase() === filters.status.toLowerCase()))
-    );
-  }
-  
-  // Safely get values with fallbacks
-  const lguName = item.lguName?.toLowerCase() || '';
-  const municipality = item.municipality?.toLowerCase() || lguName;
-  const year = item.year?.toLowerCase() || '';
-  const submittedBy = item.submittedBy?.toLowerCase() || '';
-  const status = item.status?.toLowerCase() || '';
-  
-  // Combine multiple fields for searching
-  const searchableFields = [lguName, municipality, year, submittedBy, status].join(' ');
-  
-  // Check if search term appears in any of the combined fields
-  const matchesSearch = searchableFields.includes(searchTerm);
-  
-  // Apply year and status filters with safe checks
-  const matchesYear = !filters.year || item.year === filters.year;
-  const matchesStatus = !filters.status || (item.status && item.status.toLowerCase() === filters.status.toLowerCase());
-  
-  return matchesSearch && matchesYear && matchesStatus;
-});
-
-  /* Pagination Logic */
-  const indexOfLastRow = currentPage * rowsPerPage;
-  const indexOfFirstRow = indexOfLastRow - rowsPerPage;
-  const currentRows = filteredData.slice(indexOfFirstRow, indexOfLastRow);
-  const totalPages = Math.ceil(filteredData.length / rowsPerPage);
-
-  const renderDropdown = (type, list) => (
-    <div className="dropdown">
-      {list.map((item, i) => (
-        <div key={i} className="dropdown-item" onClick={() => updateFilter(type, item)}>
-          {item}
-        </div>
-      ))}
-    </div>
-  );
-
-
-const handleSignOut = () => {
-  const confirmLogout = window.confirm("Are you sure you want to sign out?");
-  if (confirmLogout) {
-    navigate("/login");
-  }
-};
-
-// Get current tab indicators - ADD THIS FUNCTION
-const getCurrentTabIndicators = () => {
-  switch(activeTab) {
-    case 1: return indicators;
-    case 2: return disasterIndicators;
-    case 3: return socialIndicators;
-    case 4: return healthIndicators;
-    case 5: return educationIndicators;
-    case 6: return businessIndicators;
-    case 7: return safetyIndicators;
-    case 8: return environmentalIndicators;
-    case 9: return tourismIndicators;
-    case 10: return youthIndicators;
-    default: return indicators;
-  }
-};
-
-// Function to toggle flag for current tab
-const toggleFlag = () => {
-  const currentTabId = activeTab;
-  const isFlagged = !!verifiedFlag[currentTabId];
-  
-  if (isFlagged) {
-    // Remove flag
-    setVerifiedFlag(prev => {
-      const newFlags = { ...prev };
-      delete newFlags[currentTabId];
-      
-      // Update localStorage
-      localStorage.setItem('verifiedFlag', JSON.stringify(newFlags));
-      
-      return newFlags;
-    });
+  // Function to toggle flag for current tab
+  const toggleFlag = () => {
+    const currentTabId = activeTab;
+    const isFlagged = !!verifiedFlag[currentTabId];
     
-    alert(`${getTabName(currentTabId)} tab flag removed`);
-  } else {
-    // Add flag
-    const bookmarkData = {
-      lguName: lguAnswers[0]?.lguName || "",
-      year: selectedYear,
-      tabId: currentTabId,
-      tabName: getTabName(currentTabId),
-      timestamp: Date.now(),
-      remarks: remarks[currentTabId] || "Flagged as verified"
-    };
-    
-    setVerifiedFlag(prev => {
-      const newFlags = {
-        ...prev,
-        [currentTabId]: bookmarkData
+    if (isFlagged) {
+      // Remove flag
+      setVerifiedFlag(prev => {
+        const newFlags = { ...prev };
+        delete newFlags[currentTabId];
+        
+        // Update localStorage
+        localStorage.setItem('verifiedFlag', JSON.stringify(newFlags));
+        
+        return newFlags;
+      });
+      
+      alert(`Tab flag removed`);
+    } else {
+      // Add flag
+      const bookmarkData = {
+        lguName: lguAnswers[0]?.lguName || "",
+        year: selectedYear,
+        tabId: currentTabId,
+        tabName: tabs.find(t => t.id === currentTabId)?.name || "Tab",
+        timestamp: Date.now(),
+        remarks: remarks[currentTabId] || "Flagged as verified"
       };
       
-      // Update localStorage
-      localStorage.setItem('verifiedFlag', JSON.stringify(newFlags));
+      setVerifiedFlag(prev => {
+        const newFlags = {
+          ...prev,
+          [currentTabId]: bookmarkData
+        };
+        
+        // Update localStorage
+        localStorage.setItem('verifiedFlag', JSON.stringify(newFlags));
+        
+        return newFlags;
+      });
       
-      return newFlags;
-    });
-    
-    alert(`${getTabName(currentTabId)} tab flagged locally`);
-  }
-};
+      alert(`Tab flagged locally`);
+    }
+  };
 
-return (
-  <div className={style.dashboardScale}>
-    <div className={style.dashboard}>
-      {/* Sidebar */}
-      <div className={`sidebar ${sidebarOpen ? "" : "collapsed"}`}>
-        <div className="sidebar-header">
+  const handleSignOut = () => {
+    const confirmLogout = window.confirm("Are you sure you want to sign out?");
+    if (confirmLogout) {
+      navigate("/login");
+    }
+  };
+
+  return (
+    <div className={style.dashboardScale}>
+      <div className={style.dashboard}>
+        {/* Sidebar */}
+        <div className={`sidebar ${sidebarOpen ? "" : "collapsed"}`}>
+          <div className="sidebar-header">
+            {sidebarOpen && (
+              <>
+                <img src={dilgSeal} alt="DILG Seal" style={{ height: "50px", width: "auto" }} />
+                <img src={dilgLogo} alt="DILG Logo" style={{ height: "50px", width: "auto" }} />
+                <h3>ONE <span className="yellow">MAR</span><span className="cyan">IND</span>
+                <span className="red">UQUE</span> TRACKING SYSTEM</h3>
+                <div className="sidebar-divider"></div>
+              </>
+            )}
+          </div>
+
           {sidebarOpen && (
-            <>
-              <img src={dilgSeal} alt="DILG Seal" style={{ height: "50px", width: "auto" }} />
-              <img src={dilgLogo} alt="DILG Logo" style={{ height: "50px", width: "auto" }} />
-              <h3>ONE <span className="yellow">MAR</span><span className="cyan">IND</span>
-              <span className="red">UQUE</span> TRACKING SYSTEM</h3>
-              <div className="sidebar-divider"></div>
-            </>
-          )}
-        </div>
-
-{sidebarOpen && (
   <>
     <button
       className={style.encodebackBtn}
@@ -1412,7 +2244,7 @@ return (
       ⬅ BACK
     </button>
     
-    {/* Export Menu Button with functionality */}
+    {/* Export Dropdown - UPDATED */}
     <div className={style.exportDropdownContainer}>
       <button
         className={style.sidebarMenuItem}
@@ -1423,11 +2255,10 @@ return (
         Export Menu
       </button>
       
-      {/* Export Dropdown - appears next to sidebar button */}
       {showExportModal && (
         <div style={{
           position: "fixed",
-          left: sidebarOpen ? '220px' : '60px', // Position to the right of sidebar
+          left: sidebarOpen ? '220px' : '60px',
           top: 'auto',
           marginTop: '-40px',
           marginLeft: '10px',
@@ -1439,17 +2270,74 @@ return (
           overflow: "hidden",
           border: "1px solid #f0f0f0"
         }}>
+          {/* Export Current Tab */}
           <div 
             className={style.exportDropdownItem}
             onClick={() => {
-              // Add your export function here
-              console.log("Export as PDF clicked");
-              setShowExportModal(false);
+              if (!tabs.length) {
+                alert("No tabs available to export");
+                return;
+              }
+              if (!activeTab) {
+                alert("Please select a tab first");
+                return;
+              }
+              exportTabToPDF();
             }}
-            style={{ cursor: "pointer" }}
+            style={{ cursor: "pointer", padding: "12px 16px", borderBottom: "1px solid #f0f0f0" }}
           >
-            <div className={style.pdfIcon}></div>
-            <h4>Export as PDF</h4>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div style={{ 
+                width: "32px", 
+                height: "32px", 
+                backgroundColor: "#f0f0f0", 
+                borderRadius: "4px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}>
+                📄
+              </div>
+              <div>
+                <h4 style={{ margin: "0 0 4px 0", fontSize: "14px", fontWeight: "600" }}>Export Current Tab</h4>
+                <p style={{ margin: 0, fontSize: "12px", color: "#666" }}>
+                  Export only the {tabs.find(t => t.id === activeTab)?.name || 'current'} tab as PDF
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Export All Tabs */}
+          <div 
+            className={style.exportDropdownItem}
+            onClick={() => {
+              if (!tabs.length) {
+                alert("No tabs available to export");
+                return;
+              }
+              exportAllTabsToPDF();
+            }}
+            style={{ cursor: "pointer", padding: "12px 16px" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div style={{ 
+                width: "32px", 
+                height: "32px", 
+                backgroundColor: "#f0f0f0", 
+                borderRadius: "4px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}>
+                📚
+              </div>
+              <div>
+                <h4 style={{ margin: "0 0 4px 0", fontSize: "14px", fontWeight: "600" }}>Export All Tabs</h4>
+                <p style={{ margin: 0, fontSize: "12px", color: "#666" }}>
+                  Export all {tabs.length} tabs as a single PDF
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1463,1069 +2351,840 @@ return (
     </div>
   </>
 )}
-
-      </div>
-
-      {/* Main */}
-      <div className="main">
-        <div className="topbar">
-          <button
-            className="toggle-btn"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            style={{ cursor: "pointer" }}
-          >
-            {sidebarOpen ? "☰" : "✖"}
-          </button>
-          <div className="topbar-left">
-            <h2>Provincial Assessment</h2>
-          </div>
-
-          <div className="top-right">
-            <div className="profile-container">
-              <div
-                className="profile"
-                onClick={() => setShowProfileModal(true)}
-                style={{ cursor: "pointer" }}
-              >
-                <div className="avatar">
-                  {profileData.image ? (
-                    <img
-                      src={profileData.image}
-                      alt="avatar"
-                      style={{
-                        width: "60px",
-                        height: "60px",
-                        borderRadius: "50%",
-                        objectFit: "cover",
-                        border: "7px solid #0c1a4b",
-                      }}
-                    />
-                  ) : (
-                    "👤"
-                  )}
-                </div>
-                <span>{profileData.name || displayName}</span>
-              </div>
-            </div>
-          </div>
         </div>
 
-        {/* Assessment Content */}
-        <div className={style.assessmentContainer}>
-
-{/* Header with year and status */}
-<div className={style.assessmentHeader}>
-  <div style={{ 
-    display: "flex", 
-    alignItems: "center", 
-    gap: "15px", 
-    flexWrap: "wrap",
-    width: "100%",
-    justifyContent: "space-between"
-  }}>
-    {/* Left side - Status and Deadline together */}
-    <div style={{ 
-      display: "flex", 
-      alignItems: "center", 
-      gap: "15px", 
-      flexWrap: "wrap" 
-    }}>
-{/* Status Badge */}
-<div style={{
-  display: "flex",
-  alignItems: "center",
-  gap: "8px",
-  padding: "4px 12px",
-  backgroundColor: location.state?.isVerified ? "#28a745" : "#ffb775",
-  borderRadius: "20px",
-  fontSize: "14px",
-  fontWeight: "600"
-}}>
-  <span>{location.state?.isVerified ? "✓" : "ⓘ"}</span>
-  <span>{location.state?.isVerified ? "Assessment Verified" : "Assessment Not Yet Verified"}</span>
-</div>
-
-      {/* Submission Deadline Badge */}
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        padding: "4px 15px",
-        backgroundColor: "#f5f5f5",
-        borderRadius: "20px",
-        border: "1px solid #ddd"
-      }}>
-        <span style={{ fontWeight: "600", color: "#333", fontSize: "14px" }}>
-          Submission Deadline:
-        </span>
-        <span style={{ color: "#840000", fontWeight: "500", fontSize: "14px" }}>
-          {submissionDeadline 
-            ? new Date(submissionDeadline).toLocaleDateString('en-US', {
-                day: '2-digit',
-                month: 'long',
-                year: 'numeric'
-              })
-            : "Not set"}
-        </span>
-      </div>
-    </div>
-
-{/* Right side - Action Buttons */}
-<div style={{ 
-  display: "flex", 
-  alignItems: "center", 
-  gap: "10px"
-}}>
-  {/* Return Assessment Button */}
-  <div style={{ position: "relative", display: "inline-block" }}>
-    <button
-      onClick={handleReturnAssessment}
-      disabled={isVerified || loading}
-      onMouseEnter={(e) => {
-        if (!isVerified) {
-          const tooltip = e.currentTarget.parentElement.querySelector('.return-tooltip');
-          if (tooltip) tooltip.style.display = 'block';
-        }
-      }}
-      onMouseLeave={(e) => {
-        const tooltip = e.currentTarget.parentElement.querySelector('.return-tooltip');
-        if (tooltip) tooltip.style.display = 'none';
-      }}
-      style={{
-        backgroundColor: isVerified ? "#6c757d" : "#990202",
-        color: "white",
-        border: "none",
-        padding: "8px 20px",
-        borderRadius: "5px",
-        fontSize: "14px",
-        cursor: isVerified ? "not-allowed" : "pointer",
-        fontWeight: "600",
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        whiteSpace: "nowrap",
-        opacity: isVerified ? 0.6 : 1
-      }}
-      onMouseOver={(e) => {
-        if (!isVerified) {
-          e.currentTarget.style.backgroundColor = "#990202c7";
-        }
-      }}
-      onMouseOut={(e) => {
-        if (!isVerified) {
-          e.currentTarget.style.backgroundColor = "#990202";
-        }
-      }}
-    >
-      <span>↩</span>
-      {isVerified ? "Verified (Cannot Return)" : "Return Assessment"}
-    </button>
-    
-    {/* Tooltip */}
-    {!isVerified && (
-      <div 
-        className="return-tooltip"
-        style={{
-          position: "absolute",
-          bottom: "100%",
-          left: "0",
-          marginBottom: "5px",
-          backgroundColor: "#2d2d2d",
-          color: "#e0e0e0",
-          padding: "8px 12px",
-          borderRadius: "4px",
-          fontSize: "12px",
-          whiteSpace: "normal",
-          display: "none",
-          zIndex: 1000,
-          boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
-          pointerEvents: "none",
-          width: "250px",
-          fontFamily: "Arial, sans-serif",
-          border: "1px solid #444"
-        }}
-      >
-        <div style={{ 
-          display: "flex", 
-          flexDirection: "column", 
-          gap: "2px",
-          lineHeight: "1.4"
-        }}>
-          <span style={{ color: "#aaa", fontSize: "11px" }}>Return assessment to the MLGO for revisions. Editing access will be restored, and all remarks will be visible to them.</span>
-        </div>
-      </div>
-    )}
-  </div>
-
-  {/* Verify Assessment Button */}
-  <div style={{ position: "relative", display: "inline-block" }}>
-    <button
-      onClick={handleVerifyAssessment}
-      disabled={isVerified || loading}
-      onMouseEnter={(e) => {
-        if (!isVerified) {
-          const tooltip = e.currentTarget.parentElement.querySelector('.verify-tooltip');
-          if (tooltip) tooltip.style.display = 'block';
-        }
-      }}
-      onMouseLeave={(e) => {
-        const tooltip = e.currentTarget.parentElement.querySelector('.verify-tooltip');
-        if (tooltip) tooltip.style.display = 'none';
-      }}
-      style={{
-        backgroundColor: isVerified ? "#28a745" : "#006736",
-        color: "white",
-        border: "none",
-        padding: "8px 20px",
-        borderRadius: "5px",
-        fontSize: "14px",
-        cursor: isVerified ? "not-allowed" : "pointer",
-        fontWeight: "600",
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        whiteSpace: "nowrap",
-        opacity: isVerified ? 0.8 : 1
-      }}
-      onMouseOver={(e) => {
-        if (!isVerified) {
-          e.currentTarget.style.backgroundColor = "#006735d0";
-        }
-      }}
-      onMouseOut={(e) => {
-        if (!isVerified) {
-          e.currentTarget.style.backgroundColor = "#006736";
-        }
-      }}
-    >
-      <span>✔</span>
-      {isVerified ? "Verified" : "Verify Assessment"}
-    </button>
-    
-    {/* Tooltip */}
-    {!isVerified && (
-      <div 
-        className="verify-tooltip"
-        style={{
-          position: "absolute",
-          bottom: "100%",
-          left: "0",
-          marginBottom: "5px",
-          backgroundColor: "#2d2d2d",
-          color: "#e0e0e0",
-          padding: "8px 12px",
-          borderRadius: "4px",
-          fontSize: "12px",
-          whiteSpace: "normal",
-          display: "none",
-          zIndex: 1000,
-          boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
-          pointerEvents: "none",
-          width: "250px",
-          fontFamily: "Arial, sans-serif",
-          border: "1px solid #444"
-        }}
-      >
-        <div style={{ 
-          display: "flex", 
-          flexDirection: "column", 
-          gap: "2px",
-          lineHeight: "1.4"
-        }}>
-          <span style={{ color: "#aaa", fontSize: "11px" }}>Verify this assessment. This will mark it as verified and remove it from the forwarded list.</span>
-        </div>
-      </div>
-    )}
-  </div>
-</div>
-  </div>
-</div>
-
-
-          {/* Tabs - Make them clickable */}
-          <div className={style.assessmentTabs}>
-            <button 
-              className={activeTab === 1 ? style.activeTab : ''}
-              onClick={() => handleTabChange(1)}
+        {/* Main */}
+        <div className="main">
+          <div className="topbar">
+            <button
+              className="toggle-btn"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              style={{ cursor: "pointer" }}
             >
-              Financial Administration and Sustainability
+              {sidebarOpen ? "☰" : "✖"}
             </button>
-            <button 
-              className={activeTab === 2 ? style.activeTab : ''}
-              onClick={() => handleTabChange(2)}
-            >
-              Disaster Preparedness
-            </button>
-            <button 
-              className={activeTab === 3 ? style.activeTab : ''}
-              onClick={() => handleTabChange(3)}
-            >
-              Social Protection and Sensitivity
-            </button>
-            <button 
-              className={activeTab === 4 ? style.activeTab : ''}
-              onClick={() => handleTabChange(4)}
-            >
-              Health Compliance and Responsiveness
-            </button>
-            <button 
-              className={activeTab === 5 ? style.activeTab : ''}
-              onClick={() => handleTabChange(5)}
-            >
-              Sustainable Education
-            </button>
-            <button 
-              className={activeTab === 6 ? style.activeTab : ''}
-              onClick={() => handleTabChange(6)}
-            >
-              Business Friendliness and Competitiveness
-            </button>
-            <button 
-              className={activeTab === 7 ? style.activeTab : ''}
-              onClick={() => handleTabChange(7)}
-            >
-              Safety, Peace and Order
-            </button>
-            <button 
-              className={activeTab === 8 ? style.activeTab : ''}
-              onClick={() => handleTabChange(8)}
-            >
-              Environmental Management
-            </button>
-            <button 
-              className={activeTab === 9 ? style.activeTab : ''}
-              onClick={() => handleTabChange(9)}
-            >
-              Tourism, Heritage Development, Culture and Arts
-            </button>
-            <button 
-              className={activeTab === 10 ? style.activeTab : ''}
-              onClick={() => handleTabChange(10)}
-            >
-              Youth Development
-            </button>
-          </div>
-
-
-{/* Scrollable Content */}
-<div className={style.lgutableBox}>
-  <div className={style.scrollableContent}
-    style={{ 
-      maxHeight: sidebarOpen ? '57vh' : '63vh',
-    }}
-  >
-    {loading ? (
-      <p style={{ textAlign: "center", marginTop: "20px" }}>Loading...</p>
-    ) : (
-      <>
-        {lguAnswers.length > 0 ? (
-          lguAnswers.map((lgu) => {
-            const currentTabIndicators = getCurrentTabIndicators();
-            
-            return (
-              <div key={lgu.id}>
-                
-                {/* Indicators with Answers */}
-                {currentTabIndicators && currentTabIndicators.length > 0 ? (
-                  currentTabIndicators.map((record) => (
-                    <div key={record.firebaseKey} className="reference-wrapper">
-                      
-{record.mainIndicators?.map((main, index) => {
-  const radioKey = getAnswerKey(record, index, main.title, false, null, "radio");
-  const baseKey = getAnswerKey(record, index, main.title);
-  const answer =
-    main.fieldType === "multiple"
-      ? (lgu.data?.[radioKey] ?? lgu.data?.[baseKey])
-      : lgu.data?.[baseKey];
-  
-  return (
-    <div key={index} className="reference-wrapper">
-      {/* Indicator Row */}
-      <div className="reference-row">
-        <div className="reference-label">
-          {main.title}
-        </div>
-
-        <div className="mainreference-field">
-          <div className="field-content">
-            
-            {/* Multiple Choice - FIXED: Add unique name */}
-            {main.fieldType === "multiple" &&
-              main.choices.map((choice, i) => (
-                <div key={i}>
-                  <input 
-                    type="radio" 
-                    name={`${record.firebaseKey}_${index}_${main.title}`} // Unique name for this main indicator
-                    checked={isRadioSelected(answer?.value, choice, i)}
-                    disabled 
-                  /> 
-                  <span>
-                    {choice && typeof choice === "object"
-                      ? (choice.label ?? choice.value ?? choice.name ?? choice.title ?? choice.text ?? "")
-                      : choice}
-                  </span>
-                </div>
-              ))}
-            
-            {/* Checkbox - No need for unique name */}
-            {main.fieldType === "checkbox" &&
-              main.choices.map((choice, i) => {
-                const checkboxKey = getAnswerKey(record, index, `${main.title}_${i}`, false, null, "checkbox");
-                const legacyCheckboxKey = getAnswerKey(record, index, `${main.title}_${i}`);
-                const checkboxAnswer = lgu.data?.[checkboxKey] ?? lgu.data?.[legacyCheckboxKey];
-                
-                return (
-                  <div key={i}>
-                    <input 
-                      type="checkbox" 
-                      checked={checkboxAnswer?.value === true}
-                      disabled 
-                    /> 
-                    <span>
-                      {choice && typeof choice === "object"
-                        ? (choice.label ?? choice.value ?? choice.name ?? choice.title ?? choice.text ?? "")
-                        : choice}
-                    </span>
-                  </div>
-                );
-              })}
-            
-            {(main.fieldType === "short" || main.fieldType === "integer" || main.fieldType === "date") && (
-              <div>
-                {answer?.value ? (
-                  <span>
-                    {answer.value}
-                  </span>
-                ) : (
-                  <span style={{ fontStyle: "italic", color: "gray" }}>
-                    No answer provided
+            <div className="topbar-left">
+              <h2>
+                {selectedAssessment || "Provincial Assessment"}
+                {selectedYear && (
+                  <span style={{ marginLeft: "5px", fontSize: "24px", fontWeight: "bold", color: "#000000" }}>
+                    ({selectedYear})
                   </span>
                 )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+              </h2>
+            </div>
 
-      {/* Mode of Verification with Attachments */}
-      {main.verification && (
-        <div className="reference-verification-full" style={{ 
-          display: "flex",
-          flexDirection: "column",
-          width: "100%"
-        }}>
-          <div style={{ 
-            display: "flex", 
-            justifyContent: "space-between", 
-            alignItems: "center",
-            width: "100%",
-            gap: "10px"
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
-              <span className="reference-verification-label">Mode of Verification:</span>
-              <span className="reference-verification-value">{main.verification}</span>
+            <div className="top-right">
+              <div className="profile-container">
+                <div
+                  className="profile"
+                  onClick={() => setShowProfileModal(true)}
+                  style={{ cursor: "pointer" }}
+                >
+                  <div className="avatar">
+                    {profileData.image ? (
+                      <img
+                        src={profileData.image}
+                        alt="avatar"
+                        style={{
+                          width: "60px",
+                          height: "60px",
+                          borderRadius: "50%",
+                          objectFit: "cover",
+                          border: "7px solid #0c1a4b",
+                        }}
+                      />
+                    ) : (
+                      "👤"
+                    )}
+                  </div>
+                  <span>{profileData.name || displayName}</span>
+                </div>
+              </div>
             </div>
           </div>
-          
-          {/* Attachments for this indicator */}
-          {(() => {
-            const indicatorId = `${record.firebaseKey}_${index}_${main.title}`;
-            const indicatorAttachments = lgu.attachmentsByIndicator?.[indicatorId] || [];
-            
-            return indicatorAttachments.length > 0 && (
-              <div style={{
-                display: "flex",
+
+          {/* Assessment Content */}
+          <div className={style.assessmentContainer}>
+            {/* Header with year and status */}
+            <div className={style.assessmentHeader}>
+              <div style={{ 
+                display: "flex", 
+                alignItems: "center", 
+                gap: "15px", 
                 flexWrap: "wrap",
-                gap: "8px",
-                marginTop: "8px",
-                width: "100%"
+                width: "100%",
+                justifyContent: "space-between"
               }}>
-                {indicatorAttachments.map((attachment, idx) => (
-                  <div key={idx} style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    backgroundColor: "#e8f5e9",
-                    padding: "4px 10px",
-                    borderRadius: "16px",
-                    fontSize: "11px",
-                    border: "1px solid #c8e6c9",
-                    maxWidth: "200px",
-                    cursor: "pointer"
-                  }}
-                  onClick={() => downloadAttachment(attachment)}>
-                    <span style={{ fontSize: "12px" }}>📎</span>
-                    <span style={{ 
-                      overflow: "hidden", 
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      color: "#0c1a4b",
-                      textDecoration: "underline"
-                    }}>
-                      {attachment.name || 'Attachment'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-        </div>
-      )}
-    </div>
-  );
-})}
-
-{record.subIndicators?.map((sub, index) => {
-  const radioKey = getAnswerKey(record, index, sub.title, true, null, "radio");
-  const baseKey = getAnswerKey(record, index, sub.title, true);
-  const answer =
-    sub.fieldType === "multiple"
-      ? (lgu.data?.[radioKey] ?? lgu.data?.[baseKey])
-      : lgu.data?.[baseKey];
-  
-  return (
-    <div key={index} className="reference-wrapper">
-      {/* Sub Indicator Row */}
-      <div className="reference-row sub-row">
-        <div className="reference-label">
-          {sub.title}
-        </div>
-
-        <div className="reference-field">
-          
-          {/* Multiple Choice - FIXED: Add unique name */}
-          {sub.fieldType === "multiple" &&
-            sub.choices.map((choice, i) => (
-              <div key={i}>
-                <input 
-                  type="radio" 
-                  name={`${record.firebaseKey}_sub_${index}_${sub.title}`} // Unique name for this sub-indicator
-                  checked={isRadioSelected(answer?.value, choice, i)}
-                  disabled 
-                /> 
-                <span>
-                  {choice && typeof choice === "object"
-                    ? (choice.label ?? choice.value ?? choice.name ?? choice.title ?? choice.text ?? "")
-                    : choice}
-                </span>
-              </div>
-            ))}
-          
-          {/* Checkbox - No need for unique name */}
-          {sub.fieldType === "checkbox" &&
-            sub.choices.map((choice, i) => {
-              const checkboxKey = getAnswerKey(record, index, `${sub.title}_${i}`, true, null, "checkbox");
-              const legacyCheckboxKey = getAnswerKey(record, index, `${sub.title}_${i}`, true);
-              const checkboxAnswer = lgu.data?.[checkboxKey] ?? lgu.data?.[legacyCheckboxKey];
-              
-              return (
-                <div key={i}>
-                  <input 
-                    type="checkbox" 
-                    checked={checkboxAnswer?.value === true}
-                    disabled 
-                  /> 
-                  <span>
-                    {choice && typeof choice === "object"
-                      ? (choice.label ?? choice.value ?? choice.name ?? choice.title ?? choice.text ?? "")
-                      : choice}
-                    </span>
-                  </div>
-                );
-              })}
-          
-          {(sub.fieldType === "short" || sub.fieldType === "integer" || sub.fieldType === "date") && (
-            <div>
-              {answer?.value ? (
-                <span>
-                  {answer.value}
-                </span>
-              ) : (
-                <span style={{ fontStyle: "italic", color: "gray" }}>
-                  No answer provided
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Mode of Verification for Sub Indicators */}
-      {sub.verification && (
-        <div className="reference-verification-full" style={{ 
-          display: "flex",
-          flexDirection: "column",
-          width: "100%",
-          marginTop: "5px"
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
-            <span className="reference-verification-label">Mode of Verification:</span>
-            <span className="reference-verification-value">{sub.verification}</span>
-          </div>
-          
-          {/* Attachments for this sub indicator */}
-          {(() => {
-            const indicatorId = `${record.firebaseKey}_sub_${index}_${sub.title}`;
-            const indicatorAttachments = lgu.attachmentsByIndicator?.[indicatorId] || [];
-            
-            return indicatorAttachments.length > 0 && (
-              <div style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "8px",
-                marginTop: "8px",
-                width: "100%"
-              }}>
-                {indicatorAttachments.map((attachment, idx) => (
-                  <div key={idx} style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    backgroundColor: "#e8f5e9",
-                    padding: "4px 10px",
-                    borderRadius: "16px",
-                    fontSize: "11px",
-                    border: "1px solid #c8e6c9",
-                    maxWidth: "200px",
-                    cursor: "pointer"
-                  }}
-                  onClick={() => downloadAttachment(attachment)}>
-                    <span style={{ fontSize: "12px" }}>📎</span>
-                    <span style={{ 
-                      overflow: "hidden", 
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      color: "#0c1a4b",
-                      textDecoration: "underline"
-                    }}>
-                      {attachment.name || 'Attachment'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-        </div>
-      )}
-
-{/* ===== NESTED SUB-INDICATORS DISPLAY SECTION ===== */}
-{sub.nestedSubIndicators && sub.nestedSubIndicators.length > 0 && (
-  <div className="nested-reference-wrapper" style={{ marginLeft: "30px", marginTop: "10px" }}>
-    {sub.nestedSubIndicators.map((nested, nestedIndex) => {
-      const nestedRadioKey = getAnswerKey(record, index, nested.title, true, nestedIndex, "radio");
-      const baseNestedKey = getAnswerKey(record, index, nested.title, true, nestedIndex);
-      const nestedAnswer =
-        nested.fieldType === "multiple"
-          ? (lgu.data?.[nestedRadioKey] ?? lgu.data?.[baseNestedKey])
-          : lgu.data?.[baseNestedKey];
-      
-      return (
-        <div key={nested.id || nestedIndex} className="nested-reference-item" style={{ marginBottom: "15px" }}>
-          <div className="nested-reference-row" style={{ display: "flex", border: "1px solid #cfcfcf" }}>
-            <div className="nested-reference-label" style={{ 
-              width: "45%", 
-              background: "#fff6f6", 
-              padding: "8px 12px",
-              fontWeight: 500,
-              borderRight: "1px solid #cfcfcf"
-            }}>
-              {nested.title || 'Untitled'}
-            </div>
-            <div className="nested-reference-field" style={{ 
-              width: "55%", 
-              padding: "8px 12px",
-              background: "#ffffff"
-            }}>
-              {/* Nested Multiple Choice - FIXED: Add unique name */}
-              {nested.fieldType === "multiple" && nested.choices?.map((choice, i) => {
-                const isSelected = isRadioSelected(nestedAnswer?.value, choice, i);
-                
-                return (
-                  <div key={i} style={{ marginBottom: "4px" }}>
-                    <input 
-                      type="radio" 
-                      name={`${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title}`} // Unique name
-                      checked={isSelected}
-                      disabled 
-                    /> 
-                    <span style={{ marginLeft: "4px" }}>
-                      {choice && typeof choice === "object"
-                        ? (choice.label ?? choice.value ?? choice.name ?? choice.title ?? choice.text ?? "")
-                        : choice}
-                    </span>
-                  </div>
-                );
-              })}
-
-              {/* Nested Checkbox */}
-              {nested.fieldType === "checkbox" && nested.choices?.map((choice, i) => {
-                const nestedCheckboxKey = getAnswerKey(record, index, `${nested.title}_${i}`, true, nestedIndex, "checkbox");
-                const legacyNestedCheckboxKey = getAnswerKey(record, index, `${nested.title}_${i}`, true, nestedIndex);
-                const isChecked =
-                  ((lgu.data?.[nestedCheckboxKey]?.value) ?? (lgu.data?.[legacyNestedCheckboxKey]?.value)) === true;
-                
-                return (
-                  <div key={i} style={{ marginBottom: "4px" }}>
-                    <input 
-                      type="checkbox" 
-                      checked={isChecked}
-                      disabled 
-                    /> 
-                    <span style={{ marginLeft: "4px" }}>
-                      {choice && typeof choice === "object"
-                        ? (choice.label ?? choice.value ?? choice.name ?? choice.title ?? choice.text ?? "")
-                        : choice}
-                    </span>
-                  </div>
-                );
-              })}
-
-              {/* Nested Short Answer */}
-              {nested.fieldType === "short" && (
-                <div>
-                  {nestedAnswer?.value ? (
-                    <span>{nestedAnswer.value}</span>
-                  ) : (
-                    <span style={{ fontStyle: "italic", color: "gray" }}>
-                      No answer provided
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* Nested Integer */}
-              {nested.fieldType === "integer" && (
-                <div>
-                  {nestedAnswer?.value ? (
-                    <span>{nestedAnswer.value}</span>
-                  ) : (
-                    <span style={{ fontStyle: "italic", color: "gray" }}>
-                      No answer provided
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* Nested Date */}
-              {nested.fieldType === "date" && (
-                <div>
-                  {nestedAnswer?.value ? (
-                    <span>
-                      {new Date(nestedAnswer.value).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </span>
-                  ) : (
-                    <span style={{ fontStyle: "italic", color: "gray" }}>
-                      No answer provided
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* No field type selected */}
-              {!nested.fieldType && (
-                <span style={{ fontStyle: "italic", color: "gray" }}>
-                  No field type selected
-                </span>
-              )}
-            </div>
-          </div>
-          
-          {/* Verification for nested sub-indicator */}
-          {nested.verification && (
-            <div className="nested-verification" style={{
-              padding: "6px 12px",
-              background: "#ffffff",
-              border: "1px solid #cfcfcf",
-              borderTop: "none",
-              fontSize: "11px"
-            }}>
-              <span style={{ fontWeight: 700, marginRight: "6px", color: "#081a4b" }}>
-                Mode of Verification:
-              </span>
-              <span style={{ fontStyle: "italic" }}>
-                {nested.verification}
-              </span>
-              
-              {/* Attachments for nested sub-indicator */}
-              {(() => {
-                const nestedIndicatorId = `${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title}`;
-                const nestedAttachments = lgu.attachmentsByIndicator?.[nestedIndicatorId] || [];
-                
-                return nestedAttachments.length > 0 && (
+                <div style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: "15px", 
+                  flexWrap: "wrap" 
+                }}>
+                  {/* Status Badge */}
                   <div style={{
                     display: "flex",
-                    flexWrap: "wrap",
+                    alignItems: "center",
                     gap: "8px",
-                    marginTop: "8px",
-                    width: "100%"
+                    padding: "4px 12px",
+                    backgroundColor: location.state?.isVerified ? "#28a745" : "#ffb775",
+                    borderRadius: "20px",
+                    fontSize: "14px",
+                    fontWeight: "600"
                   }}>
-                    {nestedAttachments.map((attachment, idx) => (
-                      <div key={idx} style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        backgroundColor: "#e8f5e9",
-                        padding: "4px 10px",
-                        borderRadius: "16px",
-                        fontSize: "11px",
-                        border: "1px solid #c8e6c9",
-                        maxWidth: "200px",
-                        cursor: "pointer"
-                      }}
-                      onClick={() => downloadAttachment(attachment)}>
-                        <span style={{ fontSize: "12px" }}>📎</span>
-                        <span style={{ 
-                          overflow: "hidden", 
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          color: "#0c1a4b",
-                          textDecoration: "underline"
-                        }}>
-                          {attachment.name || 'Attachment'}
-                        </span>
-                      </div>
-                    ))}
+                    <span>{location.state?.isVerified ? "✓" : "ⓘ"}</span>
+                    <span>{location.state?.isVerified ? "Assessment Verified" : "Assessment Not Yet Verified"}</span>
                   </div>
-                );
-              })()}
+
+                  {/* Submission Deadline Badge */}
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "4px 15px",
+                    backgroundColor: "#f5f5f5",
+                    borderRadius: "20px",
+                    border: "1px solid #ddd"
+                  }}>
+                    <span style={{ fontWeight: "600", color: "#333", fontSize: "14px" }}>
+                      Submission Deadline:
+                    </span>
+                    <span style={{ color: "#840000", fontWeight: "500", fontSize: "14px" }}>
+                      {submissionDeadline 
+                        ? new Date(submissionDeadline).toLocaleDateString('en-US', {
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric'
+                          })
+                        : "Not set"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Right side - Action Buttons */}
+                <div style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: "10px"
+                }}>
+{/* Return Assessment Button */}
+<div style={{ position: "relative", display: "inline-block" }}>
+  <button
+    onClick={handleReturnAssessment}
+    disabled={isVerified || loading || isReturned}
+    style={{
+      backgroundColor: (isVerified || isReturned) ? "#6c757d" : "#990202",
+      color: "white",
+      border: "none",
+      padding: "8px 20px",
+      borderRadius: "5px",
+      fontSize: "14px",
+      cursor: (isVerified || isReturned) ? "not-allowed" : "pointer",
+      fontWeight: "600",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      whiteSpace: "nowrap",
+      opacity: (isVerified || isReturned) ? 0.6 : 1
+    }}
+  >
+    <span>↩</span>
+    {isVerified ? "Verified (Cannot Return)" : 
+     isReturned ? "Returned to MLGO" : "Return to MLGO"}
+  </button>
+</div>
+
+{/* Verify Assessment Button */}
+<div style={{ position: "relative", display: "inline-block" }}>
+  <button
+    onClick={handleVerifyAssessment}
+    disabled={isVerified || loading || isReturned}
+    style={{
+      backgroundColor: (isVerified || isReturned) ? "#28a745" : "#006736",
+      color: "white",
+      border: "none",
+      padding: "8px 20px",
+      borderRadius: "5px",
+      fontSize: "14px",
+      cursor: (isVerified || isReturned) ? "not-allowed" : "pointer",
+      fontWeight: "600",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      whiteSpace: "nowrap",
+      opacity: (isVerified || isReturned) ? 0.8 : 1
+    }}
+  >
+    <span>✔</span>
+    {isVerified ? "Verified" : isReturned ? "Returned (Cannot Verify)" : "Verify Assessment"}
+  </button>
+</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Dynamic Tabs - from PO Indicators */}
+            <div className={style.assessmentTabs}>
+              {tabs.length > 0 ? (
+                tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    className={activeTab === tab.id ? style.activeTab : ""}
+                    onClick={() => handleTabChange(tab.id)}
+                  >
+                    {tab.name}
+                  </button>
+                ))
+              ) : (
+                <div style={{ padding: "10px", color: "#999", fontStyle: "italic" }}>
+                  No tabs available for this assessment
+                </div>
+              )}
+            </div>
+
+            {/* Scrollable Content */}
+            <div className={style.lgutableBox}>
+              <div className={style.scrollableContent}
+                style={{ 
+                  maxHeight: sidebarOpen ? '57vh' : '63vh',
+                }}
+              >
+                {loading ? (
+                  <p style={{ textAlign: "center", marginTop: "20px" }}>Loading...</p>
+                ) : (
+                  <>
+                    {lguAnswers.length > 0 ? (
+                      lguAnswers.map((lgu) => {
+                        const currentTabIndicators = activeTab ? tabData[activeTab] || [] : [];
+                        
+                        return (
+                          <div key={lgu.id}>
+                            {/* Indicators with Answers */}
+                            {currentTabIndicators && currentTabIndicators.length > 0 ? (
+                              currentTabIndicators.map((record) => (
+                                <div key={record.firebaseKey} className="reference-wrapper">
+                                  
+                                  {/* Main Indicators */}
+                                  {record.mainIndicators?.map((main, index) => {
+                                    const radioKey = getAnswerKey(record, index, main.title, false, null, "radio");
+                                    const baseKey = getAnswerKey(record, index, main.title);
+                                    const answer = lgu.data?.[radioKey] ?? lgu.data?.[baseKey];
+                                    
+                                    return (
+                                      <div key={index} className="reference-wrapper">
+                                        <div className="reference-row">
+                                          <div className="reference-label">
+                                            {main.title}
+                                          </div>
+
+                                          <div className="mainreference-field">
+                                            <div className="field-content">
+                                              
+                                              {main.fieldType === "multiple" &&
+                                                main.choices.map((choice, i) => (
+                                                  <div key={i}>
+                                                    <input 
+                                                      type="radio" 
+                                                      name={`${record.firebaseKey}_${index}_${main.title}`}
+                                                      checked={isRadioSelected(answer?.value, choice, i)}
+                                                      disabled 
+                                                    /> 
+                                                    <span>
+                                                      {choice && typeof choice === "object"
+                                                        ? (choice.label ?? choice.value ?? choice.name ?? choice.title ?? choice.text ?? "")
+                                                        : choice}
+                                                    </span>
+                                                  </div>
+                                                ))
+                                              }
+                                              
+                                              {main.fieldType === "checkbox" &&
+                                                main.choices.map((choice, i) => {
+                                                  const checkboxKey = getAnswerKey(record, index, `${main.title}_${i}`, false, null, "checkbox");
+                                                  const checkboxAnswer = lgu.data?.[checkboxKey];
+                                                  
+                                                  return (
+                                                    <div key={i}>
+                                                      <input 
+                                                        type="checkbox" 
+                                                        checked={checkboxAnswer?.value === true}
+                                                        disabled 
+                                                      /> 
+                                                      <span>
+                                                        {choice && typeof choice === "object"
+                                                          ? (choice.label ?? choice.value ?? choice.name ?? choice.title ?? choice.text ?? "")
+                                                          : choice}
+                                                      </span>
+                                                    </div>
+                                                  );
+                                                })
+                                              }
+                                              
+                                              {(main.fieldType === "short" || main.fieldType === "integer" || main.fieldType === "date") && (
+                                                <div>
+                                                  {answer?.value ? (
+                                                    <span>
+                                                      {answer.value}
+                                                    </span>
+                                                  ) : (
+                                                    <span style={{ fontStyle: "italic", color: "gray" }}>
+                                                      No answer provided
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* Mode of Verification with Attachments */}
+                                        {main.verification && (
+                                          <div className="reference-verification-full" style={{ 
+                                            display: "flex",
+                                            flexDirection: "column",
+                                            width: "100%"
+                                          }}>
+                                            <div style={{ 
+                                              display: "flex", 
+                                              justifyContent: "space-between", 
+                                              alignItems: "center",
+                                              width: "100%",
+                                              gap: "10px"
+                                            }}>
+                                              <div style={{ display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
+                                                <span className="reference-verification-label">Mode of Verification:</span>
+                                                <span className="reference-verification-value">{main.verification}</span>
+                                              </div>
+                                            </div>
+                                            
+                                            {/* Attachments for this indicator */}
+                                            {(() => {
+                                              const indicatorId = `${record.firebaseKey}_${index}_${main.title}`;
+                                              const indicatorAttachments = lgu.attachmentsByIndicator?.[indicatorId] || [];
+                                              
+                                              return indicatorAttachments.length > 0 && (
+                                                <div style={{
+                                                  display: "flex",
+                                                  flexWrap: "wrap",
+                                                  gap: "8px",
+                                                  marginTop: "8px",
+                                                  width: "100%"
+                                                }}>
+                                                  {indicatorAttachments.map((attachment, idx) => (
+                                                    <div key={idx} style={{
+                                                      display: "flex",
+                                                      alignItems: "center",
+                                                      gap: "6px",
+                                                      backgroundColor: "#e8f5e9",
+                                                      padding: "4px 10px",
+                                                      borderRadius: "16px",
+                                                      fontSize: "11px",
+                                                      border: "1px solid #c8e6c9",
+                                                      maxWidth: "200px",
+                                                      cursor: "pointer"
+                                                    }}
+                                                    onClick={() => downloadAttachment(attachment)}>
+                                                      <span style={{ fontSize: "12px" }}>📎</span>
+                                                      <span style={{ 
+                                                        overflow: "hidden", 
+                                                        textOverflow: "ellipsis",
+                                                        whiteSpace: "nowrap",
+                                                        color: "#0c1a4b",
+                                                        textDecoration: "underline"
+                                                      }}>
+                                                        {attachment.name || 'Attachment'}
+                                                      </span>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              );
+                                            })()}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+
+                                  {/* Sub Indicators */}
+                                  {record.subIndicators?.map((sub, index) => {
+                                    const radioKey = getAnswerKey(record, index, sub.title, true, null, "radio");
+                                    const baseKey = getAnswerKey(record, index, sub.title, true);
+                                    const answer = lgu.data?.[radioKey] ?? lgu.data?.[baseKey];
+                                    
+                                    return (
+                                      <div key={index} className="reference-wrapper">
+                                        <div className="reference-row sub-row">
+                                          <div className="reference-label">
+                                            {sub.title}
+                                          </div>
+
+                                          <div className="reference-field">
+                                            
+                                            {sub.fieldType === "multiple" &&
+                                              sub.choices.map((choice, i) => (
+                                                <div key={i}>
+                                                  <input 
+                                                    type="radio" 
+                                                    name={`${record.firebaseKey}_sub_${index}_${sub.title}`}
+                                                    checked={isRadioSelected(answer?.value, choice, i)}
+                                                    disabled 
+                                                  /> 
+                                                  <span>
+                                                    {choice && typeof choice === "object"
+                                                      ? (choice.label ?? choice.value ?? choice.name ?? choice.title ?? choice.text ?? "")
+                                                      : choice}
+                                                  </span>
+                                                </div>
+                                              ))
+                                            }
+                                            
+                                            {sub.fieldType === "checkbox" &&
+                                              sub.choices.map((choice, i) => {
+                                                const checkboxKey = getAnswerKey(record, index, `${sub.title}_${i}`, true, null, "checkbox");
+                                                const checkboxAnswer = lgu.data?.[checkboxKey];
+                                                
+                                                return (
+                                                  <div key={i}>
+                                                    <input 
+                                                      type="checkbox" 
+                                                      checked={checkboxAnswer?.value === true}
+                                                      disabled 
+                                                    /> 
+                                                    <span>
+                                                      {choice && typeof choice === "object"
+                                                        ? (choice.label ?? choice.value ?? choice.name ?? choice.title ?? choice.text ?? "")
+                                                        : choice}
+                                                    </span>
+                                                  </div>
+                                                );
+                                              })
+                                            }
+                                            
+                                            {(sub.fieldType === "short" || sub.fieldType === "integer" || sub.fieldType === "date") && (
+                                              <div>
+                                                {answer?.value ? (
+                                                  <span>
+                                                    {answer.value}
+                                                  </span>
+                                                ) : (
+                                                  <span style={{ fontStyle: "italic", color: "gray" }}>
+                                                    No answer provided
+                                                  </span>
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* Mode of Verification for Sub Indicators */}
+                                        {sub.verification && (
+                                          <div className="reference-verification-full" style={{ 
+                                            display: "flex",
+                                            flexDirection: "column",
+                                            width: "100%",
+                                            marginTop: "5px"
+                                          }}>
+                                            <div style={{ display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
+                                              <span className="reference-verification-label">Mode of Verification:</span>
+                                              <span className="reference-verification-value">{sub.verification}</span>
+                                            </div>
+                                            
+                                            {/* Attachments for this sub indicator */}
+                                            {(() => {
+                                              const indicatorId = `${record.firebaseKey}_sub_${index}_${sub.title}`;
+                                              const indicatorAttachments = lgu.attachmentsByIndicator?.[indicatorId] || [];
+                                              
+                                              return indicatorAttachments.length > 0 && (
+                                                <div style={{
+                                                  display: "flex",
+                                                  flexWrap: "wrap",
+                                                  gap: "8px",
+                                                  marginTop: "8px",
+                                                  width: "100%"
+                                                }}>
+                                                  {indicatorAttachments.map((attachment, idx) => (
+                                                    <div key={idx} style={{
+                                                      display: "flex",
+                                                      alignItems: "center",
+                                                      gap: "6px",
+                                                      backgroundColor: "#e8f5e9",
+                                                      padding: "4px 10px",
+                                                      borderRadius: "16px",
+                                                      fontSize: "11px",
+                                                      border: "1px solid #c8e6c9",
+                                                      maxWidth: "200px",
+                                                      cursor: "pointer"
+                                                    }}
+                                                    onClick={() => downloadAttachment(attachment)}>
+                                                      <span style={{ fontSize: "12px" }}>📎</span>
+                                                      <span style={{ 
+                                                        overflow: "hidden", 
+                                                        textOverflow: "ellipsis",
+                                                        whiteSpace: "nowrap",
+                                                        color: "#0c1a4b",
+                                                        textDecoration: "underline"
+                                                      }}>
+                                                        {attachment.name || 'Attachment'}
+                                                      </span>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              );
+                                            })()}
+                                          </div>
+                                        )}
+
+                                        {/* Nested Sub-Indicators */}
+                                        {sub.nestedSubIndicators && sub.nestedSubIndicators.length > 0 && (
+                                          <div className="nested-reference-wrapper">
+                                            {sub.nestedSubIndicators.map((nested, nestedIndex) => {
+                                              const nestedRadioKey = getAnswerKey(record, index, nested.title, true, nestedIndex, "radio");
+                                              const baseNestedKey = getAnswerKey(record, index, nested.title, true, nestedIndex);
+                                              const nestedAnswer = lgu.data?.[nestedRadioKey] ?? lgu.data?.[baseNestedKey];
+                                              
+                                              return (
+                                                <div key={nested.id || nestedIndex} className="nested-reference-item">
+                                                  <div className="nested-reference-row">
+                                                    <div className="nested-reference-label">
+                                                      {nested.title || 'Untitled'}
+                                                    </div>
+                                                    <div className="nested-reference-field">
+                                                      
+                                                      {/* Multiple Choice */}
+                                                      {nested.fieldType === "multiple" && nested.choices?.map((choice, i) => (
+                                                        <div key={i}>
+                                                          <input 
+                                                            type="radio" 
+                                                            name={`${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title}`}
+                                                            checked={isRadioSelected(nestedAnswer?.value, choice, i)}
+                                                            disabled 
+                                                          /> 
+                                                          <span>
+                                                            {choice && typeof choice === "object"
+                                                              ? (choice.label ?? choice.value ?? choice.name ?? choice.title ?? choice.text ?? "")
+                                                              : choice}
+                                                          </span>
+                                                        </div>
+                                                      ))}
+
+                                                      {/* Checkbox */}
+                                                      {nested.fieldType === "checkbox" && nested.choices?.map((choice, i) => {
+                                                        const nestedCheckboxKey = getAnswerKey(record, index, `${nested.title}_${i}`, true, nestedIndex, "checkbox");
+                                                        const nestedCheckboxAnswer = lgu.data?.[nestedCheckboxKey];
+                                                        
+                                                        return (
+                                                          <div key={i}>
+                                                            <input 
+                                                              type="checkbox" 
+                                                              checked={nestedCheckboxAnswer?.value === true}
+                                                              disabled 
+                                                            /> 
+                                                            <span>
+                                                              {choice && typeof choice === "object"
+                                                                ? (choice.label ?? choice.value ?? choice.name ?? choice.title ?? choice.text ?? "")
+                                                                : choice}
+                                                            </span>
+                                                          </div>
+                                                        );
+                                                      })}
+
+                                                      {/* Short Answer, Integer, Date */}
+                                                      {(nested.fieldType === "short" || nested.fieldType === "integer" || nested.fieldType === "date") && (
+                                                        <div>
+                                                          {nestedAnswer?.value ? (
+                                                            <span>
+                                                              {nested.fieldType === "date" 
+                                                                ? new Date(nestedAnswer.value).toLocaleDateString("en-US", {
+                                                                    year: "numeric",
+                                                                    month: "long",
+                                                                    day: "numeric",
+                                                                  })
+                                                                : nestedAnswer.value
+                                                              }
+                                                            </span>
+                                                          ) : (
+                                                            <span style={{ fontStyle: "italic", color: "gray" }}>
+                                                              No answer provided
+                                                            </span>
+                                                          )}
+                                                        </div>
+                                                      )}
+
+                                                      {!nested.fieldType && (
+                                                        <span style={{ fontStyle: "italic", color: "gray" }}>
+                                                          No field type selected
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                  
+                                                  {/* Verification for nested sub-indicator */}
+                                                  {nested.verification && (
+                                                    <div className="nested-verification">
+                                                      <span className="verification-label">Mode of Verification:</span>
+                                                      <span className="verification-value">{nested.verification}</span>
+                                                      
+                                                      {/* Attachments for nested sub-indicator */}
+                                                      {(() => {
+                                                        const nestedIndicatorId = `${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title}`;
+                                                        const nestedAttachments = lgu.attachmentsByIndicator?.[nestedIndicatorId] || [];
+                                                        
+                                                        return nestedAttachments.length > 0 && (
+                                                          <div style={{
+                                                            display: "flex",
+                                                            flexWrap: "wrap",
+                                                            gap: "8px",
+                                                            marginTop: "8px",
+                                                            width: "100%"
+                                                          }}>
+                                                            {nestedAttachments.map((attachment, idx) => (
+                                                              <div key={idx} style={{
+                                                                display: "flex",
+                                                                alignItems: "center",
+                                                                gap: "6px",
+                                                                backgroundColor: "#e8f5e9",
+                                                                padding: "4px 10px",
+                                                                borderRadius: "16px",
+                                                                fontSize: "11px",
+                                                                border: "1px solid #c8e6c9",
+                                                                maxWidth: "200px",
+                                                                cursor: "pointer"
+                                                              }}
+                                                              onClick={() => downloadAttachment(attachment)}>
+                                                                <span style={{ fontSize: "12px" }}>📎</span>
+                                                                <span style={{ 
+                                                                  overflow: "hidden", 
+                                                                  textOverflow: "ellipsis",
+                                                                  whiteSpace: "nowrap",
+                                                                  color: "#0c1a4b",
+                                                                  textDecoration: "underline"
+                                                                }}>
+                                                                  {attachment.name || 'Attachment'}
+                                                                </span>
+                                                              </div>
+                                                            ))}
+                                                          </div>
+                                                        );
+                                                      })()}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ))
+                            ) : (
+                              <p style={{ textAlign: "center", marginTop: "20px" }}>
+                                No indicators available for this tab.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div>
+                        <p style={{ textAlign: "center", marginTop: "20px" }}>
+                          No assessment data available.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Remarks and Flag Section - PER TAB */}
+                    <div style={{
+                      marginTop: "30px",
+                      padding: "20px",
+                      backgroundColor: "#f9f9f9",
+                      borderRadius: "8px",
+                      border: "1px solid #e0e0e0"
+                    }}>
+                      {/* Add Remarks for Current Tab */}
+                      <div style={{ marginBottom: "20px" }}>
+                        <h4 style={{ 
+                          margin: "0 0 10px 0", 
+                          color: "#333", 
+                          fontSize: "16px",
+                          fontWeight: "600"
+                        }}>
+                          Add Remarks for {activeTab ? tabs.find(t => t.id === activeTab)?.name || 'Current' : 'Current'}:
+                        </h4>
+                        <textarea
+                          placeholder="Type here..."
+                          rows="4"
+                          value={remarks[activeTab] || ""}
+                          onChange={(e) => setRemarks(prev => ({ 
+                            ...prev, 
+                            [activeTab]: e.target.value 
+                          }))}
+                          style={{
+                            width: "100%",
+                            padding: "12px",
+                            border: "1px solid #ccc",
+                            borderRadius: "8px",
+                            fontSize: "14px",
+                            resize: "vertical",
+                            fontFamily: "inherit"
+                          }}
+                        />
+                      </div>
+
+{/* Flag as Verified Button - PER TAB (TOGGLEABLE) */}
+<div style={{
+  display: "flex",
+  justifyContent: "flex-end",
+  alignItems: "center",
+  gap: "15px"
+}}>
+  <div style={{ position: "relative", display: "inline-block" }}>
+    <button
+      onClick={toggleFlag}
+      disabled={isVerified} // Add this line to disable when verified
+      style={{
+        backgroundColor: verifiedFlag[activeTab] ? "#dc3545" : "#28a745",
+        color: "white",
+        border: "none",
+        padding: "10px 30px",
+        borderRadius: "5px",
+        fontSize: "14px",
+        cursor: isVerified ? "not-allowed" : "pointer", // Change cursor based on isVerified
+        fontWeight: "600",
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        opacity: isVerified ? 0.5 : 1 // Add opacity when disabled
+      }}
+    >
+      <span>⚐</span>
+      {verifiedFlag[activeTab] ? `Remove Flag` : `Flag as Verified`}
+    </button>
+  </div>
+</div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Modals */}
+          {showProfileModal && (
+            <div className="modal-overlay">
+              <div className="profile-view-modal">
+                <div className="profile-view-header">
+                  <span className="back-btn" onClick={() => setShowProfileModal(false)}>←</span>
+                  <h3>Profile</h3>
+                </div>
+                <div className="profile-view-body">
+                  <div className="profile-view-avatar">
+                    {profileData.image ? (
+                      <img src={profileData.image} alt="Profile" />
+                    ) : (
+                      <div className="avatar-placeholder">👤</div>
+                    )}
+                  </div>
+                  <h2>{profileData.name || "No Name"}</h2>
+                  <p className="profile-email">{profileData.email}</p>
+                  <div className="profile-action-buttons">
+                    <button
+                      className="profile-btn"
+                      onClick={() => {
+                        setShowProfileModal(false);
+                        setShowEditProfileModal(true);
+                      }}
+                    >
+                      Edit Profile
+                    </button>
+                    <button
+                      className="profile-btn signout"
+                      onClick={handleSignOut}
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showEditProfileModal && (
+            <div className="modal-overlay">
+              <div className="add-record-modal profile-modal">
+                <div className="modal-header">
+                  <h3>Edit Profile</h3>
+                  <span
+                    className="close-x"
+                    onClick={profileComplete ? () => {
+                      setEditProfileData(profileData);
+                      setShowEditProfileModal(false);
+                    } : undefined}
+                    style={{
+                      cursor: profileComplete ? "pointer" : "not-allowed",
+                      opacity: profileComplete ? 1 : 0.5,
+                      pointerEvents: profileComplete ? "auto" : "none"
+                    }}
+                    title={!profileComplete ? "Please complete your profile first" : "Close"}
+                  >
+                    ✕
+                  </span>
+                </div>
+                <div className="modal-body">
+                  <div className="modal-field">
+                    <label>Profile Image:</label>
+                    <input type="file" accept="image/*" onChange={handleImageUpload} />
+                  </div>
+                  {editProfileData.image && (
+                    <div className="profile-preview">
+                      <img src={editProfileData.image} alt="Preview" />
+                      <button
+                        type="button"
+                        className="remove-photo-btn"
+                        onClick={() =>
+                          setEditProfileData({ ...editProfileData, image: "" })
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                  <div className="modal-field">
+                    <label>Name:</label>
+                    <input
+                      type="text"
+                      value={editProfileData.name}
+                      onChange={(e) =>
+                        setEditProfileData({ ...editProfileData, name: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="modal-field">
+                    <label>Email:</label>
+                    <input
+                      type="text"
+                      value={auth.currentUser?.email || ""}
+                      disabled
+                      style={{ background: "#f1f1f1", cursor: "not-allowed" }}
+                    />
+                  </div>
+                  <div className="modal-footer">
+                    <button
+                      className="save-profile-btn"
+                      onClick={handleSaveProfile}
+                      disabled={savingProfile || !editProfileData?.name?.trim()}
+                    >
+                      {savingProfile ? "Saving..." : "Save Changes"}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
-      );
-    })}
-  </div>
-)}
-    </div>
-  );
-})}
-
-                    </div>
-                  ))
-                ) : (
-                  <p style={{ textAlign: "center", marginTop: "20px" }}>
-                    No indicators available for this tab.
-                  </p>
-                )}
-              </div>
-            );
-          })
-        ) : (
-          <div>
-            <p style={{ textAlign: "center", marginTop: "20px" }}>
-              No assessment data available.
-            </p>
-          </div>
-        )}
-
-        {/* Remarks and Flag Section - PER TAB */}
-        <div style={{
-          marginTop: "30px",
-          padding: "20px",
-          backgroundColor: "#f9f9f9",
-          borderRadius: "8px",
-          border: "1px solid #e0e0e0"
-        }}>
-          {/* Add Remarks for Current Tab */}
-          <div style={{ marginBottom: "20px" }}>
-            <h4 style={{ 
-              margin: "0 0 10px 0", 
-              color: "#333", 
-              fontSize: "16px",
-              fontWeight: "600"
-            }}>
-              Add Remarks for {getTabName(activeTab)} Tab:
-            </h4>
-            <textarea
-              placeholder="Type here..."
-              rows="4"
-              value={remarks[activeTab] || ""} // CHANGED: use tab-specific remarks
-              onChange={(e) => setRemarks(prev => ({ 
-                ...prev, 
-                [activeTab]: e.target.value 
-              }))} // CHANGED: update tab-specific remarks
-              style={{
-                width: "100%",
-                padding: "12px",
-                border: "1px solid #ccc",
-                borderRadius: "8px",
-                fontSize: "14px",
-                resize: "vertical",
-                fontFamily: "inherit"
-              }}
-            />
-          </div>
-
-          {/* Flag as Verified Button - PER TAB (TOGGLEABLE) */}
-          <div style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            alignItems: "center",
-            gap: "15px"
-          }}>
-            <div style={{ position: "relative", display: "inline-block" }}>
-              <button
-                onClick={toggleFlag}
-                style={{
-                  backgroundColor: verifiedFlag[activeTab] ? "#dc3545" : "#28a745", // Red for remove, Green for add
-                  color: "white",
-                  border: "none",
-                  padding: "10px 30px",
-                  borderRadius: "5px",
-                  fontSize: "14px",
-                  cursor: "pointer",
-                  fontWeight: "600",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  transition: "background-color 0.3s"
-                }}
-                onMouseOver={(e) => {
-                  if (verifiedFlag[activeTab]) {
-                    e.currentTarget.style.backgroundColor = "#c82333"; // Darker red on hover
-                  } else {
-                    e.currentTarget.style.backgroundColor = "#218838"; // Darker green on hover
-                  }
-                }}
-                onMouseOut={(e) => {
-                  if (verifiedFlag[activeTab]) {
-                    e.currentTarget.style.backgroundColor = "#dc3545"; // Back to red
-                  } else {
-                    e.currentTarget.style.backgroundColor = "#28a745"; // Back to green
-                  }
-                }}
-              >
-                <span>⚐</span>
-                {verifiedFlag[activeTab] ? `Remove Flag from ${getTabName(activeTab)} Tab` : `Flag ${getTabName(activeTab)} Tab as Verified`}
-              </button>
-            </div>
-          </div>
-        </div>
-      </>
-    )}
-  </div>
-</div>
-
-
-        </div>
-
-        {/* Modals */}
-        {showProfileModal && (
-          <div className="modal-overlay">
-            <div className="profile-view-modal">
-              <div className="profile-view-header">
-                <span className="back-btn" onClick={() => setShowProfileModal(false)}>←</span>
-                <h3>Profile</h3>
-              </div>
-              <div className="profile-view-body">
-                <div className="profile-view-avatar">
-                  {profileData.image ? (
-                    <img src={profileData.image} alt="Profile" />
-                  ) : (
-                    <div className="avatar-placeholder">👤</div>
-                  )}
-                </div>
-                <h2>{profileData.name || "No Name"}</h2>
-                <p className="profile-email">{profileData.email}</p>
-                <div className="profile-action-buttons">
-                  <button
-                    className="profile-btn"
-                    onClick={() => {
-                      setShowProfileModal(false);
-                      setShowEditProfileModal(true);
-                    }}
-                  >
-                    Edit Profile
-                  </button>
-                  <button
-                    className="profile-btn signout"
-                    onClick={handleSignOut}
-                  >
-                    Sign Out
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showEditProfileModal && (
-          <div className="modal-overlay">
-            <div className="add-record-modal profile-modal">
-              <div className="modal-header">
-                <h3>Edit Profile</h3>
-                <span
-                  className="close-x"
-                  onClick={profileComplete ? () => {
-                    setEditProfileData(profileData);
-                    setShowEditProfileModal(false);
-                  } : undefined}
-                  style={{
-                    cursor: profileComplete ? "pointer" : "not-allowed",
-                    opacity: profileComplete ? 1 : 0.5,
-                    pointerEvents: profileComplete ? "auto" : "none"
-                  }}
-                  title={!profileComplete ? "Please complete your profile first" : "Close"}
-                >
-                  ✕
-                </span>
-              </div>
-              <div className="modal-body">
-                <div className="modal-field">
-                  <label>Profile Image:</label>
-                  <input type="file" accept="image/*" onChange={handleImageUpload} />
-                </div>
-                {editProfileData.image && (
-                  <div className="profile-preview">
-                    <img src={editProfileData.image} alt="Preview" />
-                    <button
-                      type="button"
-                      className="remove-photo-btn"
-                      onClick={() =>
-                        setEditProfileData({ ...editProfileData, image: "" })
-                      }
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-                <div className="modal-field">
-                  <label>Name:</label>
-                  <input
-                    type="text"
-                    value={editProfileData.name}
-                    onChange={(e) =>
-                      setEditProfileData({ ...editProfileData, name: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="modal-field">
-                  <label>Email:</label>
-                  <input
-                    type="text"
-                    value={auth.currentUser?.email || ""}
-                    disabled
-                    style={{ background: "#f1f1f1", cursor: "not-allowed" }}
-                  />
-                </div>
-                <div className="modal-footer">
-<button
-  className="save-profile-btn"
-  onClick={handleSaveProfile}
-  disabled={savingProfile || !editProfileData?.name?.trim()}
->
-  {savingProfile ? "Saving..." : "Save Changes"}
-</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
-  </div>
-);
+  );
 }

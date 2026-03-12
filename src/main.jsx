@@ -11,8 +11,7 @@ import { auth, db } from "./firebase"; // Adjust the path as needed
 import App from "./PO/app.jsx";
 import Dashboard from "./PO/dashboard.jsx";
 import Loader from "./loader.jsx";
-import FAS from "./PO/financial-administration-and-sustainability.jsx";
-
+import POIndicators from "./PO/po-indicators.jsx";
 import LGU from "./LGU/lgu-assessment.jsx";
 import LGUNotification from "./LGU/lgu-notifications.jsx";
 import MLGO from "./MLGO/mlgo-dashboard.jsx";
@@ -87,10 +86,10 @@ function Root() {
         }
       />
       <Route
-        path="/financial-administration-and-sustainability"
+        path="/po-indicators"
         element={
           <ProtectedRoute allowedRoles={["admin"]}>
-            <FAS />
+            <POIndicators />
           </ProtectedRoute>
         }
       />

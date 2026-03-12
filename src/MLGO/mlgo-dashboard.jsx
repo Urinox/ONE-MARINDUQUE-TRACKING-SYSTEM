@@ -17,6 +17,7 @@ export default function MLGO() {
   const [profileComplete, setProfileComplete] = useState(false);
   const rowsPerPage = 10;
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [openDropdown, setOpenDropdown] = useState(null);
   const [search, setSearch] = useState("");
   const [adminUid, setAdminUid] = useState(null);
@@ -41,12 +42,15 @@ export default function MLGO() {
   const [filters, setFilters] = useState({
     year: "",
     status: "",
+    assessment: "" // Add assessment filter
   });
 
   const [municipalityMap, setMunicipalityMap] = useState({});
   const [currentUserMunicipality, setCurrentUserMunicipality] = useState("");
   const [years, setYears] = useState([]);
   const [verifiedSubmissions, setVerifiedSubmissions] = useState([]);
+  const [returnedSubmissions, setReturnedSubmissions] = useState([]); // NEW: Store returned assessments
+  const [assessmentList, setAssessmentList] = useState([]); // Store assessments
 
   // Fetch unread notifications count
   useEffect(() => {
@@ -91,6 +95,18 @@ export default function MLGO() {
     
     return () => unsubscribe();
   }, [auth.currentUser?.uid]);
+
+
+  useEffect(() => {
+    if (location.state?.refreshNeeded) {
+      console.log("Refresh needed - incrementing refresh trigger");
+      // Increment refresh trigger to force data reload
+      setRefreshTrigger(prev => prev + 1);
+      
+      // Clear the state so we don't keep refreshing
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, navigate]);
 
   // Fetch admin UID
   useEffect(() => {
@@ -150,6 +166,8 @@ export default function MLGO() {
     });
   }, []);
 
+
+  
   // Fetch all profiles for municipality mapping
   useEffect(() => {
     if (!auth.currentUser) return;
@@ -199,10 +217,47 @@ export default function MLGO() {
     });
   }, [adminUid]);
 
-  // Fetch verified submissions
+  // Fetch assessments from admin
+  useEffect(() => {
+    if (!auth.currentUser || !adminUid) return;
+
+    const assessmentsRef = ref(db, `assessments/${adminUid}`);
+    
+    onValue(assessmentsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const assessmentsData = snapshot.val();
+        const list = [];
+        
+        // Transform the nested object structure into an array
+        Object.keys(assessmentsData).forEach(year => {
+          const yearData = assessmentsData[year];
+          if (yearData) {
+            Object.keys(yearData).forEach(assessmentId => {
+              const assessment = yearData[assessmentId];
+              list.push({
+                id: assessmentId,
+                name: assessment.name || "Untitled Assessment",
+                year: year,
+                description: assessment.description || "",
+                createdAt: assessment.createdAt,
+                status: assessment.status || "active"
+              });
+            });
+          }
+        });
+        
+        setAssessmentList(list);
+        console.log("Loaded assessments from admin:", list);
+      } else {
+        setAssessmentList([]);
+      }
+    });
+  }, [adminUid]);
+
+
   useEffect(() => {
     if (!auth.currentUser || !currentUserMunicipality) return;
-
+  
     const fetchVerifiedSubmissions = () => {
       const verifiedRef = ref(db, `verified`);
       
@@ -210,74 +265,110 @@ export default function MLGO() {
         if (snapshot.exists()) {
           const allVerified = snapshot.val();
           const verifiedList = [];
-
+  
           Object.keys(allVerified).forEach(year => {
             if (allVerified[year]?.LGU) {
-              Object.keys(allVerified[year].LGU).forEach(lguName => {
-                const lguData = allVerified[year].LGU[lguName];
+              Object.keys(allVerified[year].LGU).forEach(lguKey => {
+                const lguData = allVerified[year].LGU[lguKey];
                 
                 // Check if this verified submission belongs to current user's municipality
                 if (lguData.municipality === currentUserMunicipality) {
-                  verifiedList.push({
-                    year: year,
-                    status: "Verified",
-                    submission: lguData.submission || "N/A",
-                    deadline: lguData.deadline || "Not set",
-                    lguName: lguName,
-                    data: lguData.originalData || {},
-                    municipality: lguData.municipality,
-                    userUid: lguData.lguUid,
-                    isVerified: true,
-                    verifiedBy: lguData.verifiedBy,
-                    verifiedAt: lguData.verifiedAt
-                  });
+                  // Only add if it has a valid assessment name (not placeholder)
+                  if (lguData.assessment && lguData.assessment !== "General Assessment") {
+                    verifiedList.push({
+                      year: year,
+                      assessmentId: lguData.assessmentId || "unknown",
+                      assessment: lguData.assessment,
+                      status: "Verified",
+                      submission: lguData.submission || "N/A",
+                      deadline: lguData.deadline || "Not set", // <-- USE THE VALUE FROM THE DATA
+                      lguName: lguData.lguName || lguData.municipality,
+                      data: lguData.originalData || {},
+                      municipality: lguData.municipality,
+                      userUid: lguData.lguUid,
+                      isVerified: true,
+                      verifiedBy: lguData.verifiedBy,
+                      verifiedAt: lguData.verifiedAt,
+                      displayName: `${lguData.municipality} - ${lguData.assessment}`
+                    });
+                  }
                 }
               });
             }
           });
-
+  
+          console.log("Fetched verified submissions:", verifiedList);
           setVerifiedSubmissions(verifiedList);
         }
       });
     };
-
+  
     fetchVerifiedSubmissions();
-  }, [currentUserMunicipality]);
+  }, [currentUserMunicipality, refreshTrigger]); // Add refreshTrigger
 
-  // Fetch pending/returned submissions (answers)
-  useEffect(() => {
-    if (!auth.currentUser || !currentUserMunicipality) return;
+// Fetch pending/returned submissions (answers)
+useEffect(() => {
+  if (!auth.currentUser || !currentUserMunicipality) return;
 
-    const fetchSubmissions = () => {
-      const answersRef = ref(db, `answers`);
-      
-      onValue(answersRef, (snapshot) => {
-        if (snapshot.exists()) {
-          const allAnswers = snapshot.val();
-          const submissionsList = [];
-          let counter = 1;
+  const fetchSubmissions = () => {
+    const answersRef = ref(db, `answers`);
+    
+    onValue(answersRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const allAnswers = snapshot.val();
+        const submissionsList = [];
+        let counter = 1;
 
-          Object.keys(allAnswers).forEach(year => {
-            if (allAnswers[year]?.LGU) {
-              Object.keys(allAnswers[year].LGU).forEach(lguName => {
-                const lguData = allAnswers[year].LGU[lguName];
+        Object.keys(allAnswers).forEach(year => {
+          if (allAnswers[year]?.LGU) {
+            Object.keys(allAnswers[year].LGU).forEach(lguKey => {
+              const lguData = allAnswers[year].LGU[lguKey];
+              
+              if (lguData._metadata) {
+                const userUid = lguData._metadata.uid;
                 
-                if (lguData._metadata) {
-                  const userUid = lguData._metadata.uid;
-                  
-                  let municipality = "";
-                  if (lguData._metadata.municipality) {
-                    municipality = lguData._metadata.municipality;
-                  } else if (userUid && municipalityMap[userUid]) {
-                    municipality = municipalityMap[userUid];
-                  }
+                let municipality = "";
+                if (lguData._metadata.municipality) {
+                  municipality = lguData._metadata.municipality;
+                } else if (userUid && municipalityMap[userUid]) {
+                  municipality = municipalityMap[userUid];
+                }
 
-                  if (municipality === currentUserMunicipality) {
+                if (municipality === currentUserMunicipality) {
+                  // Determine status based on metadata flags
+                  let status = "Draft";
+                  
+                  // Check if returned from PO (using the flag)
+                  if (lguData._metadata.returnedToMLGO === true) {
+                    status = "Returned";
+                  } 
+                  // Check if forwarded to PO
+                  else if (lguData._metadata.forwarded === true || lguData._metadata.forwardedToPO === true) {
+                    status = "Forwarded";
+                  } 
+                  // Check if submitted but not forwarded
+                  else if (lguData._metadata.submitted === true) {
+                    status = "Pending";
+                  }
+                  
+                  // Log forwarded items for debugging
+                  if (status === "Forwarded") {
+                    console.log("Found forwarded item:", {
+                      year,
+                      assessment: lguData._metadata.assessment,
+                      municipality,
+                      metadata: lguData._metadata
+                    });
+                  }
+                  
+                  // Skip forwarded items in the dashboard - they should not appear
+                  if (status !== "Forwarded") {
                     submissionsList.push({
                       id: counter++,
                       year: year,
-                      status: lguData._metadata.returned ? "Returned" : 
-                              lguData._metadata.submitted ? "Pending" : "Draft",
+                      assessmentId: lguData._metadata.assessmentId || "unknown",
+                      assessment: lguData._metadata.assessment || lguData._metadata.assessmentName || "General Assessment",
+                      status: status,
                       submission: lguData._metadata.lastSaved 
                         ? new Date(lguData._metadata.lastSaved).toLocaleDateString('en-US', {
                             day: '2-digit',
@@ -285,94 +376,198 @@ export default function MLGO() {
                             year: 'numeric'
                           })
                         : "N/A",
-                      deadline: "Not set",
-                      lguName: lguName,
+                      deadline: lguData._metadata.deadline 
+                        ? new Date(lguData._metadata.deadline).toLocaleDateString('en-US', {
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric'
+                          })
+                        : "Not set",
+                      lguName: lguData._metadata.name || lguData._metadata.email || "Unknown",
                       data: lguData,
                       municipality: municipality,
                       userUid: userUid,
-                      isVerified: false
+                      isVerified: false,
+                      displayName: lguData._metadata.displayName || `${municipality} - ${lguData._metadata.assessment || "General"}`
                     });
                   }
                 }
-              });
-            }
-          });
-
-          setSubmissions(submissionsList);
-        } else {
-          setSubmissions([]);
-        }
-        setLoading(false);
-      });
-    };
-
-    fetchSubmissions();
-  }, [currentUserMunicipality, municipalityMap]);
-
-  // Fetch deadlines
-  useEffect(() => {
-    if (!auth.currentUser || !adminUid) return;
-
-    const fetchDeadlines = async () => {
-      try {
-        const deadlinesRef = ref(db, `financial/${adminUid}`);
-        
-        onValue(deadlinesRef, (snapshot) => {
-          if (snapshot.exists()) {
-            const financialData = snapshot.val();
-            const deadlinesMap = {};
-            
-            Object.keys(financialData).forEach(year => {
-              if (financialData[year]?.metadata?.deadline) {
-                deadlinesMap[year] = financialData[year].metadata.deadline;
               }
             });
-            
-            // Update pending submissions with deadlines
-            setSubmissions(prev => prev.map(item => ({
-              ...item,
-              deadline: deadlinesMap[item.year] 
-                ? new Date(deadlinesMap[item.year]).toLocaleDateString('en-US', {
-                    day: '2-digit',
-                    month: 'long',
-                    year: 'numeric'
-                  })
-                : "Not set"
-            })));
           }
         });
-      } catch (error) {
-        console.error("Error fetching deadlines:", error);
+
+        console.log("Fetched submissions (excluding forwarded):", submissionsList.length);
+        setSubmissions(submissionsList);
+      } else {
+        setSubmissions([]);
       }
-    };
+      setLoading(false);
+    });
+  };
 
-    fetchDeadlines();
-  }, [adminUid]);
+  fetchSubmissions();
+}, [currentUserMunicipality, municipalityMap, refreshTrigger]);
 
-  // Combine all submissions (pending + verified) - REMOVING VERIFIED PENDING ITEMS
-  const allSubmissions = useMemo(() => {
-    // Create a Set of verified item keys for quick lookup
-    const verifiedKeys = new Set(
-      verifiedSubmissions.map(v => `${v.year}-${v.lguName}-${v.municipality}`)
-    );
+useEffect(() => {
+  if (!auth.currentUser || !currentUserMunicipality) return;
+
+  const fetchReturnedSubmissions = () => {
+    const returnedRef = ref(db, `returned`);
     
-    // Filter out pending items that have been verified
-    const filteredPending = submissions.filter(pending => 
-      !verifiedKeys.has(`${pending.year}-${pending.lguName}-${pending.municipality}`)
-    );
+    onValue(returnedRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const allReturned = snapshot.val();
+        const returnedList = [];
+        let counter = 1;
+
+        Object.keys(allReturned).forEach(year => {
+          if (allReturned[year]?.MLGO) {
+            // Look for the current user's UID in the MLGO node
+            Object.keys(allReturned[year].MLGO).forEach(mlgoUid => {
+              if (mlgoUid === auth.currentUser?.uid) {
+                const mlgoReturns = allReturned[year].MLGO[mlgoUid];
+                
+                Object.keys(mlgoReturns).forEach(assessmentId => {
+                  const returnData = mlgoReturns[assessmentId];
+                  
+                  // Check if this returned assessment belongs to current user's municipality
+                  if (returnData.municipality === currentUserMunicipality) {
+                    // Only add if not forwarded
+                    if (returnData.status !== "Forwarded") {
+                      returnedList.push({
+                        id: counter++,
+                        year: year,
+                        assessmentId: returnData.assessmentId,
+                        assessment: returnData.assessment || "General Assessment",
+                        status: "Returned",
+                        submission: returnData.submission || "N/A",
+                        deadline: returnData.deadline || "Not set", // <-- USE THE VALUE FROM THE DATA
+                        lguName: returnData.originalLguName || returnData.lguName,
+                        data: returnData.originalData || {},
+                        municipality: returnData.municipality,
+                        userUid: returnData.lguUid,
+                        isVerified: false,
+                        isReturned: true,
+                        returnedBy: returnData.returnedBy,
+                        returnedAt: returnData.returnedAt,
+                        poRemarks: returnData.poRemarks,
+                        displayName: `${returnData.municipality} - ${returnData.assessment || "General"}`
+                      });
+                    }
+                  }
+                });
+              }
+            });
+          }
+        });
+
+        console.log("Fetched returned submissions:", returnedList.length);
+        setReturnedSubmissions(returnedList);
+      } else {
+        setReturnedSubmissions([]);
+      }
+    });
+  };
+
+  fetchReturnedSubmissions();
+}, [auth.currentUser?.uid, currentUserMunicipality, refreshTrigger]);
+
+
+
+// Combine all submissions (pending + verified + returned)
+const allSubmissions = useMemo(() => {
+  console.log("Building allSubmissions with:", {
+    submissionsCount: submissions.length,
+    verifiedCount: verifiedSubmissions.length,
+    returnedCount: returnedSubmissions.length
+  });
+  
+  // Filter out any items with "Forwarded" status from submissions
+  const nonForwardedSubmissions = submissions.filter(s => s.status !== "Forwarded");
+  
+  // Create a Set of verified item keys using year, assessmentId, and municipality
+  const verifiedKeys = new Set(
+    verifiedSubmissions
+      .filter(v => v.assessment && v.assessment !== "General Assessment")
+      .map(v => `${v.year}-${v.assessmentId}-${v.municipality}`)
+  );
+  
+  // Create a Set of returned item keys
+  const returnedKeys = new Set(
+    returnedSubmissions
+      .filter(r => r.assessment && r.assessment !== "General Assessment")
+      .map(r => `${r.year}-${r.assessmentId}-${r.municipality}`)
+  );
+  
+  // Filter out pending items that have been verified or returned
+  const filteredPending = nonForwardedSubmissions.filter(pending => 
+    !verifiedKeys.has(`${pending.year}-${pending.assessmentId}-${pending.municipality}`) &&
+    !returnedKeys.has(`${pending.year}-${pending.assessmentId}-${pending.municipality}`)
+  );
+  
+  // Filter out any items with "General Assessment" that don't have real data
+  const validPending = filteredPending.filter(p => 
+    p.assessment && p.assessment !== "General Assessment" && p.data && Object.keys(p.data).length > 0
+  );
+  
+  const validVerified = verifiedSubmissions.filter(v => 
+    v.assessment && v.assessment !== "General Assessment"
+  );
+  
+  const validReturned = returnedSubmissions.filter(r => 
+    r.assessment && r.assessment !== "General Assessment"
+  );
+  
+  // Combine filtered pending with verified and returned
+  const combined = [...validPending, ...validVerified, ...validReturned];
+  
+  // Final filter to ensure no forwarded items sneak through
+  const finalFiltered = combined.filter(item => item.status !== "Forwarded");
+  
+  console.log("Final filtered submissions:", finalFiltered.map(i => ({ 
+    year: i.year, 
+    assessment: i.assessment, 
+    status: i.status 
+  })));
+  
+  // Sort by year descending (newest first) and then by timestamp
+  return finalFiltered.sort((a, b) => {
+    // First sort by year
+    if (b.year !== a.year) return b.year - a.year;
     
-    // Combine filtered pending with verified
-    const combined = [...filteredPending, ...verifiedSubmissions];
+    // Then by timestamp if available (returnedAt or verifiedAt)
+    const timeA = a.returnedAt || a.verifiedAt || 0;
+    const timeB = b.returnedAt || b.verifiedAt || 0;
+    return timeB - timeA;
+  });
+}, [submissions, verifiedSubmissions, returnedSubmissions]);
+
+  // Get unique assessment names based on selected year
+  const assessmentFilterOptions = useMemo(() => {
+    // Start with all submissions
+    let dataToUse = [...submissions, ...verifiedSubmissions, ...returnedSubmissions];
     
-    // Sort by year descending (newest first)
-    return combined.sort((a, b) => b.year - a.year);
-  }, [submissions, verifiedSubmissions]);
+    // If a year is selected, filter by that year first
+    if (filters.year) {
+      dataToUse = dataToUse.filter(item => item.year === filters.year);
+    }
+    
+    // Get unique assessment names
+    const allAssessments = dataToUse
+      .map(item => item.assessment)
+      .filter(assessment => assessment && assessment !== "General Assessment" && assessment !== "N/A");
+    
+    return [...new Set(allAssessments)].sort();
+  }, [submissions, verifiedSubmissions, returnedSubmissions, filters.year]);
 
   const handleView = (item) => {
     if (item.isVerified) {
       navigate("/mlgo-view", { 
         state: { 
           year: item.year,
+          assessment: item.assessment,
+          assessmentId: item.assessmentId,
           lguName: item.lguName,
           lguData: item.data,
           municipality: item.municipality,
@@ -382,15 +577,41 @@ export default function MLGO() {
           verifiedAt: item.verifiedAt
         } 
       });
-    } else {
+    } else if (item.isReturned) {
       navigate("/mlgo-view", { 
         state: { 
           year: item.year,
+          assessment: item.assessment,
+          assessmentId: item.assessmentId,
           lguName: item.lguName,
           lguData: item.data,
           municipality: item.municipality,
           lguUid: item.userUid,
-          isVerified: false
+          isVerified: false,
+          isReturned: true,
+          returnedBy: item.returnedBy,
+          returnedAt: item.returnedAt,
+          poRemarks: item.poRemarks
+        } 
+      });
+    } else {
+      // Check if this item was returned to LGU or forwarded
+      const isReturnedToLGU = item.data?._metadata?.returnedToLGU || false;
+      const isForwarded = item.data?._metadata?.forwarded || item.data?._metadata?.forwardedToPO || false;
+      
+      // Only navigate if not forwarded (though forwarded items shouldn't be in the list)
+      navigate("/mlgo-view", { 
+        state: { 
+          year: item.year,
+          assessment: item.assessment,
+          assessmentId: item.assessmentId,
+          lguName: item.lguName,
+          lguData: item.data,
+          municipality: item.municipality,
+          lguUid: item.userUid,
+          isVerified: false,
+          isReturnedToLGU: isReturnedToLGU,
+          isForwarded: isForwarded
         } 
       });
     }
@@ -446,16 +667,21 @@ export default function MLGO() {
   };
 
   const municipalities = ["Boac", "Mogpog", "Sta. Cruz", "Torrijos", "Buenavista", "Gasan"];
-  const statuses = ["Verified", "Pending", "Returned"];
+  const statuses = ["Verified", "Pending", "Returned", "Forwarded"];
 
   const updateFilter = (type, value) => {
-    setFilters({ ...filters, [type]: value });
+    // If changing the year, clear the assessment filter
+    if (type === "year") {
+      setFilters({ ...filters, [type]: value, assessment: "" });
+    } else {
+      setFilters({ ...filters, [type]: value });
+    }
     setOpenDropdown(null);
     setCurrentPage(1);
   };
 
   const clearFilters = () => {
-    setFilters({ municipality: "", year: "", status: "" });
+    setFilters({ year: "", status: "", assessment: "" });
     setCurrentPage(1);
   };
 
@@ -463,11 +689,13 @@ export default function MLGO() {
   const filteredData = allSubmissions.filter((item) => {
     const matchesYear = !filters.year || item.year === filters.year;
     const matchesStatus = !filters.status || item.status === filters.status;
+    const matchesAssessment = !filters.assessment || item.assessment === filters.assessment;
     const matchesSearch = search === "" || 
       item.year.toLowerCase().includes(search.toLowerCase()) ||
-      item.lguName?.toLowerCase().includes(search.toLowerCase());
+      item.assessment?.toLowerCase().includes(search.toLowerCase()) ||
+      item.status?.toLowerCase().includes(search.toLowerCase());
     
-    return matchesYear && matchesStatus && matchesSearch;
+    return matchesYear && matchesStatus && matchesAssessment && matchesSearch;
   }).map((item, index) => ({ ...item, id: index + 1 })); // Reassign sequential IDs
 
   // Pagination
@@ -478,11 +706,17 @@ export default function MLGO() {
 
   const renderDropdown = (type, list) => (
     <div className="dropdown">
-      {list.map((item, i) => (
-        <div key={i} className="dropdown-item" onClick={() => updateFilter(type, item)}>
-          {item}
+      {list.length > 0 ? (
+        list.map((item, i) => (
+          <div key={i} className="dropdown-item" onClick={() => updateFilter(type, item)}>
+            {item}
+          </div>
+        ))
+      ) : (
+        <div className="dropdown-item" style={{ color: '#999', cursor: 'default' }}>
+          No options available
         </div>
-      ))}
+      )}
     </div>
   );
 
@@ -550,6 +784,27 @@ export default function MLGO() {
                   {openDropdown === "status" && renderDropdown("status", statuses)}
                 </div>
 
+                {/* Assessment Filter - depends on selected year */}
+                <div className="filter-item">
+                  <div className="filter-btn" onClick={() => setOpenDropdown(openDropdown === "assessment" ? null : "assessment")}>
+                    Assessment {filters.assessment && `: ${filters.assessment}`}
+                    <span className="arrow" style={{ pointerEvents: "none" }}>
+                      {openDropdown === "assessment" ? "▲" : "▼"}
+                    </span>
+                  </div>
+                  {openDropdown === "assessment" && (
+                    <>
+                      {!filters.year ? (
+                        <div className="dropdown-item" style={{ color: '#999', cursor: 'default' }}>
+                          Please select a year first
+                        </div>
+                      ) : (
+                        renderDropdown("assessment", assessmentFilterOptions)
+                      )}
+                    </>
+                  )}
+                </div>
+
                 <button className={style.sidebarMenuItem} onClick={() => navigate("/mlgo-notification")}>
                   <FiBell style={{ marginRight: "8px", fontSize: "18px" }} />
                   Notifications
@@ -610,6 +865,23 @@ export default function MLGO() {
               </div>
             </div>
 
+            {/* Search Bar */}
+            <div style={{ padding: "10px 20px" }}>
+              <input
+                type="text"
+                placeholder="Search by year, assessment, or status..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  borderRadius: "4px",
+                  border: "1px solid #ccc",
+                  fontSize: "14px"
+                }}
+              />
+            </div>
+
             {/* Table */}
             <div className={style.tableBox}>
               <div className={style.tableWrapper}>
@@ -618,6 +890,7 @@ export default function MLGO() {
                     <tr>
                       <th>#</th>
                       <th>YEAR</th>
+                      <th>ASSESSMENT</th>
                       <th>STATUS</th>
                       <th>Submission Date</th>
                       <th>Submission Deadline</th>
@@ -630,15 +903,32 @@ export default function MLGO() {
                         <tr key={item.id}>
                           <td>{item.id}</td>
                           <td>{item.year}</td>
+                          <td>{item.assessment || "General Assessment"}</td>
                           <td>
                             <span className={`${style.status} ${item.isVerified ? style.verifieD : style[item.status?.toLowerCase()]}`}>
                               {item.status}
                             </span>
                           </td>
                           <td>{item.submission}</td>
-                          <td>{item.deadline}</td>
+                          <td>{item.deadline || "Not set"}</td>
                           <td className="actions">
-                            <button className={style.btnView} onClick={() => handleView(item)}>
+                            <button
+                            onClick={() => handleView(item)}
+                            style={{
+                                backgroundColor: "#0c1a4b",
+                                color: "white",
+                                border: "none",
+                                padding: "6px 15px",
+                                borderRadius: "4px",
+                                fontSize: "13px",
+                                cursor: "pointer",
+                                fontWeight: "500",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "5px",
+                                transition: "background-color 0.2s"
+                              }}
+                              >
                               View 👁
                             </button>
                           </td>
@@ -646,7 +936,7 @@ export default function MLGO() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan="6" style={{ textAlign: "center", padding: "20px" }}>
+                        <td colSpan="7" style={{ textAlign: "center", padding: "20px" }}>
                           {currentUserMunicipality 
                             ? `No submissions found for ${currentUserMunicipality} municipality`
                             : "Please complete your profile to view submissions"}

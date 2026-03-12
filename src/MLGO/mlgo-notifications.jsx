@@ -212,62 +212,72 @@ export default function MLGONotification() {
     });
   }, [adminUid]);
 
-  // Load notifications
-  useEffect(() => {
-    if (!auth.currentUser || !userMunicipality) return; // Wait for municipality
-  
-    const loadNotifications = async () => {
-      setNotificationLoading(true);
-      try {
-        const userUid = auth.currentUser.uid;
+ // mlgo-notification.jsx - Update the useEffect that loads notifications (only functionality change)
+
+ useEffect(() => {
+  if (!auth.currentUser) return;
+
+  const loadNotifications = async () => {
+    setNotificationLoading(true);
+    try {
+      const userUid = auth.currentUser.uid;
+      console.log("Loading notifications for MLGO UID:", userUid);
+      
+      const notificationsRootRef = ref(db, `notifications`);
+      const rootSnapshot = await get(notificationsRootRef);
+      
+      let allNotifications = [];
+      
+      if (rootSnapshot.exists()) {
+        console.log("Notifications root exists:", rootSnapshot.val());
+        const yearsData = rootSnapshot.val();
         
-        const notificationsRootRef = ref(db, `notifications`);
-        const rootSnapshot = await get(notificationsRootRef);
-        
-        let allNotifications = [];
-        
-        if (rootSnapshot.exists()) {
-          const yearsData = rootSnapshot.val();
+        Object.keys(yearsData).forEach(year => {
+          console.log(`Checking year ${year}:`, yearsData[year]);
+          const yearData = yearsData[year];
           
-          Object.keys(yearsData).forEach(year => {
-            const yearData = yearsData[year];
-            if (yearData.MLGO && yearData.MLGO[userUid]) {
+          // Check if MLGO node exists for this year
+          if (yearData.MLGO) {
+            console.log(`MLGO node exists for year ${year}:`, yearData.MLGO);
+            
+            // Check if this specific MLGO has notifications
+            if (yearData.MLGO[userUid]) {
+              console.log(`Notifications found for MLGO ${userUid} in year ${year}:`, yearData.MLGO[userUid]);
+              
               const yearNotifications = yearData.MLGO[userUid];
               Object.keys(yearNotifications).forEach(key => {
                 const notification = yearNotifications[key];
+                console.log(`Notification ${key}:`, notification);
                 
-                // FILTER BY MUNICIPALITY: Only show notifications for this MLGO's municipality
-                // Notifications from LGU will have municipality field
-                const notificationMunicipality = notification.municipality;
-                
-                // If the notification has a municipality, check if it matches the MLGO's municipality
-                if (!notificationMunicipality || notificationMunicipality === userMunicipality) {
-                  allNotifications.push({
-                    id: key,
-                    year: year,
-                    ...notification
-                  });
-                } else {
-                  console.log(`Filtering out notification from municipality ${notificationMunicipality} (MLGO is ${userMunicipality})`);
-                }
+                allNotifications.push({
+                  id: key,
+                  year: year,
+                  ...notification
+                });
               });
+            } else {
+              console.log(`No notifications for MLGO ${userUid} in year ${year}`);
             }
-          });
-        }
-  
-        allNotifications.sort((a, b) => b.timestamp - a.timestamp);
-        setNotifications(allNotifications);
-        setNotificationLoading(false);
-      } catch (error) {
-        console.error("Error loading notifications:", error);
-        setNotificationLoading(false);
+          } else {
+            console.log(`No MLGO node for year ${year}`);
+          }
+        });
+      } else {
+        console.log("Notifications root does not exist");
       }
-    };
-  
-    if (userMunicipality) {
-      loadNotifications();
+
+      console.log("All notifications loaded:", allNotifications);
+      allNotifications.sort((a, b) => b.timestamp - a.timestamp);
+      setNotifications(allNotifications);
+      setNotificationLoading(false);
+    } catch (error) {
+      console.error("Error loading notifications:", error);
+      setNotificationLoading(false);
     }
-  }, [profileData.name, userMunicipality]); 
+  };
+
+  loadNotifications();
+}, [auth.currentUser?.uid]);
 
   // Delete notification
   const deleteNotification = async (notificationId, year) => {
@@ -422,6 +432,8 @@ export default function MLGONotification() {
       } 
     });
   };
+
+  
 
   const handleCompletion = (item) => {
     console.log("Completion:", item);
