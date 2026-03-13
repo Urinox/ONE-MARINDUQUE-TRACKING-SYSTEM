@@ -2457,7 +2457,7 @@ const handleSaveAnswers = async () => {
                         whiteSpace: "nowrap"
                       }}
                     >
-                      {savingAnswers ? "Submitting..." : "Submit All Sections"}
+                      {savingAnswers ? "Submitting..." : "Submit Assessment"}
                     </button>
                   )}
                 </div>
