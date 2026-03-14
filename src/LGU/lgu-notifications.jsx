@@ -676,6 +676,14 @@ const prevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
                 </div>
                 <h2>{profileData.name || "No Name"}</h2>
                 <p className="profile-email">{profileData.email}</p>
+                <p style={{
+                  color: "#666",
+                  marginBottom: "20px",
+                  marginTop: "-15px",
+                  fontWeight: "600"
+                }}>
+                  {profileData.municipality}
+                </p>
                 <div className="profile-action-buttons">
                   <button
                     className="profile-btn"

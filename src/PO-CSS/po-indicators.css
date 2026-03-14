@@ -415,24 +415,41 @@ th, td {
   margin-top:5px;
 }
 
-.sidebar-item{
-  padding:8.5px;
+.sidebar-item {
+  padding: 8.5px;
   border-radius: 5px;
-  font-size:13.5px;
-  cursor:pointer;
-  margin-left:3%; 
+  font-size: 13.5px;
+  cursor: pointer;
+  margin-left: 3%;
   font-weight: 600;
+  position: relative; /* Add this */
+  display: flex;
+  align-items: center;
+  min-height: 40px; /* Add this to ensure enough height for wrapped text */
 }
 
 .sidebar-item:hover{
   background:#f4f4f442;
 }
 
+.sidebar-item span {
+  flex: 1;
+  cursor: pointer;
+  white-space: normal !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
+  hyphens: auto !important;
+  padding-right: 25px;
+  text-align: center;
+  line-height: 1.4; /* Add this for better readability when wrapped */
+  display: block; /* Add this */
+}
+
 
 .clear-icon-btn:hover {
   color: white;
 }
-
 
 .actions {
   display: flex;
@@ -1282,7 +1299,7 @@ th, td {
 /* MULTIPLE CHOICE — same position as date */
 .main-left .multiple-wrapper {
   margin-top: -10px;
-  width: 140.6%;
+  width: 143.3%;
   background: rgb(255, 255, 255);
   outline: black solid 1px;
 }
@@ -1314,7 +1331,7 @@ th, td {
 /* SHORT ANSWER FIELD (same placement style as multiple wrapper) */
 .main-left .short-wrapper {
   margin-top: -9px;
-  width: 140.6%;
+  width: 143.3%;
   background: white;
   outline: black solid 1px;
   padding: 8px;
@@ -1334,7 +1351,7 @@ th, td {
 /* INTEGER FIELD (same style as short & multiple) */
 .main-left .integer-wrapper {
   margin-top: -10px;
-  width: 140.6%;
+  width: 143.3%;
   background: white;
   outline: black solid 1px;
   padding: 8px;
@@ -1376,13 +1393,12 @@ th, td {
 .reference-wrapper {
   margin: 0;
   padding: 0;
-  margin-bottom: 1%;
+  margin-bottom: -.5%;
 }
 
 /* Each row */
 .reference-row {
   display: flex;
-  border: 1px solid #cfcfcf;
   border-top: none;
 }
 
@@ -1391,15 +1407,22 @@ th, td {
 /* LEFT COLUMN */
 .reference-label {
   width: 45%;
-  background: #d3dbff;            /* EXACT light gray */
-  padding: 10px 12px;
-  font-size: 13px;
-  flex: 1;
+  background: #d3dbff;
+  padding: 8px 12px;
+  font-size: 12px;
   font-weight: 500;
   color: #000;
   display: flex;
+  align-items: center;
   border-top: 1px solid #cfcfcf;
-  align-items: center;            /* vertical center */
+  box-sizing: border-box;
+  white-space: normal !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
+  hyphens: auto !important;
+  line-height: 1.4;
+  min-height: 40px;       /* vertical center */
 }
 
 .mainreference-field.with-buttons {
@@ -1760,6 +1783,13 @@ width: 55%;
   align-items: center;
   border-right: 1px solid #cfcfcf;
   box-sizing: border-box;
+  white-space: normal !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
+  hyphens: auto !important;
+  line-height: 1.4;
+  min-height: 40px;
 }
 
 .nested-reference-field {
@@ -2046,10 +2076,11 @@ width: 55%;
 .sub-card > .sub-header > .sub-left > .short-wrapper,
 .sub-card > .sub-header > .sub-left > .integer-wrapper,
 .sub-card > .sub-header > .sub-left > .verification-row {
-  width: 142.6% !important;
+  width: 145.5%!important;
   max-width: none !important;
   margin-top: -9px !important;
   background: white !important;
+
 }
 
 .sub-card > .sub-header > .sub-left > .multiple-wrapper .choice-row {

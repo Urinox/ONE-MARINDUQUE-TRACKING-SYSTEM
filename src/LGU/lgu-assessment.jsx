@@ -2570,12 +2570,14 @@ const handleSaveAnswers = async () => {
                           const answer = userAnswers[radioAnswerKey] ?? userAnswers[legacyAnswerKey];
                           
                           return (
-                            <div key={index} className="reference-wrapper">
+                            <div key={index} className="reference-wrapper"
+                            style={{
+                              marginBottom: "-10px"
+                            }}>
                               {/* Indicator Row */}
                               <div className="reference-row" style={{
                                 display: "flex",
                                 border: "1px solid #cfcfcf",
-                                marginBottom: "0"
                               }}>
                                 <div className="reference-label" style={{
                                   width: "45%",
@@ -2846,7 +2848,11 @@ const handleSaveAnswers = async () => {
                           const answer = userAnswers[radioAnswerKey] ?? userAnswers[legacyAnswerKey];
                           
                           return (
-                            <div key={index} className="reference-wrapper">
+                            <div key={index} className="reference-wrapper"
+                            style={{
+                              marginBottom: "-10px"
+                            }}>
+                            
                               {/* Sub Indicator Row */}
                               <div className="reference-row sub-row" style={{
                                 display: "flex",
@@ -3112,21 +3118,22 @@ const handleSaveAnswers = async () => {
 
                               {/* Nested Sub-Indicators */}
                               {sub.nestedSubIndicators && sub.nestedSubIndicators.length > 0 && (
-                                <div className="nested-reference-wrapper" style={{ marginLeft: "30px", marginTop: "10px" }}>
+                                <div className="nested-reference-wrapper" style={{ marginLeft: "30px", marginTop: "10px",marginBottom: "20px"}}>
                                   {sub.nestedSubIndicators.map((nested, nestedIndex) => {
                                     const legacyNestedAnswerKey = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title}`;
                                     const nestedRadioAnswerKey = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_radio_${nested.title}`;
                                     const nestedAnswer = userAnswers[nestedRadioAnswerKey] ?? userAnswers[legacyNestedAnswerKey];
                                     
                                     return (
-                                      <div key={nested.id || nestedIndex} className="nested-reference-item" style={{ marginBottom: "15px" }}>
+                                      <div key={nested.id || nestedIndex} className="nested-reference-item" style={{ marginBottom: "5px" }}>
                                         <div className="nested-reference-row" style={{ display: "flex", border: "1px solid #cfcfcf" }}>
                                           <div className="nested-reference-label" style={{ 
                                             width: "45%", 
                                             background: "#f0f0f0",
                                             padding: "8px 12px",
                                             fontWeight: 500,
-                                            borderRight: "1px solid #cfcfcf"
+                                            borderRight: "1px solid #cfcfcf",
+                                            
                                           }}>
                                             {nested.title || 'Untitled'}
                                           </div>

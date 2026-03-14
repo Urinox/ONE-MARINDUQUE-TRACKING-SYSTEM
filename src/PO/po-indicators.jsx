@@ -886,7 +886,7 @@ const handleSaveChanges = async () => {
               >
                 {tab.name}
               </span>
-{tabs.length >= 1 && (
+{tabs.length >= 0 && (
   <button
     onClick={(e) => {
       e.stopPropagation();
@@ -1618,6 +1618,9 @@ const handleSaveChanges = async () => {
                             onChange={(e) =>
                               updateSubIndicator(sub.id, "title", e.target.value)
                             }
+                            style={{
+                              height:"39.5px"
+                            }}
                           />
 
                           {sub.fieldType === "date" && (
@@ -1729,176 +1732,212 @@ const handleSaveChanges = async () => {
                             />
                           </div>
                           
-                          {/* Nested Sub-Indicators */}
-                          {sub.nestedSubIndicators && sub.nestedSubIndicators.length > 0 && (
-                            <div className="nested-sub-indicators">
-                              {sub.nestedSubIndicators.map((nested) => (
-                                <div key={nested.id} className="nested-sub-card">
-                                  <div className="nested-sub-header">
-                                    <div className="nested-sub-left" style={{ 
-                                      flex: 1, 
-                                      maxWidth: "calc(100% - 80px)",
-                                      width: "500px"
-                                    }}>
-                                      <input
-                                        type="text"
-                                        className="nested-title-input"
-                                        placeholder="Nested sub-indicator title . . . ."
-                                        value={nested.title}
-                                        onChange={(e) =>
-                                          updateNestedSubIndicator(sub.id, nested.id, "title", e.target.value)
-                                        }
-                                        style={{ width: "100%", maxWidth: "650px" }}
-                                      />
+{/* Nested Sub-Indicators */}
+{sub.nestedSubIndicators && sub.nestedSubIndicators.length > 0 && (
+  <div className="nested-sub-indicators">
+    {sub.nestedSubIndicators.map((nested) => (
+      <div key={nested.id} className="nested-sub-card">
+        <div className="nested-sub-header"
+          style={{
+            background:"white"
+          }}>
+          <div className="nested-sub-left" style={{ 
+            flex: 1, 
+            maxWidth: "calc(100% - 80px)",
+            width: "500px",
+          }}>
+            <input
+              type="text"
+              className="nested-title-input"
+              placeholder="Third-Level indicator title . . . ."
+              value={nested.title}
+              onChange={(e) =>
+                updateNestedSubIndicator(sub.id, nested.id, "title", e.target.value)
+              }
+              style={{ 
+                width: "104%", 
+                maxWidth: "650px",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis"
+              }}
+            />
 
-                                      {nested.fieldType === "date" && (
-                                        <input
-                                          type="date"
-                                          className="nested-date-field"
-                                          onChange={(e) =>
-                                            updateNestedSubIndicator(sub.id, nested.id, "value", e.target.value)
-                                          }
-                                          style={{ width: "100%", maxWidth: "650px" }}
-                                        />
-                                      )}
+            {nested.fieldType === "date" && (
+              <input
+                type="date"
+                className="nested-date-field"
+                onChange={(e) =>
+                  updateNestedSubIndicator(sub.id, nested.id, "value", e.target.value)
+                }
+                style={{ width: "104%", maxWidth: "650px",marginTop:"-14px", background:"white" }}
+              />
+            )}
 
-                                      {nested.fieldType === "multiple" && (
-                                        <div className="nested-multiple-wrapper" style={{ 
-                                          width: "100%", 
-                                          maxWidth: "650px"
-                                        }}>
-                                          {(nested.choices || []).map((choice, idx) => (
-                                            <div key={idx} className="nested-choice-row">
-                                              <input type="radio" disabled />
-                                              <input
-                                                type="text"
-                                                placeholder="Enter choice"
-                                                value={choice}
-                                                onChange={(e) =>
-                                                  updateNestedChoice(sub.id, nested.id, idx, e.target.value)
-                                                }
-                                              />
-                                              <button
-                                                type="button"
-                                                className="nested-remove-choice-btn"
-                                                onClick={() => removeNestedChoice(sub.id, nested.id, idx)}
-                                              >
-                                                ✕
-                                              </button>
-                                            </div>
-                                          ))}
+            {nested.fieldType === "multiple" && (
+              <div className="nested-multiple-wrapper" style={{ 
+                width: "154%", 
+                maxWidth: "650px",
+                marginTop:"-13px"
+              }}>
+                {(nested.choices || []).map((choice, idx) => (
+                  <div key={idx} className="nested-choice-row">
+                    <input type="radio" disabled />
+                    <input
+                      type="text"
+                      placeholder="Enter choice"
+                      value={choice}
+                      onChange={(e) =>
+                        updateNestedChoice(sub.id, nested.id, idx, e.target.value)
+                      }
+                      style={{
+                        width: "100%",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        background: "white",
+                        border: "none"
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="nested-remove-choice-btn"
+                      onClick={() => removeNestedChoice(sub.id, nested.id, idx)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
 
-                                          <button
-                                            type="button"
-                                            className="nested-add-choice-btn"
-                                            onClick={() => addNestedChoice(sub.id, nested.id)}
-                                          >
-                                            <input type="radio" disabled className="nested-add-radio" />
-                                            <span>+ Add Option</span>
-                                          </button>
-                                        </div>
-                                      )}
+                <button
+                  type="button"
+                  className="nested-add-choice-btn"
+                  onClick={() => addNestedChoice(sub.id, nested.id)}
+                >
+                  <input type="radio" disabled className="nested-add-radio" />
+                  <span>+ Add Option</span>
+                </button>
+              </div>
+            )}
 
-                                      {nested.fieldType === "checkbox" && (
-                                        <div className="nested-multiple-wrapper" style={{ 
-                                          width: "100%", 
-                                          maxWidth: "650px"
-                                        }}>
-                                          {(nested.choices || []).map((choice, idx) => (
-                                            <div key={idx} className="nested-choice-row">
-                                              <input type="checkbox" disabled />
-                                              <input
-                                                type="text"
-                                                placeholder="Enter choice"
-                                                value={choice}
-                                                onChange={(e) =>
-                                                  updateNestedChoice(sub.id, nested.id, idx, e.target.value)
-                                                }
-                                              />
-                                              <button
-                                                type="button"
-                                                className="nested-remove-choice-btn"
-                                                onClick={() => removeNestedChoice(sub.id, nested.id, idx)}
-                                              >
-                                                ✕
-                                              </button>
-                                            </div>
-                                          ))}
+            {nested.fieldType === "checkbox" && (
+              <div className="nested-multiple-wrapper" style={{ 
+                width: "154%", 
+                maxWidth: "650px",
+                marginTop:"-13px"
+              }}>
+                {(nested.choices || []).map((choice, idx) => (
+                  <div key={idx} className="nested-choice-row">
+                    <input type="checkbox" disabled />
+                    <input
+                      type="text"
+                      placeholder="Enter choice"
+                      value={choice}
+                      onChange={(e) =>
+                        updateNestedChoice(sub.id, nested.id, idx, e.target.value)
+                      }
+                      style={{
+                        width: "100%",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        background: "white",
+                        border: "none"
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="nested-remove-choice-btn"
+                      onClick={() => removeNestedChoice(sub.id, nested.id, idx)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
 
-                                          <button
-                                            type="button"
-                                            className="nested-add-choice-btn"
-                                            onClick={() => addNestedChoice(sub.id, nested.id)}
-                                          >
-                                            <input type="checkbox" disabled className="nested-add-radio" />
-                                            <span>+ Add Option</span>
-                                          </button>
-                                        </div>
-                                      )}
+                <button
+                  type="button"
+                  className="nested-add-choice-btn"
+                  onClick={() => addNestedChoice(sub.id, nested.id)}
+                >
+                  <input type="checkbox" disabled className="nested-add-radio" />
+                  <span>+ Add Option</span>
+                </button>
+              </div>
+            )}
 
-                                      {nested.fieldType === "short" && (
-                                        <div className="nested-short-wrapper" style={{ 
-                                          width: "100%", 
-                                          maxWidth: "650px"
-                                        }}>
-                                          <textarea
-                                            className="nested-short-field"
-                                            placeholder="Empty Field"
-                                            style={{ width: "100%" }}
-                                          />
-                                        </div>
-                                      )}
+            {nested.fieldType === "short" && (
+              <div className="nested-short-wrapper" style={{ 
+                width: "154%", 
+                maxWidth: "650px",
+                marginTop:"-13px"
+              }}>
+                <textarea
+                  className="nested-short-field"
+                  placeholder="Empty Field"
+                  style={{ 
+                    width: "100%",
+                    resize: "vertical",
+                    minHeight: "60px",
+                    wordWrap: "break-word",
+                    whiteSpace: "pre-wrap",
+                    border:"none"
+                  }}
+                />
+              </div>
+            )}
 
-                                      {nested.fieldType === "integer" && (
-                                        <div className="nested-integer-wrapper" style={{ 
-                                          width: "100%", 
-                                          maxWidth: "650px"
-                                        }}>
-                                          <input
-                                            type="number"
-                                            className="nested-integer-field"
-                                            placeholder="Empty Field"
-                                            style={{ width: "100%" }}
-                                          />
-                                        </div>
-                                      )}
-                                    </div>
+            {nested.fieldType === "integer" && (
+              <div className="nested-integer-wrapper" style={{ 
+                width: "154%", 
+                maxWidth: "650px",
+                marginTop:"-13.5px"
+              }}>
+                <input
+                  type="number"
+                  className="nested-integer-field"
+                  placeholder="Empty Field"
+                  style={{ width: "100%",background:"white",border:"none" }}
+                />
+              </div>
+            )}
+          </div>
 
-                                    <select
-                                      className="nested-select-field"
-                                      value={nested.fieldType}
-                                      onChange={(e) => {
-                                        const newType = e.target.value;
-                                        updateNestedSubIndicator(sub.id, nested.id, "fieldType", newType);
-                                        if (newType !== "multiple" && newType !== "checkbox") {
-                                          updateNestedSubIndicator(sub.id, nested.id, "choices", []);
-                                        }
-                                        if (newType !== "date") {
-                                          updateNestedSubIndicator(sub.id, nested.id, "value", "");
-                                        }
-                                      }}
-                                    >
-                                      <option value="" disabled hidden>Choose field</option>
-                                      <option value="no-input">No Input Field</option>
-                                      <option value="integer">Integer/Value</option>
-                                      <option value="short">Short Answer</option>
-                                      <option value="multiple">Multiple Choice</option>
-                                      <option value="checkbox">Checkboxes</option>
-                                      <option value="date">Date</option>
-                                    </select>
-                                    
-                                    <button
-                                      type="button"
-                                      className="nested-delete-btn"
-                                      onClick={() => removeNestedSubIndicator(sub.id, nested.id)}
-                                    >
-                                      ✕
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+          <select
+            className="nested-select-field"
+            value={nested.fieldType}
+            onChange={(e) => {
+              const newType = e.target.value;
+              updateNestedSubIndicator(sub.id, nested.id, "fieldType", newType);
+              if (newType !== "multiple" && newType !== "checkbox") {
+                updateNestedSubIndicator(sub.id, nested.id, "choices", []);
+              }
+              if (newType !== "date") {
+                updateNestedSubIndicator(sub.id, nested.id, "value", "");
+              }
+            }}
+          >
+            <option value="" disabled hidden>Choose field</option>
+            <option value="no-input">No Input Field</option>
+            <option value="integer">Integer/Value</option>
+            <option value="short">Short Answer</option>
+            <option value="multiple">Multiple Choice</option>
+            <option value="checkbox">Checkboxes</option>
+            <option value="date">Date</option>
+          </select>
+          
+          <button
+            type="button"
+            className="nested-delete-btn"
+            onClick={() => removeNestedSubIndicator(sub.id, nested.id)}
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    ))}
+  </div>
+)}
 
                           <button
                             type="button"
@@ -1906,12 +1945,15 @@ const handleSaveChanges = async () => {
                             onClick={() => addNestedSubIndicator(sub.id)}
                           >
                             <span className="subplus-icon">＋</span>
-                            New Sub-Indicator
+                            New Third-Level Indicator
                           </button>
                         </div>
 
                         <select
                           value={sub.fieldType}
+                          style={{
+                            height:"39.5px"
+                          }}
                           onChange={(e) => {
                             const newType = e.target.value;
                             updateSubIndicator(sub.id, "fieldType", newType);
