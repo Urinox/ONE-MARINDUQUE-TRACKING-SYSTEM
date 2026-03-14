@@ -2547,7 +2547,7 @@ useEffect(() => {
             <div className={style.lgutableBox}>
               <div className={style.scrollableContent}
                 style={{ 
-                  maxHeight: sidebarOpen ? '57vh' : '63vh',
+                  maxHeight: sidebarOpen ? 'calc(100vh - 210px)' : 'calc(100vh - 200px)',
                 }}
               >
                 {loading ? (
@@ -2981,7 +2981,7 @@ useEffect(() => {
                               ))
                             ) : (
                               <p style={{ textAlign: "center", marginTop: "20px" }}>
-                                No indicators available for this tab.
+                                No indicators available for this area.
                               </p>
                             )}
                           </div>

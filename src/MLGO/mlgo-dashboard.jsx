@@ -342,10 +342,6 @@ useEffect(() => {
                   if (lguData._metadata.returnedToMLGO === true) {
                     status = "Returned";
                   } 
-                  // Check if forwarded to PO
-                  else if (lguData._metadata.forwarded === true || lguData._metadata.forwardedToPO === true) {
-                    status = "Forwarded";
-                  } 
                   // Check if submitted but not forwarded
                   else if (lguData._metadata.submitted === true) {
                     status = "Pending";
@@ -877,14 +873,16 @@ const allSubmissions = useMemo(() => {
                   padding: "10px",
                   borderRadius: "4px",
                   border: "1px solid #ccc",
-                  fontSize: "14px"
+                  fontSize: "14px",
                 }}
               />
             </div>
 
             {/* Table */}
-            <div className={style.tableBox}>
-              <div className={style.tableWrapper}>
+            <div className={style.tableBox}
+             style={{ marginTop:"-.1%"}}>
+              <div className={style.tableWrapper}
+              style={{ maxHeight: sidebarOpen ? 'calc(100vh - 160px)' : 'calc(100vh - 200px)', overflowY: "auto" }}>
                 <table>
                   <thead>
                     <tr>

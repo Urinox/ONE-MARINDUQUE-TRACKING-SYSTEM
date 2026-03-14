@@ -2561,7 +2561,7 @@ useEffect(() => {
             <div className={style.lgutableBox}>
               <div className={style.scrollableContent}
                 style={{ 
-                  maxHeight: sidebarOpen ? '57vh' : '63vh',
+                  maxHeight: sidebarOpen ? 'calc(100vh - 210px)' : 'calc(100vh - 200px)',
                 }}
               >
                 {loading ? (
@@ -2996,7 +2996,7 @@ useEffect(() => {
                               ))
                             ) : (
                               <p style={{ textAlign: "center", marginTop: "20px" }}>
-                                No indicators available for this tab.
+                                No indicators available for this area.
                               </p>
                             )}
                           </div>
@@ -3064,7 +3064,7 @@ useEffect(() => {
                             fontSize: "16px",
                             fontWeight: "600"
                           }}>
-                            Add Remarks for LGU ({activeTab ? tabs.find(t => t.id === activeTab)?.name || 'Current' : 'Current'} Tab):
+                            Add Remarks for LGU ({activeTab ? tabs.find(t => t.id === activeTab)?.name || 'Current' : 'Current'}):
                           </h4>
                           <textarea
                             placeholder="Type your remarks for the LGU here..."

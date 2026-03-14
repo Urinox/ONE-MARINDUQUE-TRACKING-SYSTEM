@@ -2265,37 +2265,6 @@ const handleSaveAnswers = async () => {
           )}
         </div>
 
-        {!profileComplete && (
-          <div style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.5)",
-            zIndex: 999,
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            pointerEvents: "none"
-          }}>
-            <div style={{
-              backgroundColor: "white",
-              padding: "30px",
-              borderRadius: "10px",
-              textAlign: "center",
-              maxWidth: "400px",
-              pointerEvents: "none",
-              boxShadow: "0 4px 20px rgba(0,0,0,0.2)"
-            }}>
-              <h2 style={{ color: "#081a4b", marginBottom: "15px" }}>Complete Your Profile First</h2>
-              <p style={{ color: "#666", fontSize: "16px" }}>
-                Please set up your profile with your name and municipality to access the dashboard.
-              </p>
-            </div>
-          </div>
-        )}
-
         {/* Main */}
         <div className="main">
           <div className="topbar">
@@ -2434,9 +2403,9 @@ const handleSaveAnswers = async () => {
                   ) : (
                     <button
                       onClick={handleSaveAnswers}
-                      disabled={savingAnswers || currentIndicators.length === 0 || !selectedYearDisplay || !selectedAssessmentId}
+                      disabled={savingAnswers || !selectedYearDisplay || !selectedAssessmentId}
                       style={{
-                        backgroundColor: (savingAnswers || currentIndicators.length === 0 || !selectedYearDisplay || !selectedAssessmentId) 
+                        backgroundColor: (savingAnswers || !selectedYearDisplay || !selectedAssessmentId) 
                           ? "#cccccc" 
                           : "#1b6e3a",
                         color: "white",
@@ -2444,14 +2413,14 @@ const handleSaveAnswers = async () => {
                         padding: "8px 20px",
                         borderRadius: "5px",
                         fontSize: "14px",
-                        cursor: (savingAnswers || currentIndicators.length === 0 || !selectedYearDisplay || !selectedAssessmentId) 
+                        cursor: (savingAnswers  || !selectedYearDisplay || !selectedAssessmentId) 
                           ? "not-allowed" 
                           : "pointer",
                         fontWeight: "600",
                         display: "flex",
                         alignItems: "center",
                         gap: "8px",
-                        opacity: (savingAnswers || currentIndicators.length === 0 || !selectedYearDisplay || !selectedAssessmentId) 
+                        opacity: (savingAnswers  || !selectedYearDisplay || !selectedAssessmentId) 
                           ? 0.7 
                           : 1,
                         whiteSpace: "nowrap"
@@ -2527,7 +2496,7 @@ const handleSaveAnswers = async () => {
             <div className={styles.lgutableBox}>
               <div className={styles.scrollableContent}
                 style={{ 
-                  maxHeight: sidebarOpen ? '57vh' : '63vh',
+                  maxHeight: sidebarOpen ? 'calc(100vh - 210px)' : 'calc(100vh - 200px)',
                 }}
               >
                 

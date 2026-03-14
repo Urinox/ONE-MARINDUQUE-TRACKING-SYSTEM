@@ -1464,7 +1464,8 @@ const handleSignOut = () => {
 
 {/* Table */}
 <div className="table-box">
-  <div className="table-wrapper">
+  <div className="table-wrapper"
+  style={{ maxHeight: sidebarOpen ? 'calc(100vh - 160px)' : 'calc(100vh - 200px)', overflowY: "auto" }}>
     <table>
       <thead>
         <tr>

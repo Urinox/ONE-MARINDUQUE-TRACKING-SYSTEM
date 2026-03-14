@@ -430,7 +430,7 @@ const prevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
           {/* Notification Content */}
           <div className={styles.assessmentContainer}>
             <div className="lgunottable-box">
-              <div className="s crollable-content" style={{ maxHeight: "500px", overflowY: "auto" }}>
+              <div className="scrollable-content" style={{ maxHeight: sidebarOpen ? 'calc(100vh - 160px)' : 'calc(100vh - 200px)', overflowY: "auto" }}>
                 
                 {/* Header with actions */}
                 {(notifications.length > 0 || remarks.length > 0) && (

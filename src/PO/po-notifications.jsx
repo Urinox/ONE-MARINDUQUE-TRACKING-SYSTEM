@@ -573,6 +573,7 @@ const handleSignOut = () => {
               className="toggle-btn"
               onClick={() => setSidebarOpen(!sidebarOpen)}
               style={{ cursor: "pointer" }}
+              
             >
               {sidebarOpen ? "☰" : "✖"}
             </button>
@@ -747,7 +748,8 @@ const handleSignOut = () => {
 
           {/* NOTIFICATION TABLE - REPLACED WITH NEW TABLE */}
           <div className={style.tableBox}>
-            <div className={style.tableWrapper}>
+            <div className={style.tableWrapper}
+            style={{ maxHeight: sidebarOpen ? 'calc(100vh - 160px)' : 'calc(100vh - 200px)', overflowY: "auto" }}>
 {/* Header with actions */}
 {notifications.length > 0 && (
   <div style={{
