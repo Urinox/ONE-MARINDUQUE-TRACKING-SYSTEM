@@ -530,7 +530,8 @@ export default function MLGONotification() {
         Loading...
       </div>
     ) : (
-    <div className={style.dashboardScale}>
+    <div className={style.dashboardScale}
+    >
       <div className={style.dashboard}>
         {/* Sidebar */}
         <div className={`sidebar ${sidebarOpen ? "" : "collapsed"}`}>
@@ -621,7 +622,7 @@ export default function MLGONotification() {
           {/* NOTIFICATION TABLE */}
           <div className={style.tableBox}>
             <div className={style.tableWrapper}
-            style={{ maxHeight: sidebarOpen ? 'calc(100vh - 160px)' : 'calc(100vh - 200px)', overflowY: "auto" }}>
+            style={{ maxHeight: sidebarOpen ? 'calc(100vh - 175px)' : 'calc(100vh - 200px)', overflowY: "auto" }}>
               {/* Header with actions */}
               {notifications.length > 0 && (
                 <div style={{
