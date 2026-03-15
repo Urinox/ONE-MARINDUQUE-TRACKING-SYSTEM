@@ -4,36 +4,54 @@ import "src/PO-CSS/app.css";
 import dilgLogo from "src/assets/dilg-po.png";
 import dilgSeal from "src/assets/dilg-ph.png";
 import { auth } from "src/firebase";
-import { getDatabase, ref, get, set, query, orderByChild, equalTo } from "firebase/database";
+import { getDatabase, ref, get, set, update } from "firebase/database";
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
-  sendPasswordResetEmail ,
-  fetchSignInMethodsForEmail,
-  isSignInWithEmailLink,
-  signInWithEmailLink,
-  sendEmailVerification,
-  GoogleAuthProvider,
-  signInWithPopup
+  sendPasswordResetEmail,
+  signInWithPopup,
+  GoogleAuthProvider
 } from "firebase/auth";
+import emailjs from '@emailjs/browser';
+import { useAuth } from "../contexts/AuthContext";
 
 export default function App() {
   const db = getDatabase();
+  const navigate = useNavigate();
+  const { setUser, setUserRole } = useAuth();
+
+  // Login form state
+  const [userId, setUserId] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState("");
+
+  // Registration modal state
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [showRegPassword, setShowRegPassword] = useState(false);
+
+  // Verification modal state
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [pendingUser, setPendingUser] = useState(null);
   const [cooldown, setCooldown] = useState(0);
   const [isGoogleEnabled, setIsGoogleEnabled] = useState(false);
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
-  
-  const navigate = useNavigate();
 
-  const [userId, setUserId] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  // Password prompt modal state
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+  const [tempPassword, setTempPassword] = useState("");
+  const [showTempPassword, setShowTempPassword] = useState(false);
 
-  // Check if email exists in database whenever userId changes
+  // Initialize EmailJS
+  useEffect(() => {
+    emailjs.init(import.meta.env.VITE_EMAILJS_PUBLIC_KEY || "-cqtWESQUREXRPXNe");
+  }, []);
+
+  // Check if email exists in database
   useEffect(() => {
     const checkEmailInDatabase = async () => {
       if (!userId || userId.trim() === "") {
@@ -44,124 +62,406 @@ export default function App() {
       setIsCheckingEmail(true);
       
       try {
-        // Query the database to check if email exists
         const usersRef = ref(db, 'users');
         const snapshot = await get(usersRef);
         
         if (snapshot.exists()) {
           const users = snapshot.val();
-          // Check if any user has this email
           const emailExists = Object.values(users).some(user => 
             user.email && user.email.toLowerCase() === userId.toLowerCase()
           );
-          
           setIsGoogleEnabled(emailExists);
         } else {
           setIsGoogleEnabled(false);
         }
       } catch (error) {
-        console.error("Error checking email in database:", error);
+        console.error("Error checking email:", error);
         setIsGoogleEnabled(false);
       } finally {
         setIsCheckingEmail(false);
       }
     };
 
-    // Debounce the check to avoid too many requests while typing
-    const timeoutId = setTimeout(() => {
-      checkEmailInDatabase();
-    }, 500);
-
+    const timeoutId = setTimeout(checkEmailInDatabase, 500);
     return () => clearTimeout(timeoutId);
   }, [userId, db]);
 
-  async function handleLogin(email, password) {
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-  
-      await user.reload();
+  // Cooldown timer for resending verification
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => setCooldown(prev => prev - 1), 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
 
-      const refreshedUser = auth.currentUser;
+  // Generate a random 6-digit verification code
+  const generateVerificationCode = () => {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  };
+
+  const sendVerificationEmail = async (email, code) => {
+    try {
+      console.log("Sending verification code:", code, "to:", email);
       
-      if (!refreshedUser.emailVerified) {
-        alert("Please verify your email before logging in.");
-        await sendEmailVerification(refreshedUser);
-        await auth.signOut();
-        return;
-      }
-  
-      const uid = user.uid;
-      const now = Date.now();
-      const THIRTY_MINUTES = 30 * 60 * 1000; // 30 minutes in milliseconds
-      
-      // Get user data from database
-      const userSnapshot = await get(ref(db, `users/${uid}`));
-      
-      if (!userSnapshot.exists()) {
-        alert('User data not found. Please contact support.');
-        return;
+      if (!email) {
+        console.error("Email is empty!");
+        return false;
       }
       
-      const userData = userSnapshot.val();
-      const lastVerified = userData.lastVerified || 0;
+      const templateParams = {
+        to_email: email,
+        to_name: email.split('@')[0],
+        passcode: code,
+        email: email,
+        from_name: "One Marinduque Tracking System",
+        from_email: "noreply@marinduque.gov.ph",
+        reply_to: "support@marinduque.gov.ph"
+      };
+  
+      console.log("Template params:", templateParams);
+  
+      const response = await emailjs.send(
+        import.meta.env.VITE_EMAILJS_SERVICE_ID || "service_po3vf6l",
+        import.meta.env.VITE_EMAILJS_TEMPLATE_ID || "template_knqwdpj",
+        templateParams
+      );
+  
+      console.log("EmailJS response:", response);
       
-      // Check if last verification was more than 30 minutes ago
-      if (now - lastVerified > THIRTY_MINUTES) {
-        // Send new verification email
-        await sendEmailVerification(user);
-        
-        // Update lastVerified timestamp
-        if (refreshedUser.emailVerified) {
-          await set(ref(db, `users/${uid}/lastVerified`), now);
-        }
-        
-        alert("For security purposes, we've sent a new verification email to your inbox. Please verify to continue.");
-        
-        // Sign out the user until they verify
-        await auth.signOut();
+      if (response.status === 200) {
+        console.log(`✅ Verification code sent to ${email}`);
+        return true;
+      } else {
+        console.error("EmailJS error:", response);
+        return false;
+      }
+    } catch (error) {
+      console.error("❌ Failed to send email:", error);
+      return false;
+    }
+  };
+
+  const handleRegister = async (email, password) => {
+    if (!email || !password) {
+      alert("Please enter all registration fields");
+      return;
+    }
+
+    try {
+      console.log("Attempting to register:", email);
+      
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      console.log("User created in Auth:", user.uid);
+
+      const code = generateVerificationCode();
+      const expiresAt = Date.now() + 30 * 60 * 1000;
+
+      await set(ref(db, `users/${user.uid}`), {
+        email: email,
+        role: "user",
+        createdAt: new Date().toISOString(),
+        verified: false,
+        verificationCode: code,
+        codeExpiresAt: expiresAt,
+        lastVerificationSent: Date.now()
+      });
+      console.log("User data saved to database");
+
+      const emailSent = await sendVerificationEmail(email, code);
+      
+      if (!emailSent) {
+        alert("Registration successful but email sending failed. Please contact support.");
         return;
       }
-  
-      // Get user role
-      const roleSnapshot = await get(ref(db, `users/${uid}/role`));
-      const role = roleSnapshot.val();
-  
+
+      setPendingUser({ uid: user.uid, email });
+      setShowRegisterModal(false);
+      setShowVerifyModal(true);
+      setCooldown(30);
+
+      alert("Registration successful! Please check your email for the verification code.");
+
+    } catch (error) {
+      console.error("Registration error:", error);
+
+      if (error.code === "auth/email-already-in-use") {
+        alert("Registration Failed: Email already registered.");
+      } else if (error.code === "auth/invalid-email") {
+        alert("Invalid Email");
+      } else if (error.code === "auth/weak-password") {
+        alert("Weak Password - Password should be at least 6 characters");
+      } else {
+        alert("Registration Failed: " + error.message);
+      }
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    if (!pendingUser) return;
+
+    try {
+      const userRef = ref(db, `users/${pendingUser.uid}`);
+      const snapshot = await get(userRef);
+      
+      if (!snapshot.exists()) {
+        alert("User data not found.");
+        return;
+      }
+
+      const userData = snapshot.val();
+      
+      if (Date.now() > userData.codeExpiresAt) {
+        alert("Verification code has expired. Please request a new one.");
+        return;
+      }
+
+      if (verificationCode === userData.verificationCode) {
+        await update(userRef, {
+          verified: true,
+          verifiedAt: Date.now(),
+          verificationCode: null,
+          codeExpiresAt: null
+        });
+
+        alert("Email verified successfully! Please enter your password to complete login.");
+        
+        // Show custom password prompt instead of browser prompt
+        setShowPasswordPrompt(true);
+        
+        // Store userData role for later use
+        setPendingUser({ ...pendingUser, role: userData.role });
+        
+      } else {
+        alert("Invalid verification code. Please try again.");
+      }
+    } catch (error) {
+      console.error("Verification error:", error);
+      alert("Verification failed. Please try again.");
+    }
+  };
+
+  // Handle password submission from custom modal
+  const handlePasswordSubmit = async () => {
+    if (!tempPassword) {
+      alert("Please enter your password");
+      return;
+    }
+
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, pendingUser.email, tempPassword);
+      
+      // Update AuthContext
+      setUser(userCredential.user);
+      setUserRole(pendingUser.role);
+      
+      // Clear the password prompt
+      setShowPasswordPrompt(false);
+      setTempPassword("");
+      
+      const role = pendingUser.role;
       if (role === 'admin') {
-        navigate('/dashboard');
+        navigate('/dashboard', { replace: true });
       } else if (role === 'sub-admin') {
-        navigate('/mlgo-dashboard');
+        navigate('/mlgo-dashboard', { replace: true });
       } else if (role === 'user') {
-        navigate('/lgu-assessment');
+        navigate('/lgu-assessment', { replace: true });
       } else {
         alert('No access assigned');
       }
-    } catch (error) {
-      console.error('Login error:', error.message);
+    } catch (loginError) {
+      console.error("Auto-login failed:", loginError);
+      alert("Login failed. Please try again.");
+      setTempPassword("");
+    }
+  };
+
+  const handleResendCode = async () => {
+    if (!pendingUser || cooldown > 0) return;
+
+    try {
+      const newCode = generateVerificationCode();
+      const expiresAt = Date.now() + 30 * 60 * 1000;
+
+      await update(ref(db, `users/${pendingUser.uid}`), {
+        verificationCode: newCode,
+        codeExpiresAt: expiresAt,
+        lastVerificationSent: Date.now()
+      });
+
+      await sendVerificationEmail(pendingUser.email, newCode);
+      setCooldown(30);
       
-      // Handle specific Firebase Auth errors
-      switch (error.code) {
-        case 'auth/invalid-email':
-          alert('Invalid email address format.');
-          break;
-        case 'auth/user-disabled':
-          alert('This account has been disabled. Please contact support.');
-          break;
-        case 'auth/user-not-found':
-          alert('No account found with this email address.');
-          break;
-        case 'auth/wrong-password':
-          alert('Incorrect password. Please try again.');
-          break;
-        case 'auth/too-many-requests':
-          alert('Too many failed login attempts. Please try again later or reset your password.');
-          break;
-        case 'auth/network-request-failed':
-          alert('Network error. Please check your internet connection.');
-          break;
-        default:
-          alert('Login failed: ' + error.message);
+    } catch (error) {
+      console.error("Error resending code:", error);
+      alert("Failed to resend code. Please try again.");
+    }
+  };
+
+  async function handleLogin(email, password) {
+    // Prevent multiple login attempts
+    if (isLoggingIn) {
+      console.log("Login already in progress, skipping...");
+      return;
+    }
+    
+    // Clear any previous errors
+    setLoginError("");
+    
+    // Basic validation
+    if (!email || !password) {
+      setLoginError("Please enter both email and password");
+      alert("Please enter both email and password");
+      return;
+    }
+
+    console.log("=== LOGIN ATTEMPT START ===");
+    console.log("Email:", email);
+    console.log("Timestamp:", new Date().toISOString());
+    
+    setIsLoggingIn(true);
+    
+    try {
+      // Step 1: Check if user exists in database
+      console.log("Step 1: Checking database for user...");
+      const usersRef = ref(db, 'users');
+      const snapshot = await get(usersRef);
+      
+      if (!snapshot.exists()) {
+        console.log("No users found in database");
+        setLoginError("No users found in the system.");
+        alert("No users found in the system.");
+        setIsLoggingIn(false);
+        return;
       }
+
+      console.log("Database snapshot received");
+      
+      let userUid = null;
+      let userData = null;
+      
+      const users = snapshot.val();
+      console.log("Total users in database:", Object.keys(users).length);
+      
+      for (const [uid, data] of Object.entries(users)) {
+        if (data.email && data.email.toLowerCase() === email.toLowerCase()) {
+          userUid = uid;
+          userData = data;
+          console.log("Found user in database:", uid);
+          console.log("User data:", { 
+            email: data.email, 
+            role: data.role, 
+            verified: data.verified 
+          });
+          break;
+        }
+      }
+  
+      if (!userData) {
+        console.log("No user found with email:", email);
+        setLoginError("No account found with this email.");
+        alert("No account found with this email.");
+        setIsLoggingIn(false);
+        return;
+      }
+  
+      // Step 2: Check verification status
+      console.log("Step 2: Checking verification status");
+      if (!userData.verified) {
+        console.log("User not verified");
+        setLoginError("Please verify your email first.");
+        alert("Please verify your email first.");
+        
+        const shouldResend = window.confirm("Would you like us to send the verification code?");
+        if (shouldResend) {
+          console.log("Resending verification code...");
+          const newCode = generateVerificationCode();
+          const expiresAt = Date.now() + 30 * 60 * 1000;
+          
+          await update(ref(db, `users/${userUid}`), {
+            verificationCode: newCode,
+            codeExpiresAt: expiresAt,
+            lastVerificationSent: Date.now()
+          });
+          
+          await sendVerificationEmail(email, newCode);
+          
+          setPendingUser({ uid: userUid, email });
+          setShowVerifyModal(true);
+          
+          alert("A new verification code has been sent to your email.");
+        }
+        setIsLoggingIn(false);
+        return;
+      }
+  
+      // Step 3: Attempt Firebase sign-in
+      console.log("Step 3: Attempting Firebase authentication...");
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      console.log("Firebase authentication successful");
+      console.log("User UID from Firebase:", userCredential.user.uid);
+  
+      // Step 4: Update AuthContext with user data
+      console.log("Step 4: Updating AuthContext...");
+      setUser(userCredential.user);
+      setUserRole(userData.role);
+      
+      // Step 5: Navigate based on role
+      console.log("Step 5: Navigating based on role:", userData.role);
+      const role = userData.role;
+      
+      console.log("=== LOGIN SUCCESSFUL ===");
+      
+      // Use a small timeout to ensure context updates are processed
+      setTimeout(() => {
+        switch(role) {
+          case 'admin':
+            navigate('/dashboard', { replace: true });
+            break;
+          case 'sub-admin':
+            navigate('/mlgo-dashboard', { replace: true });
+            break;
+          case 'user':
+            navigate('/lgu-assessment', { replace: true });
+            break;
+          default:
+            console.error("Unknown role:", role);
+            setLoginError("No access assigned");
+            alert('No access assigned');
+            setIsLoggingIn(false);
+        }
+      }, 100);
+      
+    } catch (error) {
+      console.error("=== LOGIN ERROR ===");
+      console.error("Error code:", error.code);
+      console.error("Error message:", error.message);
+      console.error("Full error:", error);
+      
+      let errorMessage = "";
+      
+      // Check for specific Firebase Auth errors
+      if (error.code === 'auth/wrong-password') {
+        errorMessage = 'Incorrect password. Please try again.';
+        console.log("Incorrect password provided");
+      } else if (error.code === 'auth/user-not-found') {
+        errorMessage = 'No account found with this email address in Firebase.';
+        console.log("User not found in Firebase Auth");
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Invalid email address format.';
+        console.log("Invalid email format");
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = 'Too many failed login attempts. Please try again later.';
+        console.log("Too many failed attempts");
+      } else if (error.code === 'auth/network-request-failed') {
+        errorMessage = 'Network error. Please check your internet connection.';
+        console.log("Network error");
+      } else {
+        errorMessage = 'Login failed: ' + error.message;
+      }
+      
+      setLoginError(errorMessage);
+      alert(errorMessage);
+      setIsLoggingIn(false);
     }
   }
 
@@ -195,7 +495,8 @@ export default function App() {
 
       const snapshot = await get(ref(db, `users/${user.uid}`));
       const now = Date.now();
-      const THIRTY_MINUTES = 30 * 60 * 1000;
+      
+      let userRole = "user";
       
       if (!snapshot.exists()) {
         await set(ref(db, `users/${user.uid}`), {
@@ -204,37 +505,24 @@ export default function App() {
           displayName: user.displayName,
           photoURL: user.photoURL,
           createdAt: new Date().toISOString(),
-          lastVerified: now
+          verified: true,
+          verifiedAt: now
         });
       } else {
         const userData = snapshot.val();
-        const lastVerified = userData.lastVerified || 0;
-        
-        // Check if last verification was more than 30 minutes ago
-        if (now - lastVerified > THIRTY_MINUTES) {
-          alert("For security purposes, please verify your email again. A verification email has been sent.");
-          
-          // For Google Sign-in, we'll send a verification email if possible
-          if (!user.emailVerified) {
-            await sendEmailVerification(user);
-          }
-          
-          // Update timestamp
-          await set(ref(db, `users/${user.uid}/lastVerified`), now);
-          
-          // For Google users, we might want to sign them out or handle differently
-          // Since Google users are typically already verified, we can allow them to proceed
-          // but update the timestamp
-        }
+        userRole = userData.role || "user";
       }
 
-      const roleSnapshot = await get(ref(db, `users/${user.uid}/role`));
-      const role = roleSnapshot.val();
+      // Update AuthContext
+      setUser(user);
+      setUserRole(userRole);
 
-      if (role === 'admin') {
-        navigate('/dashboard');
-      } else if (role === 'user') {
-        navigate('/lgu-assessment');
+      if (userRole === 'admin') {
+        navigate('/dashboard', { replace: true });
+      } else if (userRole === 'sub-admin') {
+        navigate('/mlgo-dashboard', { replace: true });
+      } else if (userRole === 'user') {
+        navigate('/lgu-assessment', { replace: true });
       } else {
         alert('No access assigned');
       }
@@ -244,109 +532,6 @@ export default function App() {
       alert('Failed to sign in with Google: ' + error.message);
     }
   };
-
-  useEffect(() => {
-    if (cooldown <= 0) return;
-
-    const timer = setInterval(() => {
-      setCooldown((prev) => prev - 1);
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [cooldown]);
-
-  const handleRegister = async (email, password) => {
-    if (!email || !password) {
-      alert("Please enter all registration fields");
-      return;
-    }
-
-    try {
-      console.log("Attempting to register:", email);
-      
-      // Create user in Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      console.log("User created in Auth:", user.uid);
-
-      // Send verification email
-      await sendEmailVerification(user);
-      console.log("Verification email sent");
-
-      // Save user data to Realtime Database with initial lastVerified timestamp
-      await set(ref(db, `users/${user.uid}`), {
-        email: email,
-        role: "user",
-        lastVerified: Date.now(), // Set initial verification timestamp
-        createdAt: new Date().toISOString()
-      });
-      console.log("User data saved to database");
-
-      alert("Registration successful! Please verify your email before logging in. You'll need to verify every 30 minutes for security.");
-      setRegEmail("");
-      setRegPassword("");
-      setShowRegisterModal(false);
-
-    } catch (error) {
-      console.error("Registration error:", error);
-
-      if (error.code === "auth/email-already-in-use") {
-        alert("Registration Failed: Email already registered.");
-      } else if (error.code === "auth/invalid-email") {
-        alert("Invalid Email");
-      } else if (error.code === "auth/weak-password") {
-        alert("Weak Password - Password should be at least 6 characters");
-      } else {
-        alert("Registration Failed: " + error.message);
-      }
-    }
-  };
-
-  const resendVerificationEmail = async () => {
-    const user = auth.currentUser;
-    if (user) {
-      try {
-        await sendEmailVerification(user);
-        // Update lastVerified timestamp when resending verification
-        if (user.uid) {
-          await set(ref(db, `users/${user.uid}/lastVerified`), Date.now());
-        }
-        alert("Verification email sent! Please check your inbox.");
-      } catch (error) {
-        console.error("Error sending verification email:", error);
-        alert("Failed to send verification email. Please try again.");
-      }
-    } else {
-      alert("No user is currently logged in.");
-    }
-  };
-
-  useEffect(() => {
-    if (isSignInWithEmailLink(auth, window.location.href)) {
-      let email = window.localStorage.getItem("emailForSignIn");
-      if (!email) {
-        email = window.prompt("Please provide your email for confirmation");
-      }
-      signInWithEmailLink(auth, email, window.location.href)
-        .then(async (result) => {
-          const user = result.user;
-
-          if (!user.emailVerified) {
-            alert("Please verify your email first.");
-            return;
-          }
-
-          // Update lastVerified timestamp for email link sign-in
-          if (user.uid) {
-            await set(ref(db, `users/${user.uid}/lastVerified`), Date.now());
-          }
-
-          window.localStorage.removeItem("emailForSignIn");
-          alert("Login Successful via Email Link!");
-          navigate("/dashboard");
-        })
-    }
-  }, []);
 
   return (
     <div className="app-container">
@@ -364,6 +549,13 @@ export default function App() {
           <br />
           TRACKING SYSTEM
         </h1>
+        
+        {loginError && (
+          <div className="error-message" style={{ color: 'red', marginBottom: '10px' }}>
+            {loginError}
+          </div>
+        )}
+        
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -377,6 +569,8 @@ export default function App() {
               placeholder="Email"
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
+              disabled={isLoggingIn}
+              autoComplete="email"
             />
           </div>
 
@@ -388,6 +582,8 @@ export default function App() {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                disabled={isLoggingIn}
+                autoComplete="current-password"
               />
               <span
                 className="eye"
@@ -409,84 +605,194 @@ export default function App() {
               Forgot Password?
             </a>
           </div>
-          <button className="login-btn" type="submit">
-            Log In
+          <button 
+            className="login-btn" 
+            type="submit"
+            disabled={isLoggingIn}
+          >
+            {isLoggingIn ? "Logging in..." : "Log In"}
           </button>
         </form>
 
         <button
           className={`email-btn ${!isGoogleEnabled ? 'disabled-btn' : ''}`}
           onClick={handleGoogleSignIn}
-          disabled={!isGoogleEnabled || isCheckingEmail}
+          disabled={!isGoogleEnabled || isCheckingEmail || isLoggingIn}
           title={!isGoogleEnabled ? 'Email not registered in system' : 'Sign in with Google'}
         >
           {isCheckingEmail ? 'Checking...' : 'Continue with Google'}
         </button>
 
-        {/* Register Modal */}
+        {/* Registration Modal */}
         {showRegisterModal && (
           <div className="modal-overlay" onClick={() => setShowRegisterModal(false)}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <h2>Register</h2>
-              <p className="security-note" style={{fontSize: '0.9rem', color: '#666', marginBottom: '1rem'}}>
-                Note: For security purposes, you'll need to verify your email every 30 minutes.
+              <p className="security-note">
+                Note: A 6-digit verification code will be sent to your email.
               </p>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleRegister(regEmail, regPassword);
-                  setShowRegisterModal(false);
-                }}
-              >
-                <div className="register-form">
-                  <label>Email</label>
+              
+              <div className="register-form">
+                <label>Email</label>
+                <input
+                  type="email"
+                  placeholder="Enter your email"
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
+                />
+              </div>
+
+              <div className="register-form">
+                <label>Password</label>
+                <div className="password-wrapper">
                   <input
-                    type="email"
-                    placeholder="Email"
-                    value={regEmail}
-                    onChange={(e) => setRegEmail(e.target.value)}
+                    type={showRegPassword ? "text" : "password"}
+                    placeholder="Enter password"
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
                   />
+                  <span
+                    className="eye"
+                    onClick={() => setShowRegPassword(!showRegPassword)}
+                  >
+                    {showRegPassword ? "⌣" : "👁"}
+                  </span>
                 </div>
+              </div>
 
-                <div className="register-form">
-                  <label>Password</label>
-                  <div className="password-wrapper">
-                    <input
-                      type={showRegPassword ? "text" : "password"}
-                      placeholder="Password"
-                      value={regPassword}
-                      onChange={(e) => setRegPassword(e.target.value)}
-                    />
-                    <span
-                      className="eye"
-                      onClick={() => setShowRegPassword(!showRegPassword)}
-                      style={{ cursor: "pointer" }}
-                    >
-                      {showRegPassword ? "⌣" : "👁"}
-                    </span>
-                  </div>
-                </div>
+              <button
+                className="register-btn"
+                onClick={() => handleRegister(regEmail, regPassword)}
+              >
+                Register
+              </button>
 
-                <button
-                  className="register-btn"
-                  onClick={() => {
-                    handleRegister(regEmail, regPassword);
-                    setShowRegisterModal(false);
-                  }}
-                >
-                  Register
-                </button>
-
-                <button
-                  className="close-btn"
-                  onClick={() => setShowRegisterModal(false)}
-                >
-                  Cancel
-                </button>
-              </form>
+              <button
+                className="close-btn"
+                onClick={() => setShowRegisterModal(false)}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         )}
+
+        {/* Verification Modal */}
+        {showVerifyModal && pendingUser && (
+          <div className="modal-overlay" onClick={() => {}}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h2>Verify Your Email</h2>
+              <p className="security-note">
+                A 6-digit verification code has been sent to:<br />
+                <strong>{pendingUser.email}</strong>
+              </p>
+              
+              <div className="verify-form">
+                <label>Verification Code</label>
+                <input
+                  type="text"
+                  maxLength="6"
+                  placeholder="Enter 6-digit code"
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+                />
+              </div>
+
+              <button
+                className="verify-btn"
+                onClick={handleVerifyCode}
+                disabled={verificationCode.length !== 6}
+              >
+                Verify Email
+              </button>
+
+              <div className="resend-section">
+                <button
+                  className="resend-btn"
+                  onClick={handleResendCode}
+                  disabled={cooldown > 0}
+                >
+                  {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend Code'}
+                </button>
+              </div>
+
+              <button
+                className="close-btn"
+                onClick={() => {
+                  setShowVerifyModal(false);
+                  setPendingUser(null);
+                  setVerificationCode("");
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Custom Password Prompt Modal */}
+        {showPasswordPrompt && pendingUser && (
+          <div className="modal-overlay" onClick={() => {
+            setShowPasswordPrompt(false);
+            setTempPassword("");
+            setShowTempPassword(false);
+          }}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+              <h2>Enter Password</h2>
+              <p className="security-note">
+                Please enter your password to complete login for:<br />
+                <strong>{pendingUser.email}</strong>
+              </p>
+              
+              <div className="password-prompt-form">
+                <label>Password</label>
+                <div className="password-wrapper">
+                  <input
+                    type={showTempPassword ? "text" : "password"}
+                    placeholder="Enter your password"
+                    value={tempPassword}
+                    onChange={(e) => setTempPassword(e.target.value)}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        handlePasswordSubmit();
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <span
+                    className="eye"
+                    onClick={() => setShowTempPassword(!showTempPassword)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    {showTempPassword ? "⌣" : "👁"}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                <button
+                  className="verify-btn"
+                  onClick={handlePasswordSubmit}
+                  style={{ flex: 1 }}
+                >
+                  Login
+                </button>
+                <button
+                  className="close-btn"
+                  onClick={() => {
+                    setShowPasswordPrompt(false);
+                    setTempPassword("");
+                    setShowTempPassword(false);
+                  }}
+                  style={{ flex: 1 }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <p className="register-text">
           Don't have an account yet?{" "}
           <a

@@ -1,3 +1,4 @@
+// src/contexts/AuthContext.js
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { auth, db } from '../firebase';
 import { ref, get } from 'firebase/database';
@@ -38,6 +39,10 @@ export const AuthProvider = ({ children }) => {
       await auth.signOut();
       localStorage.clear();
       sessionStorage.clear();
+      
+      // Update state
+      setUser(null);
+      setUserRole(null);
       
       // Don't show alert if already on login page
       if (!window.location.pathname.includes('/login')) {
@@ -172,7 +177,10 @@ export const AuthProvider = ({ children }) => {
     logout: handleLogout,
     showInactivityWarning,
     timeUntilLogout,
-    resetInactivityTimer
+    resetInactivityTimer,
+    // Add these setter functions
+    setUser,
+    setUserRole
   };
 
   return (

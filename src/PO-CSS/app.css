@@ -336,6 +336,117 @@
   background-color: #cccccc;
 }
 
+
+.verify-form {
+  margin: 20px 0;
+}
+
+.verify-form label {
+  display: block;
+  margin-bottom: 8px;
+  color: #333;
+  font-weight: 500;
+}
+
+.verify-form input {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  font-size: 24px;
+  text-align: center;
+  letter-spacing: 8px;
+  font-weight: bold;
+}
+
+.verify-btn {
+  width: 100%;
+  padding: 14px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+
+.verify-btn:hover:not(:disabled) {
+  background: #218838;
+}
+
+.verify-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
+.resend-section {
+  margin: 15px 0;
+  text-align: center;
+}
+
+.resend-btn {
+  background: none;
+  border: none;
+  color: #007bff;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+/* Add to your app.css */
+.password-prompt-form {
+  margin: 20px 0;
+}
+
+.password-prompt-form label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #333;
+}
+
+.password-prompt-form .password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-prompt-form input {
+  width: 100%;
+  padding: 12px;
+  padding-right: 40px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: border-color 0.3s;
+}
+
+.password-prompt-form input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+}
+
+.password-prompt-form .eye {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.password-prompt-form .eye:hover {
+  color: #333;
+}
+
 @media (max-width: 1024px) {
   .left-panel {
     flex: 0 0 350px;
