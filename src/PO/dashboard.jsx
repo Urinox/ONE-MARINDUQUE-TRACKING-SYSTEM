@@ -55,25 +55,9 @@ export default function Dashboard() {
     return assessmentList.filter(a => a.year === newRecord.year);
   }, [assessmentList, newRecord.year]);
 
-useEffect(() => {
-  if (!auth.currentUser) return;
+// Update the verified data fetching useEffect to include attachments:
 
-  const profileRef = ref(db, `profiles/${auth.currentUser.uid}`);
-  onValue(profileRef, (snapshot) => {
-    if (snapshot.exists()) {
-      const profile = snapshot.val();
-      setProfileData(profile);
 
-      // If the profile has no name, force edit modal
-      if (!profile.name) {
-        setShowEditProfileModal(true);
-      }
-    } else {
-      // No profile exists yet, open edit modal
-      setShowEditProfileModal(true);
-    }
-  });
-}, []);
 
 useEffect(() => {
   if (!auth.currentUser) return;
@@ -308,7 +292,6 @@ useEffect(() => {
   fetchProfiles();
 }, []);
 
-// Fetch verified assessments from Firebase
 useEffect(() => {
   if (!auth.currentUser) return;
 
@@ -326,51 +309,53 @@ useEffect(() => {
           
           console.log("Raw verified data:", allVerified);
           
-// Iterate through years
-Object.keys(allVerified).forEach(year => {
-  if (allVerified[year] && allVerified[year].LGU) {
-    Object.keys(allVerified[year].LGU).forEach(lguName => {
-      const item = allVerified[year].LGU[lguName];
-      
-      let municipality = "Unknown";
-      let assessment = item.assessment || "General Assessment"; // Get assessment from data
-      let assessmentId = item.assessmentId || "unknown";
-      
-      // Try to get municipality from the item data first
-      if (item.municipality) {
-        municipality = item.municipality;
-        console.log(`Found municipality in item: ${municipality}`);
-      }
-      // Then try from subAdminMunicipalities using lguUid
-      else if (item.lguUid && subAdminMunicipalities[item.lguUid]) {
-        municipality = subAdminMunicipalities[item.lguUid];
-        console.log(`Found municipality from subAdminMap: ${municipality}`);
-      }
-      // Finally fallback to lguName
-      else {
-        municipality = lguName;
-        console.log(`Using lguName as fallback: ${municipality}`);
-      }
-      
-      items.push({
-        id: counter++,
-        municipality: municipality, // Now this will be the actual municipality name
-        year: year,
-        assessment: assessment, // Add assessment field
-        assessmentId: assessmentId,
-        status: "Verified",
-        submission: item.submission || new Date().toLocaleDateString(),
-        deadline: item.deadline || "-",
-        lguUid: item.lguUid || "No UID",
-        submittedBy: item.submittedBy || "Unknown",
-        verifiedBy: item.verifiedBy || "Unknown",
-        verifiedAt: item.verifiedAt,
-        data: item.originalData || {},
-        type: "verified"
-      });
-    });
-  }
-});
+          // Iterate through years
+          Object.keys(allVerified).forEach(year => {
+            if (allVerified[year] && allVerified[year].LGU) {
+              Object.keys(allVerified[year].LGU).forEach(lguName => {
+                const item = allVerified[year].LGU[lguName];
+                
+                let municipality = "Unknown";
+                let assessment = item.assessment || "General Assessment";
+                let assessmentId = item.assessmentId || "unknown";
+                
+                // Try to get municipality from the item data first
+                if (item.municipality) {
+                  municipality = item.municipality;
+                  console.log(`Found municipality in item: ${municipality}`);
+                }
+                // Then try from subAdminMunicipalities using lguUid
+                else if (item.lguUid && subAdminMunicipalities[item.lguUid]) {
+                  municipality = subAdminMunicipalities[item.lguUid];
+                  console.log(`Found municipality from subAdminMap: ${municipality}`);
+                }
+                // Finally fallback to lguName
+                else {
+                  municipality = lguName.replace(`_${assessmentId}`, '').replace(/_/g, ' ');
+                  console.log(`Using lguName as fallback: ${municipality}`);
+                }
+                
+                items.push({
+                  id: counter++,
+                  municipality: municipality,
+                  year: year,
+                  assessment: assessment,
+                  assessmentId: assessmentId,
+                  status: "Verified",
+                  submission: item.submission || new Date().toLocaleDateString(),
+                  deadline: item.deadline || "-",
+                  lguUid: item.lguUid || "No UID",
+                  submittedBy: item.submittedBy || "Unknown",
+                  verifiedBy: item.verifiedBy || "Unknown",
+                  verifiedAt: item.verifiedAt,
+                  data: item.originalData || {},
+                  // Include attachments in the verified data
+                  attachmentsByIndicator: item.attachmentsByIndicator || {},
+                  type: "verified"
+                });
+              });
+            }
+          });
           
           console.log("Final mapped verified data:", items);
           setVerifiedData(items);
@@ -592,6 +577,7 @@ const handleImageUpload = (e) => {
   reader.readAsDataURL(file);
 };
 
+
 const handleView = (item) => {
   console.log("View:", item);
   
@@ -605,21 +591,20 @@ const handleView = (item) => {
         assessmentId: item.assessmentId,
         lguUid: item.lguUid,
         submittedBy: item.submittedBy,
-        data: item.data,
-        lguName: item.municipality,
+        data: item.data || item.originalData,
+        lguName: item.municipality || item.lguName,
         submission: item.submission,
         deadline: item.deadline,
         isVerified: true,
         verifiedBy: item.verifiedBy,
         verifiedAt: item.verifiedAt,
-        originalData: item.data
+        originalData: item.data || item.originalData,
+        // Include attachments from the verified data
+        attachmentsByIndicator: item.attachmentsByIndicator || {}
       } 
     });
   } else {
-    // Check if this assessment was previously returned
-    // You might need to check metadata or have a flag in the item
-    const wasReturned = item.wasReturned || false;
-    
+    // For forwarded assessments
     navigate("/po-view", { 
       state: { 
         year: item.year,
@@ -629,11 +614,13 @@ const handleView = (item) => {
         lguUid: item.lguUid,
         submittedBy: item.submittedBy,
         data: item.originalData || item.data,
-        lguName: item.lguName,
+        lguName: item.lguName || item.municipality,
         submission: item.submission,
         deadline: item.deadline,
         isVerified: false,
-        wasReturned: wasReturned // Pass this flag
+        wasReturned: item.wasReturned || false,
+        // Include attachments if they exist in the forwarded data
+        attachmentsByIndicator: item.attachmentsByIndicator || {}
       } 
     });
   }
@@ -919,8 +906,8 @@ const handleSignOut = () => {
               <>
               <img src={dilgSeal} alt="DILG Seal" style={{ height: "50px", width: "auto" }} />
               <img src={dilgLogo} alt="DILG Logo" style={{ height: "50px", width: "auto" }} />
-              <h3>ONE <span className="yellow">MAR</span><span className="cyan">IND</span>
-              <span className="red">UQUE</span> TRACKING SYSTEM</h3>
+              <h3 style={{textAlign: "center", lineHeight: "1.4", marginLeft: "-15%",}}>ONE <span className="yellow">MAR</span><span className="cyan">IND</span>
+              <span className="red">UQUE</span>  <span className="white">AUDIT</span> TRACKING SYSTEM</h3>
               <div className="sidebar-divider"></div>
               </>
             )}

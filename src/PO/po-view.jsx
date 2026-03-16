@@ -2,8 +2,8 @@ import React, { useState, useEffect } from "react";
 import { db, auth} from "src/firebase";
 import style from "src/PO-CSS/po-view.module.css";
 import dilgLogo from "src/assets/dilg-po.png";
-import dilgSeal from "src/assets/dilg-ph.png";
-import { FiFilter, FiRotateCcw, FiSettings, FiLogOut, FiFileText, FiClipboard } from "react-icons/fi";
+import dilgSeal from "src/assets/dilg-ph.png";  
+import { FiFilter, FiRotateCcw, FiSettings, FiLogOut, FiFileText, FiClipboard, FiDownload } from "react-icons/fi";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ref, child, push, onValue, set, get } from "firebase/database";
 import jsPDF from "jspdf";
@@ -29,6 +29,7 @@ export default function POView() {
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [savingAnswers, setSavingAnswers] = useState(false);
 const [isReturned, setIsReturned] = useState(false);
+const [previewAttachment, setPreviewAttachment] = useState(null);
   
   // ===== DYNAMIC TABS STATE =====
   const [tabs, setTabs] = useState([]);
@@ -69,6 +70,17 @@ const [isReturned, setIsReturned] = useState(false);
     const tab = tabs.find(t => t.id === tabId);
     return tab?.name || "Tab";
   };
+
+// Add this function to handle viewing attachments
+const viewAttachment = (attachment) => {
+  console.log('👁️ Viewing attachment:', attachment);
+  setPreviewAttachment(attachment);
+};
+
+// Add this function to close the preview modal
+const closePreview = () => {
+  setPreviewAttachment(null);
+};
 
 // ===== LOAD ASSESSMENT TABS FROM ADMIN =====
 useEffect(() => {
@@ -145,7 +157,6 @@ useEffect(() => {
 
   fetchTabsFromAdmin();
 }, [selectedYear, selectedAssessmentId, auth.currentUser]);
-
 
 // Add this near the top of your component to debug
 useEffect(() => {
@@ -1336,30 +1347,33 @@ const handleVerifyAssessment = async () => {
       console.log("✅ Updated answers node with verified metadata");
     }
     
-    // 2. Save to verified node
-    const verifiedData = {
-      lguUid: mlgoUid,
-      year: selectedYear,
-      assessmentId: selectedAssessmentId,
-      assessment: selectedAssessment,
-      lguName: lgu.lguName,
-      municipality: lgu.municipality,
-      verifiedAt: Date.now(),
-      verifiedBy: auth.currentUser?.email,
-      verifiedByName: profileData.name || auth.currentUser?.email,
-      originalData: lgu.data,
-      submission: lgu.submission,
-      deadline: lgu.deadline,
-      submittedBy: lgu.submittedBy,
-      forwardedBy: forwardedAssessment.forwardedBy,
-      remarks: currentTabRemark || "Assessment verified",
-      attachmentsByIndicator: lgu.attachmentsByIndicator || {}
-    };
-    
-    // Save to verified node (organized by year then LGU)
-    const verifiedRef = ref(db, `verified/${selectedYear}/LGU/${cleanLguName}`);
-    await set(verifiedRef, verifiedData);
-    console.log("✅ Saved to verified node");
+// In po-view.jsx, update the handleVerifyAssessment function where you save to verified node:
+
+// 2. Save to verified node
+const verifiedData = {
+  lguUid: mlgoUid,
+  year: selectedYear,
+  assessmentId: selectedAssessmentId,
+  assessment: selectedAssessment,
+  lguName: lgu.lguName,
+  municipality: lgu.municipality,
+  verifiedAt: Date.now(),
+  verifiedBy: auth.currentUser?.email,
+  verifiedByName: profileData.name || auth.currentUser?.email,
+  originalData: lgu.data,
+  submission: lgu.submission,
+  deadline: lgu.deadline,
+  submittedBy: lgu.submittedBy,
+  forwardedBy: forwardedAssessment.forwardedBy,
+  remarks: currentTabRemark || "Assessment verified",
+  // Include attachments in the verified data
+  attachmentsByIndicator: lgu.attachmentsByIndicator || {} // <-- ADD THIS LINE
+};
+
+// Save to verified node (organized by year then LGU)
+const verifiedRef = ref(db, `verified/${selectedYear}/LGU/${cleanLguName}`);
+await set(verifiedRef, verifiedData);
+console.log("✅ Saved to verified node with attachments:", lgu.attachmentsByIndicator);
     
     // 3. Remove from forwarded node (since it's now verified)
     const forwardedRef = ref(db, `forwarded/${auth.currentUser.uid}`);
@@ -1504,6 +1518,8 @@ const handleVerifyAssessment = async () => {
     }
   };
 
+// In po-view.jsx, replace the attachments loading section in the useEffect that loads LGU answers:
+
 // ===== LOAD LGU ANSWERS =====
 useEffect(() => {
   if (!auth.currentUser || !selectedYear || !location.state?.lguUid || !selectedAssessmentId) {
@@ -1522,35 +1538,123 @@ useEffect(() => {
       
       console.log("Looking for assessment in verified:", municipality);
       
-      // First check if this is a verified assessment
-      if (location.state?.isVerified) {
-        console.log("📋 Loading verified assessment from state:", location.state);
+// In po-view.jsx, update the verified assessment section in the loadLGUAnswers function:
+
+// First check if this is a verified assessment
+if (location.state?.isVerified) {
+  console.log("📋 Loading verified assessment from state:", location.state);
+  
+  // Check if we have attachments in the state
+  let attachmentsByIndicator = location.state.attachmentsByIndicator || {};
+  
+  // If attachments are not in state, try to fetch them from Firebase
+  if (Object.keys(attachmentsByIndicator).length === 0) {
+    console.log("📎 No attachments in state, fetching from Firebase...");
+    try {
+      const lguName = location.state.lguName || municipality;
+      const cleanName = `${lguName.replace(/[.#$\[\]]/g, '_')}_${selectedAssessmentId}`;
+      
+      const attachmentsRef = ref(
+        db,
+        `attachments/${selectedYear}/LGU/${cleanName}`
+      );
+      const attachmentsSnapshot = await get(attachmentsRef);
+      
+      if (attachmentsSnapshot.exists()) {
+        const attachments = attachmentsSnapshot.val();
+        attachmentsByIndicator = {};
         
-        const verifiedLgu = {
-          id: 1,
-          lguName: lguName,
-          year: selectedYear,
-          assessmentId: selectedAssessmentId,
-          assessment: selectedAssessment,
-          status: "Verified",
-          submission: location.state.submission || new Date().toLocaleDateString(),
-          deadline: location.state.deadline || "Not set",
-          data: location.state.data || {},
-          municipality: municipality,
-          lguUid: location.state.lguUid,
-          isVerified: true,
-          verifiedBy: location.state.verifiedBy,
-          verifiedAt: location.state.verifiedAt,
-          attachmentsByIndicator: location.state.attachmentsByIndicator || {}
-        };
+        console.log("📎 Attachments from Firebase for verified assessment:", attachments);
         
-        setLguAnswers([verifiedLgu]);
-        setForwardedAssessment(verifiedLgu);
-        setIsVerified(true);
-        setIsReturned(false); // Verified assessments are not returned
-        setLoading(false);
-        return;
+        // Parse attachments using the same logic as in the forwarded section
+        Object.keys(attachments).forEach(key => {
+          const attachment = attachments[key];
+          
+          const keyParts = key.split('_');
+          
+          if (key.includes('_sub_')) {
+            const assessmentId = keyParts[0];
+            const tabId = keyParts[1];
+            const recordKey = keyParts[2];
+            
+            const subIndex = keyParts.indexOf('sub') + 1;
+            const subNumber = keyParts[subIndex];
+            
+            const titleParts = keyParts.slice(subIndex + 1, -1);
+            const title = titleParts.join('_');
+            
+            const indicatorId = `${recordKey}_sub_${subNumber}_${title}`;
+            
+            if (!attachmentsByIndicator[indicatorId]) {
+              attachmentsByIndicator[indicatorId] = [];
+            }
+            
+            attachmentsByIndicator[indicatorId].push({
+              key: key,
+              name: attachment.fileName || attachment.name || 'Attachment',
+              url: attachment.url || attachment.fileData,
+              fileData: attachment.fileData || attachment.url,
+              fileSize: attachment.fileSize,
+              uploadedAt: attachment.uploadedAt
+            });
+          } else {
+            const assessmentId = keyParts[0];
+            const tabId = keyParts[1];
+            const recordKey = keyParts[2];
+            const mainIndex = keyParts[3];
+            
+            const titleParts = keyParts.slice(4, -1);
+            const title = titleParts.join('_');
+            
+            const indicatorId = `${recordKey}_${mainIndex}_${title}`;
+            
+            if (!attachmentsByIndicator[indicatorId]) {
+              attachmentsByIndicator[indicatorId] = [];
+            }
+            
+            attachmentsByIndicator[indicatorId].push({
+              key: key,
+              name: attachment.fileName || attachment.name || 'Attachment',
+              url: attachment.url || attachment.fileData,
+              fileData: attachment.fileData || attachment.url,
+              fileSize: attachment.fileSize,
+              uploadedAt: attachment.uploadedAt
+            });
+          }
+        });
+        
+        console.log("📎 Parsed attachments for verified assessment:", attachmentsByIndicator);
       }
+    } catch (error) {
+      console.error("Error fetching attachments for verified assessment:", error);
+    }
+  }
+  
+  const verifiedLgu = {
+    id: 1,
+    lguName: lguName,
+    year: selectedYear,
+    assessmentId: selectedAssessmentId,
+    assessment: selectedAssessment,
+    status: "Verified",
+    submission: location.state.submission || new Date().toLocaleDateString(),
+    deadline: location.state.deadline || "Not set",
+    data: location.state.data || {},
+    municipality: municipality,
+    lguUid: location.state.lguUid,
+    isVerified: true,
+    verifiedBy: location.state.verifiedBy,
+    verifiedAt: location.state.verifiedAt,
+    attachmentsByIndicator: attachmentsByIndicator // Use the attachments we found
+  };
+  
+  setLguAnswers([verifiedLgu]);
+  setForwardedAssessment(verifiedLgu);
+  setIsVerified(true);
+  setIsReturned(false);
+  setLoading(false);
+  return;
+}
       
       // If not found in verified, fetch from forwarded
       const currentUserUid = auth.currentUser.uid;
@@ -1581,7 +1685,7 @@ useEffect(() => {
             assessment: foundAssessment.assessment,
             status: foundAssessment.status || "Pending",
             submission: foundAssessment.submission || new Date().toLocaleDateString(),
-            deadline: location.state?.deadline || foundAssessment.deadline || "Not set",  // <-- USE THE PASSED DEADLINE FIRST
+            deadline: location.state?.deadline || foundAssessment.deadline || "Not set",
             data: foundAssessment.originalData || {},
             municipality: municipality,
             submittedBy: foundAssessment.submittedBy || "Unknown",
@@ -1592,7 +1696,6 @@ useEffect(() => {
           };
           
           // IMPORTANT: Check if this assessment has been returned before
-          // We need to check the answers node to see if it has return flags
           const answersRef = ref(db, `answers/${selectedYear}/LGU/${cleanName}`);
           const answersSnapshot = await get(answersRef);
           
@@ -1600,10 +1703,6 @@ useEffect(() => {
           if (answersSnapshot.exists()) {
             const answersData = answersSnapshot.val();
             const metadata = answersData._metadata || {};
-            
-            // Check if this assessment was returned to MLGO
-            // If it was returned, the buttons should be enabled (not disabled)
-            // The returned flag is only for when PO has already returned it in this session
             hasBeenReturned = metadata.returnedToMLGO === true;
             
             console.log("Metadata check:", {
@@ -1612,12 +1711,10 @@ useEffect(() => {
             });
           }
           
-          // Set isReturned based on whether this assessment was returned in this session
-          // We need to check location state or some other indicator
-          // For now, default to false for new forwarded assessments
           setIsReturned(false);
           
-          // Load attachments
+          // ===== UPDATED ATTACHMENTS LOADING =====
+          // Load attachments with proper parsing
           const attachmentsRef = ref(
             db,
             `attachments/${selectedYear}/LGU/${cleanName}`
@@ -1628,17 +1725,42 @@ useEffect(() => {
             const attachments = attachmentsSnapshot.val();
             const attachmentsByIndicator = {};
             
+            console.log("📎 All attachments from Firebase:", attachments);
+            
             Object.keys(attachments).forEach(key => {
               const attachment = attachments[key];
               
+              console.log("📎 Processing attachment key:", key);
+              
+              // Parse the key to extract indicator information
+              // Key format: assessmentId_tabId_recordKey_mainIndex_field_timestamp
+              // Example: ASSESS123_tab1_record1_0_Main Indicator Title_1741684800000
+              
               const keyParts = key.split('_');
               
+              // Check if this is a sub-indicator attachment (contains 'sub')
               if (key.includes('_sub_')) {
-                const recordKey = keyParts[2];
-                const subIndex = keyParts[4];
-                const title = keyParts.slice(5, -1).join('_');
+                // Format: assessmentId_tabId_recordKey_sub_subIndex_field_timestamp
+                // Example: ASSESS123_tab1_record1_sub_0_Sub Indicator Title_1741684800000
                 
-                const indicatorId = `${recordKey}_sub_${subIndex}_${title}`;
+                // Extract the relevant parts
+                const assessmentId = keyParts[0];
+                const tabId = keyParts[1];
+                const recordKey = keyParts[2];
+                
+                // Find where 'sub' appears
+                const subIndex = keyParts.indexOf('sub') + 1;
+                const subNumber = keyParts[subIndex];
+                
+                // The field title is everything between subNumber and the last part (timestamp)
+                // The last part is the timestamp
+                const titleParts = keyParts.slice(subIndex + 1, -1);
+                const title = titleParts.join('_');
+                
+                // Create indicator ID that matches what we use in rendering
+                const indicatorId = `${recordKey}_sub_${subNumber}_${title}`;
+                
+                console.log(`📎 Sub-indicator attachment for: ${indicatorId}`);
                 
                 if (!attachmentsByIndicator[indicatorId]) {
                   attachmentsByIndicator[indicatorId] = [];
@@ -1653,11 +1775,24 @@ useEffect(() => {
                   uploadedAt: attachment.uploadedAt
                 });
               } else {
+                // Main indicator attachment
+                // Format: assessmentId_tabId_recordKey_mainIndex_field_timestamp
+                // Example: ASSESS123_tab1_record1_0_Main Indicator Title_1741684800000
+                
+                const assessmentId = keyParts[0];
+                const tabId = keyParts[1];
                 const recordKey = keyParts[2];
                 const mainIndex = keyParts[3];
-                const title = keyParts.slice(4, -1).join('_');
                 
+                // The field title is everything between mainIndex and the last part (timestamp)
+                // The last part is the timestamp
+                const titleParts = keyParts.slice(4, -1);
+                const title = titleParts.join('_');
+                
+                // Create indicator ID that matches what we use in rendering
                 const indicatorId = `${recordKey}_${mainIndex}_${title}`;
+                
+                console.log(`📎 Main indicator attachment for: ${indicatorId}`);
                 
                 if (!attachmentsByIndicator[indicatorId]) {
                   attachmentsByIndicator[indicatorId] = [];
@@ -1674,6 +1809,7 @@ useEffect(() => {
               }
             });
             
+            console.log("📎 Final attachmentsByIndicator:", attachmentsByIndicator);
             lguData.attachmentsByIndicator = attachmentsByIndicator;
           }
           
@@ -2228,8 +2364,8 @@ useEffect(() => {
               <>
                 <img src={dilgSeal} alt="DILG Seal" style={{ height: "50px", width: "auto" }} />
                 <img src={dilgLogo} alt="DILG Logo" style={{ height: "50px", width: "auto" }} />
-                <h3>ONE <span className="yellow">MAR</span><span className="cyan">IND</span>
-                <span className="red">UQUE</span> TRACKING SYSTEM</h3>
+                <h3 style={{textAlign: "center", lineHeight: "1.4", marginLeft: "-15%",}}>ONE <span className="yellow">MAR</span><span className="cyan">IND</span>
+                <span className="red">UQUE</span>  <span className="white">AUDIT</span> TRACKING SYSTEM</h3>
                 <div className="sidebar-divider"></div>
               </>
             )}
@@ -2658,48 +2794,103 @@ useEffect(() => {
                                               </div>
                                             </div>
                                             
-                                            {/* Attachments for this indicator */}
-                                            {(() => {
-                                              const indicatorId = `${record.firebaseKey}_${index}_${main.title}`;
-                                              const indicatorAttachments = lgu.attachmentsByIndicator?.[indicatorId] || [];
-                                              
-                                              return indicatorAttachments.length > 0 && (
-                                                <div style={{
-                                                  display: "flex",
-                                                  flexWrap: "wrap",
-                                                  gap: "8px",
-                                                  marginTop: "8px",
-                                                  width: "100%"
-                                                }}>
-                                                  {indicatorAttachments.map((attachment, idx) => (
-                                                    <div key={idx} style={{
-                                                      display: "flex",
-                                                      alignItems: "center",
-                                                      gap: "6px",
-                                                      backgroundColor: "#e8f5e9",
-                                                      padding: "4px 10px",
-                                                      borderRadius: "16px",
-                                                      fontSize: "11px",
-                                                      border: "1px solid #c8e6c9",
-                                                      maxWidth: "200px",
-                                                      cursor: "pointer"
-                                                    }}
-                                                    onClick={() => downloadAttachment(attachment)}>
-                                                      <span style={{ fontSize: "12px" }}>📎</span>
-                                                      <span style={{ 
-                                                        overflow: "hidden", 
-                                                        textOverflow: "ellipsis",
-                                                        whiteSpace: "nowrap",
-                                                        color: "#0c1a4b",
-                                                        textDecoration: "underline"
-                                                      }}>
-                                                        {attachment.name || 'Attachment'}
-                                                      </span>
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                              );
-                                            })()}
+{/* Attachments for this indicator */}
+{(() => {
+  const indicatorId = `${record.firebaseKey}_${index}_${main.title}`;
+  const indicatorAttachments = lgu.attachmentsByIndicator?.[indicatorId] || [];
+  
+  return indicatorAttachments.length > 0 && (
+    <div style={{
+      display: "flex",
+      flexWrap: "wrap",
+      gap: "8px",
+      marginTop: "8px",
+      width: "100%"
+    }}>
+      {indicatorAttachments.map((attachment, idx) => (
+        <div key={idx} style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          backgroundColor: "#e8f5e9",
+          padding: "4px 8px",
+          borderRadius: "16px",
+          fontSize: "11px",
+          border: "1px solid #c8e6c9",
+          maxWidth: "900px"
+        }}>
+          <span style={{ fontSize: "12px" }}>📎</span>
+          <span style={{ 
+            overflow: "hidden", 
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color: "#0c1a4b",
+            flex: 1
+          }}>
+            {attachment.name || 'Attachment'}
+          </span>
+          
+{/* Eye button for viewing */}
+<button
+  onClick={() => viewAttachment(attachment)}
+  style={{
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    padding: "2px 4px",
+    fontSize: "14px",
+    color: "#0c1a4b",
+    display: "flex",
+    alignItems: "center",
+    borderRadius: "4px",
+    transition: "all 0.2s"
+  }}
+  onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
+  onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+  title="View attachment"
+>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/>
+    <circle cx="12" cy="12" r="3"/>
+  </svg>
+</button>
+          
+          {/* Download button */}
+          <button
+            onClick={() => downloadAttachment(attachment)}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "2px 4px",
+              fontSize: "16px",
+              color: "#0c1a4b",
+              display: "flex",
+              alignItems: "center",
+              borderRadius: "4px",
+              transition: "all 0.2s"
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+            title="Download attachment"
+          >
+            <FiDownload/>
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+})()}
                                           </div>
                                         )}
                                       </div>
@@ -2790,48 +2981,103 @@ useEffect(() => {
                                               <span className="reference-verification-value">{sub.verification}</span>
                                             </div>
                                             
-                                            {/* Attachments for this sub indicator */}
-                                            {(() => {
-                                              const indicatorId = `${record.firebaseKey}_sub_${index}_${sub.title}`;
-                                              const indicatorAttachments = lgu.attachmentsByIndicator?.[indicatorId] || [];
-                                              
-                                              return indicatorAttachments.length > 0 && (
-                                                <div style={{
-                                                  display: "flex",
-                                                  flexWrap: "wrap",
-                                                  gap: "8px",
-                                                  marginTop: "8px",
-                                                  width: "100%"
-                                                }}>
-                                                  {indicatorAttachments.map((attachment, idx) => (
-                                                    <div key={idx} style={{
-                                                      display: "flex",
-                                                      alignItems: "center",
-                                                      gap: "6px",
-                                                      backgroundColor: "#e8f5e9",
-                                                      padding: "4px 10px",
-                                                      borderRadius: "16px",
-                                                      fontSize: "11px",
-                                                      border: "1px solid #c8e6c9",
-                                                      maxWidth: "200px",
-                                                      cursor: "pointer"
-                                                    }}
-                                                    onClick={() => downloadAttachment(attachment)}>
-                                                      <span style={{ fontSize: "12px" }}>📎</span>
-                                                      <span style={{ 
-                                                        overflow: "hidden", 
-                                                        textOverflow: "ellipsis",
-                                                        whiteSpace: "nowrap",
-                                                        color: "#0c1a4b",
-                                                        textDecoration: "underline"
-                                                      }}>
-                                                        {attachment.name || 'Attachment'}
-                                                      </span>
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                              );
-                                            })()}
+{/* Attachments for this sub indicator */}
+{(() => {
+  const indicatorId = `${record.firebaseKey}_sub_${index}_${sub.title}`;
+  const indicatorAttachments = lgu.attachmentsByIndicator?.[indicatorId] || [];
+  
+  return indicatorAttachments.length > 0 && (
+    <div style={{
+      display: "flex",
+      flexWrap: "wrap",
+      gap: "8px",
+      marginTop: "8px",
+      width: "100%"
+    }}>
+      {indicatorAttachments.map((attachment, idx) => (
+        <div key={idx} style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          backgroundColor: "#e8f5e9",
+          padding: "4px 8px",
+          borderRadius: "16px",
+          fontSize: "11px",
+          border: "1px solid #c8e6c9",
+          maxWidth: "900px"
+        }}>
+          <span style={{ fontSize: "12px" }}>📎</span>
+          <span style={{ 
+            overflow: "hidden", 
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color: "#0c1a4b",
+            flex: 1
+          }}>
+            {attachment.name || 'Attachment'}
+          </span>
+          
+{/* Eye button for viewing */}
+<button
+  onClick={() => viewAttachment(attachment)}
+  style={{
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    padding: "2px 4px",
+    fontSize: "14px",
+    color: "#0c1a4b",
+    display: "flex",
+    alignItems: "center",
+    borderRadius: "4px",
+    transition: "all 0.2s"
+  }}
+  onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
+  onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+  title="View attachment"
+>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/>
+    <circle cx="12" cy="12" r="3"/>
+  </svg>
+</button>
+          
+          {/* Download button */}
+          <button
+            onClick={() => downloadAttachment(attachment)}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "2px 4px",
+              fontSize: "16px",
+              color: "#0c1a4b",
+              display: "flex",
+              alignItems: "center",
+              borderRadius: "4px",
+              transition: "all 0.2s"
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+            title="Download attachment"
+          >
+            <FiDownload/>
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+})()}
                                           </div>
                                         )}
 
@@ -2925,48 +3171,103 @@ useEffect(() => {
                                                       <span className="verification-label">Mode of Verification:</span>
                                                       <span className="verification-value">{nested.verification}</span>
                                                       
-                                                      {/* Attachments for nested sub-indicator */}
-                                                      {(() => {
-                                                        const nestedIndicatorId = `${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title}`;
-                                                        const nestedAttachments = lgu.attachmentsByIndicator?.[nestedIndicatorId] || [];
-                                                        
-                                                        return nestedAttachments.length > 0 && (
-                                                          <div style={{
-                                                            display: "flex",
-                                                            flexWrap: "wrap",
-                                                            gap: "8px",
-                                                            marginTop: "8px",
-                                                            width: "100%"
-                                                          }}>
-                                                            {nestedAttachments.map((attachment, idx) => (
-                                                              <div key={idx} style={{
-                                                                display: "flex",
-                                                                alignItems: "center",
-                                                                gap: "6px",
-                                                                backgroundColor: "#e8f5e9",
-                                                                padding: "4px 10px",
-                                                                borderRadius: "16px",
-                                                                fontSize: "11px",
-                                                                border: "1px solid #c8e6c9",
-                                                                maxWidth: "200px",
-                                                                cursor: "pointer"
-                                                              }}
-                                                              onClick={() => downloadAttachment(attachment)}>
-                                                                <span style={{ fontSize: "12px" }}>📎</span>
-                                                                <span style={{ 
-                                                                  overflow: "hidden", 
-                                                                  textOverflow: "ellipsis",
-                                                                  whiteSpace: "nowrap",
-                                                                  color: "#0c1a4b",
-                                                                  textDecoration: "underline"
-                                                                }}>
-                                                                  {attachment.name || 'Attachment'}
-                                                                </span>
-                                                              </div>
-                                                            ))}
-                                                          </div>
-                                                        );
-                                                      })()}
+{/* Attachments for nested sub-indicator */}
+{(() => {
+  const nestedIndicatorId = `${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title}`;
+  const nestedAttachments = lgu.attachmentsByIndicator?.[nestedIndicatorId] || [];
+  
+  return nestedAttachments.length > 0 && (
+    <div style={{
+      display: "flex",
+      flexWrap: "wrap",
+      gap: "8px",
+      marginTop: "8px",
+      width: "100%"
+    }}>
+      {nestedAttachments.map((attachment, idx) => (
+        <div key={idx} style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          backgroundColor: "#e8f5e9",
+          padding: "4px 8px",
+          borderRadius: "16px",
+          fontSize: "11px",
+          border: "1px solid #c8e6c9",
+          maxWidth: "900px"
+        }}>
+          <span style={{ fontSize: "12px" }}>📎</span>
+          <span style={{ 
+            overflow: "hidden", 
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color: "#0c1a4b",
+            flex: 1
+          }}>
+            {attachment.name || 'Attachment'}
+          </span>
+          
+{/* Eye button for viewing */}
+<button
+  onClick={() => viewAttachment(attachment)}
+  style={{
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    padding: "2px 4px",
+    fontSize: "14px",
+    color: "#0c1a4b",
+    display: "flex",
+    alignItems: "center",
+    borderRadius: "4px",
+    transition: "all 0.2s"
+  }}
+  onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
+  onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+  title="View attachment"
+>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/>
+    <circle cx="12" cy="12" r="3"/>
+  </svg>
+</button>
+          
+          {/* Download button */}
+          <button
+            onClick={() => downloadAttachment(attachment)}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "2px 4px",
+              fontSize: "16px",
+              color: "#0c1a4b",
+              display: "flex",
+              alignItems: "center",
+              borderRadius: "4px",
+              transition: "all 0.2s"
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+            title="Download attachment"
+          >
+            <FiDownload/>
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+})()}
                                                     </div>
                                                   )}
                                                 </div>
@@ -3183,6 +3484,239 @@ useEffect(() => {
               </div>
             </div>
           )}
+{/* Attachment Preview Modal */}
+{previewAttachment && (
+  <div className="modal-overlay" onClick={closePreview} style={{ 
+    zIndex: 2000,
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center"
+  }}>
+    <div 
+      className="preview-modal" 
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        backgroundColor: "white",
+        padding: "14px",
+        borderRadius: "8px",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+        maxWidth: "90vw",
+        maxHeight: "95vh",
+        overflow: "hidden",
+        minWidth: "1200px",
+        display: "flex",
+        flexDirection: "column"
+      }}
+    >
+      <div style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: "15px",
+        borderBottom: "1px solid #eee",
+        paddingBottom: "5px"
+      }}>
+        <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "600" }}>
+          {previewAttachment.name || 'Attachment Preview'}
+        </h3>
+        <button 
+          onClick={closePreview}
+          style={{
+            background: "none",
+            border: "none",
+            fontSize: "20px",
+            cursor: "pointer",
+            padding: "0 5px"
+          }}
+        >
+          ✕
+        </button>
+      </div>
+      
+      <div style={{ 
+        marginBottom: "15px",
+        flex: 1,
+        overflow: "auto",
+        minHeight: "300px"
+      }}>
+        {(() => {
+          // Check if it's an image
+          let fileUrl = null;
+          let fileType = null;
+          
+          for (const key of Object.keys(previewAttachment)) {
+            const value = previewAttachment[key];
+            if (typeof value === 'string' && (value.startsWith('data:') || value.startsWith('http'))) {
+              fileUrl = value;
+              
+              // Determine file type from data URL or extension
+              if (value.startsWith('data:')) {
+                fileType = value.split(';')[0].split(':')[1];
+              } else {
+                const extension = value.split('.').pop()?.toLowerCase();
+                if (extension === 'pdf') fileType = 'application/pdf';
+                else if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(extension)) {
+                  fileType = 'image/' + extension;
+                }
+              }
+              break;
+            }
+          }
+          
+          if (fileUrl) {
+            // Handle PDF files
+            if (fileType === 'application/pdf' || fileUrl.includes('.pdf') || fileUrl.includes('application/pdf')) {
+              return (
+                <iframe
+                  src={fileUrl}
+                  style={{
+                    width: "100%",
+                    height: "70vh",
+                    border: "none"
+                  }}
+                  title="PDF Preview"
+                />
+              );
+            }
+            // Handle images
+            else if (fileType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(fileUrl)) {
+              return (
+                <img 
+                  src={fileUrl} 
+                  alt={previewAttachment.name || 'Preview'}
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: "70vh",
+                    objectFit: "contain",
+                    display: "block",
+                    margin: "0 auto"
+                  }}
+                />
+              );
+            }
+            // Handle text files
+            else if (fileType === 'text/plain' || fileUrl.includes('text/plain')) {
+              fetch(fileUrl)
+                .then(response => response.text())
+                .then(text => {
+                  document.getElementById('text-preview').innerText = text;
+                })
+                .catch(err => console.error('Error loading text file:', err));
+              
+              return (
+                <pre 
+                  id="text-preview"
+                  style={{
+                    width: "100%",
+                    height: "70vh",
+                    overflow: "auto",
+                    backgroundColor: "#f5f5f5",
+                    padding: "10px",
+                    borderRadius: "4px",
+                    fontFamily: "monospace",
+                    fontSize: "12px",
+                    whiteSpace: "pre-wrap",
+                    wordWrap: "break-word"
+                  }}
+                >
+                  Loading...
+                </pre>
+              );
+            }
+            // For other file types, show info and provide download button
+            else {
+              return (
+                <div style={{ textAlign: "center", padding: "40px 20px" }}>
+                  <div style={{ fontSize: "64px", marginBottom: "20px" }}>📄</div>
+                  <p style={{ fontSize: "16px", color: "#666", marginBottom: "10px" }}>
+                    This file type cannot be previewed directly.
+                  </p>
+                  <p style={{ fontSize: "14px", color: "#999", wordBreak: "break-all" }}>
+                    {previewAttachment.name || 'Unknown file'}
+                  </p>
+                  <p style={{ fontSize: "12px", color: "#999", wordBreak: "break-all", marginTop: "10px" }}>
+                    Type: {fileType || 'Unknown'}
+                  </p>
+                </div>
+              );
+            }
+          }
+          
+          return (
+            <div style={{ textAlign: "center", padding: "40px 20px" }}>
+              <p>No preview available</p>
+            </div>
+          );
+        })()}
+      </div>
+      
+      <div style={{
+        display: "flex",
+        justifyContent: "flex-end",
+        gap: "10px",
+        borderTop: "1px solid #eee",
+        paddingTop: "15px"
+      }}>
+<button
+  onClick={closePreview}
+  style={{
+    padding: "8px 16px",
+    backgroundColor: "#990202",
+    color: "white",
+    border: "none",
+    borderRadius: "4px",
+    cursor: "pointer",
+    transition: "all 0.2s"
+  }}
+  onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#780101"}
+  onMouseOut={(e) => e.currentTarget.style.backgroundColor = "#990202"}
+>
+  Close
+</button>
+        <button
+  onClick={() => {
+    downloadAttachment(previewAttachment);
+    closePreview();
+  }}
+  style={{
+    padding: "8px 16px",
+    backgroundColor: "#0c1a4b",
+    color: "white",
+    border: "none",
+    borderRadius: "4px",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: "6px"
+  }}
+>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M20 16.5a4.5 4.5 0 0 0-1.3-8.8 6 6 0 0 0-11.6 1.5A4 4 0 0 0 4 16.5" />
+    <path d="M12 12v7" />
+    <path d="M8.5 15.5 12 19l3.5-3.5" />
+  </svg>
+  Download
+</button>
+      </div>
+    </div>
+  </div>
+)}
         </div>
       </div>
     </div>

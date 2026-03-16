@@ -3,7 +3,7 @@ import { db, auth} from "src/firebase";
 import style from "src/MLGO-CSS/mlgo-view.module.css";
 import dilgLogo from "src/assets/dilg-po.png";
 import dilgSeal from "src/assets/dilg-ph.png";
-import { FiFilter, FiRotateCcw, FiSettings, FiLogOut, FiFileText, FiClipboard } from "react-icons/fi";
+import { FiFilter, FiRotateCcw, FiSettings, FiLogOut, FiFileText, FiClipboard, FiDownload  } from "react-icons/fi";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ref, push, onValue, set, get } from "firebase/database";
 import jsPDF from "jspdf";
@@ -19,6 +19,7 @@ export default function MLGOView() {
   const [isReturnedFromPO, setIsReturnedFromPO] = useState(false); // NEW: flag for returned from PO
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState(1);
+  const [previewAttachment, setPreviewAttachment] = useState(null);
   const [profileComplete, setProfileComplete] = useState(false);
   const rowsPerPage = 10;
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -201,6 +202,17 @@ export default function MLGOView() {
 
     loadTabIndicators();
   }, [tabs, selectedYear, selectedAssessmentId, auth.currentUser]);
+
+// Add this function to handle viewing attachments
+const viewAttachment = (attachment) => {
+  console.log('👁️ Viewing attachment:', attachment);
+  setPreviewAttachment(attachment);
+};
+
+// Add this function to close the preview modal
+const closePreview = () => {
+  setPreviewAttachment(null);
+};
 
 // ===== LOAD LGU ANSWERS =====
 useEffect(() => {
@@ -2188,11 +2200,11 @@ useEffect(() => {
           <div className="sidebar-header">
             {sidebarOpen && (
               <>
-                <img src={dilgSeal} alt="DILG Seal" style={{ height: "50px", width: "auto" }} />
-                <img src={dilgLogo} alt="DILG Logo" style={{ height: "50px", width: "auto" }} />
-                <h3>ONE <span className="yellow">MAR</span><span className="cyan">IND</span>
-                <span className="red">UQUE</span> TRACKING SYSTEM</h3>
-                <div className="sidebar-divider"></div>
+              <img src={dilgSeal} alt="DILG Seal" style={{ height: "50px", width: "auto" }} />
+              <img src={dilgLogo} alt="DILG Logo" style={{ height: "50px", width: "auto" }} />
+              <h3 style={{textAlign: "center", lineHeight: "1.4", marginLeft: "-15%",}}>ONE <span className="yellow">MAR</span><span className="cyan">IND</span>
+              <span className="red">UQUE</span>  <span className="white">AUDIT</span> TRACKING SYSTEM</h3>
+              <div className="sidebar-divider"></div>
               </>
             )}
           </div>
@@ -2673,48 +2685,104 @@ useEffect(() => {
                                               </div>
                                             </div>
                                             
-                                            {/* Attachments for this indicator */}
-                                            {(() => {
-                                              const indicatorId = `${record.firebaseKey}_${index}_${main.title}`;
-                                              const indicatorAttachments = lgu.attachmentsByIndicator?.[indicatorId] || [];
-                                              
-                                              return indicatorAttachments.length > 0 && (
-                                                <div style={{
-                                                  display: "flex",
-                                                  flexWrap: "wrap",
-                                                  gap: "8px",
-                                                  marginTop: "8px",
-                                                  width: "100%"
-                                                }}>
-                                                  {indicatorAttachments.map((attachment, idx) => (
-                                                    <div key={idx} style={{
-                                                      display: "flex",
-                                                      alignItems: "center",
-                                                      gap: "6px",
-                                                      backgroundColor: "#e8f5e9",
-                                                      padding: "4px 10px",
-                                                      borderRadius: "16px",
-                                                      fontSize: "11px",
-                                                      border: "1px solid #c8e6c9",
-                                                      maxWidth: "200px",
-                                                      cursor: "pointer"
-                                                    }}
-                                                    onClick={() => downloadAttachment(attachment)}>
-                                                      <span style={{ fontSize: "12px" }}>📎</span>
-                                                      <span style={{ 
-                                                        overflow: "hidden", 
-                                                        textOverflow: "ellipsis",
-                                                        whiteSpace: "nowrap",
-                                                        color: "#0c1a4b",
-                                                        textDecoration: "underline"
-                                                      }}>
-                                                        {attachment.name || 'Attachment'}
-                                                      </span>
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                              );
-                                            })()}
+{/* Attachments for this indicator */}
+{(() => {
+  const indicatorId = `${record.firebaseKey}_${index}_${main.title}`;
+  const indicatorAttachments = lgu.attachmentsByIndicator?.[indicatorId] || [];
+  
+  return indicatorAttachments.length > 0 && (
+    <div style={{
+      display: "flex",
+      flexWrap: "wrap",
+      gap: "8px",
+      marginTop: "8px",
+      width: "100%"
+    }}>
+      {indicatorAttachments.map((attachment, idx) => (
+        <div key={idx} style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          backgroundColor: "#e8f5e9",
+          padding: "4px 8px",
+          borderRadius: "16px",
+          fontSize: "11px",
+          border: "1px solid #c8e6c9",
+          maxWidth: "900px"
+        }}>
+          <span style={{ fontSize: "12px" }}>📎</span>
+          <span style={{ 
+            overflow: "hidden", 
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color: "#0c1a4b",
+            flex: 1
+          }}>
+            {attachment.name || 'Attachment'}
+          </span>
+          
+          {/* Eye button for viewing */}
+{/* Eye button for viewing */}
+<button
+  onClick={() => viewAttachment(attachment)}
+  style={{
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    padding: "2px 4px",
+    fontSize: "14px",
+    color: "#0c1a4b",
+    display: "flex",
+    alignItems: "center",
+    borderRadius: "4px",
+    transition: "all 0.2s"
+  }}
+  onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
+  onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+  title="View attachment"
+>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/>
+    <circle cx="12" cy="12" r="3"/>
+  </svg>
+</button>
+          
+{/* Download button */}
+<button
+  onClick={() => downloadAttachment(attachment)}
+  style={{
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    padding: "2px 4px",
+    fontSize: "16px",
+    color: "#0c1a4b",
+    display: "flex",
+    alignItems: "center",
+    borderRadius: "4px",
+    transition: "all 0.2s"
+  }}
+  onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
+  onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+  title="Download attachment"
+>
+  <FiDownload/>
+</button>
+        </div>
+      ))}
+    </div>
+  );
+})()}
                                           </div>
                                         )}
                                       </div>
@@ -2805,48 +2873,103 @@ useEffect(() => {
                                               <span className="reference-verification-value">{sub.verification}</span>
                                             </div>
                                             
-                                            {/* Attachments for this sub indicator */}
-                                            {(() => {
-                                              const indicatorId = `${record.firebaseKey}_sub_${index}_${sub.title}`;
-                                              const indicatorAttachments = lgu.attachmentsByIndicator?.[indicatorId] || [];
-                                              
-                                              return indicatorAttachments.length > 0 && (
-                                                <div style={{
-                                                  display: "flex",
-                                                  flexWrap: "wrap",
-                                                  gap: "8px",
-                                                  marginTop: "8px",
-                                                  width: "100%"
-                                                }}>
-                                                  {indicatorAttachments.map((attachment, idx) => (
-                                                    <div key={idx} style={{
-                                                      display: "flex",
-                                                      alignItems: "center",
-                                                      gap: "6px",
-                                                      backgroundColor: "#e8f5e9",
-                                                      padding: "4px 10px",
-                                                      borderRadius: "16px",
-                                                      fontSize: "11px",
-                                                      border: "1px solid #c8e6c9",
-                                                      maxWidth: "200px",
-                                                      cursor: "pointer"
-                                                    }}
-                                                    onClick={() => downloadAttachment(attachment)}>
-                                                      <span style={{ fontSize: "12px" }}>📎</span>
-                                                      <span style={{ 
-                                                        overflow: "hidden", 
-                                                        textOverflow: "ellipsis",
-                                                        whiteSpace: "nowrap",
-                                                        color: "#0c1a4b",
-                                                        textDecoration: "underline"
-                                                      }}>
-                                                        {attachment.name || 'Attachment'}
-                                                      </span>
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                              );
-                                            })()}
+{/* Attachments for this sub indicator */}
+{(() => {
+  const indicatorId = `${record.firebaseKey}_sub_${index}_${sub.title}`;
+  const indicatorAttachments = lgu.attachmentsByIndicator?.[indicatorId] || [];
+  
+  return indicatorAttachments.length > 0 && (
+    <div style={{
+      display: "flex",
+      flexWrap: "wrap",
+      gap: "8px",
+      marginTop: "8px",
+      width: "100%"
+    }}>
+      {indicatorAttachments.map((attachment, idx) => (
+        <div key={idx} style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          backgroundColor: "#e8f5e9",
+          padding: "4px 8px",
+          borderRadius: "16px",
+          fontSize: "11px",
+          border: "1px solid #c8e6c9",
+          maxWidth: "900px"
+        }}>
+          <span style={{ fontSize: "12px" }}>📎</span>
+          <span style={{ 
+            overflow: "hidden", 
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color: "#0c1a4b",
+            flex: 1
+          }}>
+            {attachment.name || 'Attachment'}
+          </span>
+          
+{/* Eye button for viewing */}
+<button
+  onClick={() => viewAttachment(attachment)}
+  style={{
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    padding: "2px 4px",
+    fontSize: "14px",
+    color: "#0c1a4b",
+    display: "flex",
+    alignItems: "center",
+    borderRadius: "4px",
+    transition: "all 0.2s"
+  }}
+  onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
+  onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+  title="View attachment"
+>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/>
+    <circle cx="12" cy="12" r="3"/>
+  </svg>
+</button>
+          
+{/* Download button */}
+<button
+  onClick={() => downloadAttachment(attachment)}
+  style={{
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    padding: "2px 4px",
+    fontSize: "16px",
+    color: "#0c1a4b",
+    display: "flex",
+    alignItems: "center",
+    borderRadius: "4px",
+    transition: "all 0.2s"
+  }}
+  onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
+  onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+  title="Download attachment"
+>
+  <FiDownload/>
+</button>
+        </div>
+      ))}
+    </div>
+  );
+})()}
                                           </div>
                                         )}
 
@@ -2940,48 +3063,103 @@ useEffect(() => {
                                                       <span className="verification-label">Mode of Verification:</span>
                                                       <span className="verification-value">{nested.verification}</span>
                                                       
-                                                      {/* Attachments for nested sub-indicator */}
-                                                      {(() => {
-                                                        const nestedIndicatorId = `${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title}`;
-                                                        const nestedAttachments = lgu.attachmentsByIndicator?.[nestedIndicatorId] || [];
-                                                        
-                                                        return nestedAttachments.length > 0 && (
-                                                          <div style={{
-                                                            display: "flex",
-                                                            flexWrap: "wrap",
-                                                            gap: "8px",
-                                                            marginTop: "8px",
-                                                            width: "100%"
-                                                          }}>
-                                                            {nestedAttachments.map((attachment, idx) => (
-                                                              <div key={idx} style={{
-                                                                display: "flex",
-                                                                alignItems: "center",
-                                                                gap: "6px",
-                                                                backgroundColor: "#e8f5e9",
-                                                                padding: "4px 10px",
-                                                                borderRadius: "16px",
-                                                                fontSize: "11px",
-                                                                border: "1px solid #c8e6c9",
-                                                                maxWidth: "200px",
-                                                                cursor: "pointer"
-                                                              }}
-                                                              onClick={() => downloadAttachment(attachment)}>
-                                                                <span style={{ fontSize: "12px" }}>📎</span>
-                                                                <span style={{ 
-                                                                  overflow: "hidden", 
-                                                                  textOverflow: "ellipsis",
-                                                                  whiteSpace: "nowrap",
-                                                                  color: "#0c1a4b",
-                                                                  textDecoration: "underline"
-                                                                }}>
-                                                                  {attachment.name || 'Attachment'}
-                                                                </span>
-                                                              </div>
-                                                            ))}
-                                                          </div>
-                                                        );
-                                                      })()}
+{/* Attachments for nested sub-indicator */}
+{(() => {
+  const nestedIndicatorId = `${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title}`;
+  const nestedAttachments = lgu.attachmentsByIndicator?.[nestedIndicatorId] || [];
+  
+  return nestedAttachments.length > 0 && (
+    <div style={{
+      display: "flex",
+      flexWrap: "wrap",
+      gap: "8px",
+      marginTop: "8px",
+      width: "100%"
+    }}>
+      {nestedAttachments.map((attachment, idx) => (
+        <div key={idx} style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          backgroundColor: "#e8f5e9",
+          padding: "4px 8px",
+          borderRadius: "16px",
+          fontSize: "11px",
+          border: "1px solid #c8e6c9",
+          maxWidth: "900px"
+        }}>
+          <span style={{ fontSize: "12px" }}>📎</span>
+          <span style={{ 
+            overflow: "hidden", 
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color: "#0c1a4b",
+            flex: 1
+          }}>
+            {attachment.name || 'Attachment'}
+          </span>
+          
+{/* Eye button for viewing */}
+<button
+  onClick={() => viewAttachment(attachment)}
+  style={{
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    padding: "2px 4px",
+    fontSize: "14px",
+    color: "#0c1a4b",
+    display: "flex",
+    alignItems: "center",
+    borderRadius: "4px",
+    transition: "all 0.2s"
+  }}
+  onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
+  onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+  title="View attachment"
+>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/>
+    <circle cx="12" cy="12" r="3"/>
+  </svg>
+</button>
+          
+{/* Download button */}
+<button
+  onClick={() => downloadAttachment(attachment)}
+  style={{
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    padding: "2px 4px",
+    fontSize: "16px",
+    color: "#0c1a4b",
+    display: "flex",
+    alignItems: "center",
+    borderRadius: "4px",
+    transition: "all 0.2s"
+  }}
+  onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
+  onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+  title="Download attachment"
+>
+  <FiDownload/>
+</button>
+        </div>
+      ))}
+    </div>
+  );
+})()}
                                                     </div>
                                                   )}
                                                 </div>
@@ -3310,6 +3488,239 @@ useEffect(() => {
               </div>
             </div>
           )}
+          {/* Attachment Preview Modal */}
+{previewAttachment && (
+  <div className="modal-overlay" onClick={closePreview} style={{ 
+    zIndex: 2000,
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center"
+  }}>
+    <div 
+      className="preview-modal" 
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        backgroundColor: "white",
+        padding: "14px",
+        borderRadius: "8px",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+        maxWidth: "90vw",
+        maxHeight: "95vh",
+        overflow: "hidden",
+        minWidth: "1200px",
+        display: "flex",
+        flexDirection: "column"
+      }}
+    >
+      <div style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: "15px",
+        borderBottom: "1px solid #eee",
+        paddingBottom: "5px"
+      }}>
+        <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "600" }}>
+          {previewAttachment.name || 'Attachment Preview'}
+        </h3>
+        <button 
+          onClick={closePreview}
+          style={{
+            background: "none",
+            border: "none",
+            fontSize: "20px",
+            cursor: "pointer",
+            padding: "0 5px"
+          }}
+        >
+          ✕
+        </button>
+      </div>
+      
+      <div style={{ 
+        marginBottom: "15px",
+        flex: 1,
+        overflow: "auto",
+        minHeight: "300px"
+      }}>
+        {(() => {
+          // Check if it's an image
+          let fileUrl = null;
+          let fileType = null;
+          
+          for (const key of Object.keys(previewAttachment)) {
+            const value = previewAttachment[key];
+            if (typeof value === 'string' && (value.startsWith('data:') || value.startsWith('http'))) {
+              fileUrl = value;
+              
+              // Determine file type from data URL or extension
+              if (value.startsWith('data:')) {
+                fileType = value.split(';')[0].split(':')[1];
+              } else {
+                const extension = value.split('.').pop()?.toLowerCase();
+                if (extension === 'pdf') fileType = 'application/pdf';
+                else if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(extension)) {
+                  fileType = 'image/' + extension;
+                }
+              }
+              break;
+            }
+          }
+          
+          if (fileUrl) {
+            // Handle PDF files
+            if (fileType === 'application/pdf' || fileUrl.includes('.pdf') || fileUrl.includes('application/pdf')) {
+              return (
+                <iframe
+                  src={fileUrl}
+                  style={{
+                    width: "100%",
+                    height: "70vh",
+                    border: "none"
+                  }}
+                  title="PDF Preview"
+                />
+              );
+            }
+            // Handle images
+            else if (fileType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(fileUrl)) {
+              return (
+                <img 
+                  src={fileUrl} 
+                  alt={previewAttachment.name || 'Preview'}
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: "70vh",
+                    objectFit: "contain",
+                    display: "block",
+                    margin: "0 auto"
+                  }}
+                />
+              );
+            }
+            // Handle text files
+            else if (fileType === 'text/plain' || fileUrl.includes('text/plain')) {
+              fetch(fileUrl)
+                .then(response => response.text())
+                .then(text => {
+                  document.getElementById('text-preview').innerText = text;
+                })
+                .catch(err => console.error('Error loading text file:', err));
+              
+              return (
+                <pre 
+                  id="text-preview"
+                  style={{
+                    width: "100%",
+                    height: "70vh",
+                    overflow: "auto",
+                    backgroundColor: "#f5f5f5",
+                    padding: "10px",
+                    borderRadius: "4px",
+                    fontFamily: "monospace",
+                    fontSize: "12px",
+                    whiteSpace: "pre-wrap",
+                    wordWrap: "break-word"
+                  }}
+                >
+                  Loading...
+                </pre>
+              );
+            }
+            // For other file types, show info and provide download button
+            else {
+              return (
+                <div style={{ textAlign: "center", padding: "40px 20px" }}>
+                  <div style={{ fontSize: "64px", marginBottom: "20px" }}>📄</div>
+                  <p style={{ fontSize: "16px", color: "#666", marginBottom: "10px" }}>
+                    This file type cannot be previewed directly.
+                  </p>
+                  <p style={{ fontSize: "14px", color: "#999", wordBreak: "break-all" }}>
+                    {previewAttachment.name || 'Unknown file'}
+                  </p>
+                  <p style={{ fontSize: "12px", color: "#999", wordBreak: "break-all", marginTop: "10px" }}>
+                    Type: {fileType || 'Unknown'}
+                  </p>
+                </div>
+              );
+            }
+          }
+          
+          return (
+            <div style={{ textAlign: "center", padding: "40px 20px" }}>
+              <p>No preview available</p>
+            </div>
+          );
+        })()}
+      </div>
+      
+      <div style={{
+        display: "flex",
+        justifyContent: "flex-end",
+        gap: "10px",
+        borderTop: "1px solid #eee",
+        paddingTop: "15px"
+      }}>
+        <button
+          onClick={closePreview}
+          style={{
+            padding: "8px 16px",
+            backgroundColor: "#990202",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: "pointer",
+            transition: "all 0.2s"
+          }}
+          onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#780101"}
+          onMouseOut={(e) => e.currentTarget.style.backgroundColor = "#990202"}
+        >
+          Close
+        </button>
+        <button
+          onClick={() => {
+            downloadAttachment(previewAttachment);
+            closePreview();
+          }}
+          style={{
+            padding: "8px 16px",
+            backgroundColor: "#0c1a4b",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px"
+          }}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M20 16.5a4.5 4.5 0 0 0-1.3-8.8 6 6 0 0 0-11.6 1.5A4 4 0 0 0 4 16.5" />
+            <path d="M12 12v7" />
+            <path d="M8.5 15.5 12 19l3.5-3.5" />
+          </svg>
+          Download
+        </button>
+      </div>
+    </div>
+  </div>
+)}
         </div>
       </div>
     </div>

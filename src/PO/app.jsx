@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import "src/PO-CSS/app.css";
 import dilgLogo from "src/assets/dilg-po.png";
 import dilgSeal from "src/assets/dilg-ph.png";
+import lgrcLogo from "src/assets/lgrc.png";
 import { auth } from "src/firebase";
 import { getDatabase, ref, get, set, update } from "firebase/database";
 import { 
@@ -572,13 +573,15 @@ if (!userData.verifiedAt || userData.verifiedAt < oneMinuteAgo) {
       <div className="left-panel">
         <div className="logo-top">
           <img src={dilgLogo} alt="Logo" className="top-logo" />
+          <img src={lgrcLogo} alt="Logo" className="top-logo" 
+          style={{height:"100px",width:"70px"}}/>
         </div>
 
         <h1 className="title">
           ONE{" "}
           <span className="highlight">
             MAR<span className="cyan">IND</span>
-            <span className="red">UQUE</span>
+            <span className="red">UQUE</span> <span className="white">AUDIT</span>
           </span>
           <br />
           TRACKING SYSTEM

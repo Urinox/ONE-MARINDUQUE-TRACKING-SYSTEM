@@ -3,6 +3,7 @@ import { db, auth} from "src/firebase";
 import "src/PO-CSS/po-indicators.css";
 import dilgLogo from "src/assets/dilg-po.png";
 import dilgSeal from "src/assets/dilg-ph.png";
+import lgrcLogo from "src/assets/lgrc.png";
 import { FiSave, FiTrash2, FiPlus, FiX } from "react-icons/fi";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ref, push, onValue, set, remove } from "firebase/database";
@@ -834,13 +835,14 @@ const handleSaveChanges = async () => {
 <div className={`sidebar ${sidebarOpen ? "" : "collapsed"}`}>
   <div className="encodesidebar-header">
     {sidebarOpen && (
-      <>
-        <img src={dilgSeal} alt="DILG Seal" style={{ height: "50px", width: "auto" }} />
-        <img src={dilgLogo} alt="DILG Logo" style={{ height: "50px", width: "auto" }} />
-        <h3>ONE <span className="yellow">MAR</span><span className="cyan">IND</span>
-        <span className="red">UQUE</span> TRACKING SYSTEM</h3>
-        <div className="sidebar-divider"></div>
-      </>
+              <>
+              <img src={dilgSeal} alt="DILG Seal" style={{ height: "50px", width: "auto" }} />
+              <img src={dilgLogo} alt="DILG Logo" style={{ height: "50px", width: "auto" }} />
+
+              <h3 style={{textAlign: "center", lineHeight: "1.4", marginLeft: "-15%",}}>ONE <span className="yellow">MAR</span><span className="cyan">IND</span>
+              <span className="red">UQUE</span>  <span className="white">AUDIT</span> TRACKING SYSTEM</h3>
+              <div className="sidebar-divider"></div>
+              </>
     )}
   </div>
 

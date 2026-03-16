@@ -29,12 +29,13 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  margin-left: -20px  ;
   margin-top: -5%;
-  margin-bottom: 5px; /* normal spacing */
+  margin-bottom: -10px; /* normal spacing */
 }
 
 .top-logo {
-  width: 150px;
+  width: 120px;
   height: auto;
 }
 
@@ -53,6 +54,10 @@
 
 .red {
   color: red; /* or #ff0000 */
+}
+
+.white {
+  color: #ffffff; /* or #ff0000 */
 }
 
 .highlight {
