@@ -208,8 +208,8 @@
 }
 
 .register-btn {
-  background-color: #f5c400;
-  color: black;
+  background-color: #d50303;
+  color: rgb(255, 255, 255);
   padding: 0.5rem 1rem;
   border: none;
   margin-top: 1rem;
@@ -218,9 +218,14 @@
   font-weight: bold;
   font-size: 16px;
 }
+.register-btn:hover {
+  background-color: #e1000087;
+  color: rgb(150, 150, 150);
+
+}
 
 .close-btn {
-  background: #ccc;
+  background-color: #f5c400;
   color: black;
   padding: 0.5rem 1rem;
   border: none;
@@ -229,6 +234,10 @@
   border-radius: 6px;
   font-weight: bold;
   font-size: 16px;
+}
+
+.close-btn:hover{
+  background-color: #f5c40089;
 }
 .register-form input{
   font-size: 15x;
@@ -344,24 +353,26 @@
 .verify-form label {
   display: block;
   margin-bottom: 8px;
-  color: #333;
+  color: #ffffff;
   font-weight: 500;
 }
 
 .verify-form input {
   width: 100%;
   padding: 12px;
-  border: 2px solid #ddd;
+  border: 2px solid #000000;
   border-radius: 6px;
-  font-size: 24px;
+  font-size: 20px;
   text-align: center;
   letter-spacing: 8px;
-  font-weight: bold;
+  font-weight: 500;
+  color:#cc0a0a;
 }
+
 
 .verify-btn {
   width: 100%;
-  padding: 14px;
+  padding: 10px;
   background: #28a745;
   color: white;
   border: none;
@@ -389,10 +400,14 @@
 .resend-btn {
   background: none;
   border: none;
-  color: #007bff;
+  color: #ffffff;
   text-decoration: underline;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 16px;
+}
+
+.resend-btn:hover{
+  color:rgba(187, 187, 255, 0.674);
 }
 
 /* Add to your app.css */
@@ -404,7 +419,7 @@
   display: block;
   margin-bottom: 8px;
   font-weight: 500;
-  color: #333;
+  color: #ffffff;
 }
 
 .password-prompt-form .password-wrapper {

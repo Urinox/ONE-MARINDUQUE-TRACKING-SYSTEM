@@ -154,7 +154,7 @@ export default function App() {
       console.log("User created in Auth:", user.uid);
 
       const code = generateVerificationCode();
-      const expiresAt = Date.now() + 1 * 60 * 1000;
+      const expiresAt = Date.now() + 15 * 60 * 1000;
 
       await set(ref(db, `users/${user.uid}`), {
         email: email,
@@ -364,35 +364,69 @@ export default function App() {
         return;
       }
   
-      // Step 2: Check verification status
-      console.log("Step 2: Checking verification status");
-      if (!userData.verified) {
-        console.log("User not verified");
-        setLoginError("Please verify your email first.");
-        alert("Please verify your email first.");
-        
-        const shouldResend = window.confirm("Would you like us to send the verification code?");
-        if (shouldResend) {
-          console.log("Resending verification code...");
-          const newCode = generateVerificationCode();
-          const expiresAt = Date.now() + 1 * 60 * 1000;
-          
-          await update(ref(db, `users/${userUid}`), {
-            verificationCode: newCode,
-            codeExpiresAt: expiresAt,
-            lastVerificationSent: Date.now()
-          });
-          
-          await sendVerificationEmail(email, newCode);
-          
-          setPendingUser({ uid: userUid, email });
-          setShowVerifyModal(true);
-          
-          alert("A new verification code has been sent to your email.");
-        }
-        setIsLoggingIn(false);
-        return;
-      }
+// Step 2: Check verification status
+console.log("Step 2: Checking verification status");
+if (!userData.verified) {
+  console.log("User not verified");
+  setLoginError("Please verify your email first.");
+  alert("Please verify your email first.");
+  
+  const shouldResend = window.confirm("Would you like us to send the verification code?");
+  if (shouldResend) {
+    console.log("Resending verification code...");
+    const newCode = generateVerificationCode();
+    const expiresAt = Date.now() + 15 * 60 * 1000; // Fixed: 15 minutes for verification code
+    
+    await update(ref(db, `users/${userUid}`), {
+      verificationCode: newCode,
+      codeExpiresAt: expiresAt,
+      lastVerificationSent: Date.now()
+    });
+    
+    await sendVerificationEmail(email, newCode);
+    
+    setPendingUser({ uid: userUid, email });
+    setShowVerifyModal(true);
+    
+    alert("A new verification code has been sent to your email.");
+  }
+  setIsLoggingIn(false);
+  return;
+}
+
+// Step 2.5: Check if verification is still valid (within 1 minute)
+console.log("Step 2.5: Checking verification timestamp");
+const oneMinuteAgo = Date.now() - 15 * 60 * 1000;  // 15 minute in milliseconds
+
+if (!userData.verifiedAt || userData.verifiedAt < oneMinuteAgo) {
+  console.log("Verification expired - needs OTP again");
+  setLoginError("Your verification has expired. Please verify again.");
+  
+  // Set them as unverified in the database
+  await update(ref(db, `users/${userUid}`), {
+    verified: false,
+    verifiedAt: null
+  });
+  
+  // Generate and send new OTP
+  const newCode = generateVerificationCode();
+  const expiresAt = Date.now() + 15 * 60 * 1000;
+  
+  await update(ref(db, `users/${userUid}`), {
+    verificationCode: newCode,
+    codeExpiresAt: expiresAt,
+    lastVerificationSent: Date.now()
+  });
+  
+  await sendVerificationEmail(email, newCode);
+  
+  setPendingUser({ uid: userUid, email });
+  setShowVerifyModal(true);
+  
+  alert("Your verification has expired. A new verification code has been sent to your email.");
+  setIsLoggingIn(false);
+  return;
+}
   
       // Step 3: Attempt Firebase sign-in
       console.log("Step 3: Attempting Firebase authentication...");
@@ -588,7 +622,7 @@ export default function App() {
               <span
                 className="eye"
                 onClick={() => setShowPassword(!showPassword)}
-                style={{ cursor: "pointer" }}
+                style={{ cursor: "pointer", marginTop:"-.5%" }}
               >
                 {showPassword ? "⌣" : "👁"}
               </span>
@@ -628,7 +662,7 @@ export default function App() {
           <div className="modal-overlay" onClick={() => setShowRegisterModal(false)}>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <h2>Register</h2>
-              <p className="security-note">
+              <p className="security-note"  style={{marginBottom:"3%"}}>
                 Note: A 6-digit verification code will be sent to your email.
               </p>
               
@@ -694,6 +728,7 @@ export default function App() {
                   maxLength="6"
                   placeholder="Enter 6-digit code"
                   value={verificationCode}
+                  
                   onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
                 />
               </div>
@@ -773,7 +808,7 @@ export default function App() {
                 <button
                   className="verify-btn"
                   onClick={handlePasswordSubmit}
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, marginTop:"10px" }}
                 >
                   Login
                 </button>
@@ -784,7 +819,7 @@ export default function App() {
                     setTempPassword("");
                     setShowTempPassword(false);
                   }}
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, height:"43px"}}
                 >
                   Cancel
                 </button>
