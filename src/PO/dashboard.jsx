@@ -896,6 +896,80 @@ const handleSignOut = () => {
   }
 };
 
+// Improved version with real-time updates
+useEffect(() => {
+  if (!auth.currentUser) return;
+
+  const profileRef = ref(db, `profiles/${auth.currentUser.uid}`);
+  
+  const unsubscribe = onValue(profileRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const profile = snapshot.val();
+      setProfileData({
+        name: profile.name || "",
+        email: profile.email || auth.currentUser.email,
+        image: profile.image || ""
+      });
+      
+      // Also update editProfileData for consistency
+      setEditProfileData(prev => ({
+        ...prev,
+        name: profile.name || "",
+        email: profile.email || auth.currentUser.email,
+        image: profile.image || ""
+      }));
+    } else {
+      // No profile exists yet, use default values
+      setProfileData({
+        name: "",
+        email: auth.currentUser.email,
+        image: ""
+      });
+    }
+  });
+  
+  return () => unsubscribe();
+}, [auth.currentUser?.uid]);
+
+// Add this useEffect to fetch the current user's profile data
+useEffect(() => {
+  if (!auth.currentUser) return;
+
+  const fetchUserProfile = async () => {
+    try {
+      const profileRef = ref(db, `profiles/${auth.currentUser.uid}`);
+      const profileSnapshot = await get(profileRef);
+      
+      if (profileSnapshot.exists()) {
+        const profile = profileSnapshot.val();
+        setProfileData({
+          name: profile.name || "",
+          email: profile.email || auth.currentUser.email,
+          image: profile.image || ""
+        });
+        
+        // Also update editProfileData for consistency
+        setEditProfileData({
+          name: profile.name || "",
+          email: profile.email || auth.currentUser.email,
+          image: profile.image || ""
+        });
+      } else {
+        // No profile exists yet, use default values
+        setProfileData({
+          name: "",
+          email: auth.currentUser.email,
+          image: ""
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+    }
+  };
+
+  fetchUserProfile();
+}, [auth.currentUser?.uid]);
+
   return (
     <div className="dashboard-scale">
       <div className="dashboard">
