@@ -2368,8 +2368,8 @@ useEffect(() => {
               <>
                 <img src={dilgSeal} alt="DILG Seal" style={{ height: "50px", width: "auto" }} />
                 <img src={dilgLogo} alt="DILG Logo" style={{ height: "50px", width: "auto" }} />
-                <h3 style={{textAlign: "center", lineHeight: "1.4", marginLeft: "-15%",}}>ONE <span className="yellow">MAR</span><span className="cyan">IND</span>
-                <span className="red">UQUE</span>  <span className="white">AUDIT</span> TRACKING SYSTEM</h3>
+                <h3 style={{textAlign: "center", lineHeight: "1.1", marginLeft: "-20%",}}>STRATEGIC KEY FOR <span className="yellow">ASS</span><span className="cyan">ESS</span>
+                <span className="red">MENT</span>  <span className="white">AND</span> TRACKING</h3>
                 <div className="sidebar-divider"></div>
               </>
             )}
@@ -2762,18 +2762,27 @@ useEffect(() => {
                                               }
                                               
                                               {(main.fieldType === "short" || main.fieldType === "integer" || main.fieldType === "date") && (
-                                                <div>
-                                                  {answer?.value ? (
-                                                    <span>
-                                                      {answer.value}
-                                                    </span>
-                                                  ) : (
-                                                    <span style={{ fontStyle: "italic", color: "gray" }}>
-                                                      No answer provided
-                                                    </span>
-                                                  )}
-                                                </div>
-                                              )}
+  <div>
+    {answer?.value ? (
+      <span>
+        {main.fieldType === "integer" 
+          ? new Intl.NumberFormat('en-US').format(parseFloat(answer.value))
+          : main.fieldType === "date" 
+            ? new Date(answer.value).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })
+            : answer.value
+        }
+      </span>
+    ) : (
+      <span style={{ fontStyle: "italic", color: "gray" }}>
+        No answer provided
+      </span>
+    )}
+  </div>
+)}
                                             </div>
                                           </div>
                                         </div>
@@ -3028,18 +3037,27 @@ useEffect(() => {
                                             }
                                             
                                             {(sub.fieldType === "short" || sub.fieldType === "integer" || sub.fieldType === "date") && (
-                                              <div>
-                                                {answer?.value ? (
-                                                  <span>
-                                                    {answer.value}
-                                                  </span>
-                                                ) : (
-                                                  <span style={{ fontStyle: "italic", color: "gray" }}>
-                                                    No answer provided
-                                                  </span>
-                                                )}
-                                              </div>
-                                            )}
+  <div>
+    {answer?.value ? (
+      <span>
+        {sub.fieldType === "integer" 
+          ? new Intl.NumberFormat('en-US').format(parseFloat(answer.value))
+          : sub.fieldType === "date" 
+            ? new Date(answer.value).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })
+            : answer.value
+        }
+      </span>
+    ) : (
+      <span style={{ fontStyle: "italic", color: "gray" }}>
+        No answer provided
+      </span>
+    )}
+  </div>
+)}
                                           </div>
                                         </div>
 
@@ -3288,27 +3306,28 @@ useEffect(() => {
                                                         );
                                                       })}
 
-                                                      {/* Short Answer, Integer, Date */}
-                                                      {(nested.fieldType === "short" || nested.fieldType === "integer" || nested.fieldType === "date") && (
-                                                        <div>
-                                                          {nestedAnswer?.value ? (
-                                                            <span>
-                                                              {nested.fieldType === "date" 
-                                                                ? new Date(nestedAnswer.value).toLocaleDateString("en-US", {
-                                                                    year: "numeric",
-                                                                    month: "long",
-                                                                    day: "numeric",
-                                                                  })
-                                                                : nestedAnswer.value
-                                                              }
-                                                            </span>
-                                                          ) : (
-                                                            <span style={{ fontStyle: "italic", color: "gray" }}>
-                                                              No answer provided
-                                                            </span>
-                                                          )}
-                                                        </div>
-                                                      )}
+{(nested.fieldType === "short" || nested.fieldType === "integer" || nested.fieldType === "date") && (
+  <div>
+    {nestedAnswer?.value ? (
+      <span>
+        {nested.fieldType === "integer" 
+          ? new Intl.NumberFormat('en-US').format(parseFloat(nestedAnswer.value))
+          : nested.fieldType === "date" 
+            ? new Date(nestedAnswer.value).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })
+            : nestedAnswer.value
+        }
+      </span>
+    ) : (
+      <span style={{ fontStyle: "italic", color: "gray" }}>
+        No answer provided
+      </span>
+    )}
+  </div>
+)}
 
                                                       {!nested.fieldType && (
                                                         <span style={{ fontStyle: "italic", color: "gray" }}>

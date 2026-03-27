@@ -37,8 +37,9 @@ body {
 
 
 .sidebar-header img {
-  align-items: center;
-  margin-left: 5%;     /* vertical centering */
+  align-items: center;  
+  margin-left: 14%;
+  margin-right: -22%;
 }
 
 .cyan {

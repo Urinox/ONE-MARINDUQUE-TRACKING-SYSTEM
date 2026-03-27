@@ -113,8 +113,8 @@ export default function App() {
         to_name: email.split('@')[0],
         passcode: code,
         email: email,
-        from_name: "One Marinduque Tracking System",
-        from_email: "noreply@marinduque.gov.ph",
+        from_name: "SUKAT: Strategic Key For Assessment and Tracking",
+        from_email: "plgrcmarinduque@gmail.com",
         reply_to: "support@marinduque.gov.ph"
       };
   
@@ -578,13 +578,12 @@ if (!userData.verifiedAt || userData.verifiedAt < oneMinuteAgo) {
         </div>
 
         <h1 className="title">
-          ONE{" "}
+        STRATEGIC KEY FOR {" "}<br />
           <span className="highlight">
-            MAR<span className="cyan">IND</span>
-            <span className="red">UQUE</span> <span className="white">AUDIT</span>
+            ASS<span className="cyan">ESS</span>
+            <span className="red">MENT</span> <span className="white">AND </span>
           </span>
-          <br />
-          TRACKING SYSTEM
+          TRACKING
         </h1>
         
         {loginError && (

@@ -1,1 +1,0 @@
-await set(ref(db, `notifications/${selectedYear}/MLGO/${mlgoUid}/${mlgoNotificationId}`), mlgoNotificationData); 

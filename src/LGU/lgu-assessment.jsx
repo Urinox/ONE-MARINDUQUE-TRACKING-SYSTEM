@@ -2187,8 +2187,8 @@ const handleSaveAnswers = async () => {
               <>
                 <img src={dilgSeal} alt="DILG Seal" style={{ height: "50px", width: "auto" }} />
                 <img src={dilgLogo} alt="DILG Logo" style={{ height: "50px", width: "auto" }} />
-                <h3 style={{textAlign: "center", lineHeight: "1.4", marginLeft: "-15%",}}>ONE <span className="yellow">MAR</span><span className="cyan">IND</span>
-                <span className="red">UQUE</span>  <span className="white">AUDIT</span> TRACKING SYSTEM</h3>
+                <h3 style={{textAlign: "center", lineHeight: "1.1", marginLeft: "-20%",}}>STRATEGIC KEY FOR <span className="yellow">ASS</span><span className="cyan">ESS</span>
+                <span className="red">MENT</span>  <span className="white">AND</span> TRACKING</h3>
                 <div className="sidebar-divider"></div>
               </>
             )}
@@ -2678,21 +2678,22 @@ const handleSaveAnswers = async () => {
                                       />
                                     )}
 
-                                    {main.fieldType === "integer" && (
-                                      <input
-                                        type="number"
-                                        style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #ccc" }}
-                                        placeholder="Enter a number..."
-                                        value={answer?.value || ""}
-                                        onChange={(e) => handleAnswerChange(
-                                          record.firebaseKey,
-                                          index,
-                                          main.title,
-                                          e.target.value
-                                        )}
-                                        disabled={hasSubmitted || metadata?.forwardedToPO}
-                                      />
-                                    )}
+{main.fieldType === "integer" && (
+  <input
+    type="number"
+    step="any"
+    style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #ccc" }}
+    placeholder="Enter a number..."
+    value={answer?.value || ""}
+    onChange={(e) => handleAnswerChange(
+      record.firebaseKey,
+      index,
+      main.title,
+      e.target.value
+    )}
+    disabled={hasSubmitted || metadata?.forwardedToPO}
+  />
+)}
 
                                     {main.fieldType === "date" && (
                                       <input
@@ -3015,21 +3016,22 @@ const handleSaveAnswers = async () => {
                                     />
                                   )}
 
-                                  {sub.fieldType === "integer" && (
-                                    <input
-                                      type="number"
-                                      style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #ccc" }}
-                                      placeholder="Enter a number..."
-                                      value={answer?.value || ""}
-                                      onChange={(e) => handleAnswerChange(
-                                        record.firebaseKey,
-                                        `sub_${index}`,
-                                        sub.title,
-                                        e.target.value
-                                      )}
-                                      disabled={hasSubmitted || metadata?.forwardedToPO}
-                                    />
-                                  )}
+{sub.fieldType === "integer" && (
+  <input
+    type="number"
+    step="any"
+    style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #ccc" }}
+    placeholder="Enter a number..."
+    value={answer?.value || ""}
+    onChange={(e) => handleAnswerChange(
+      record.firebaseKey,
+      `sub_${index}`,
+      sub.title,
+      e.target.value
+    )}
+    disabled={hasSubmitted || metadata?.forwardedToPO}
+  />
+)}
 
                                   {sub.fieldType === "date" && (
                                     <input
@@ -3340,22 +3342,22 @@ const handleSaveAnswers = async () => {
                                               />
                                             )}
 
-                                            {/* Nested Integer */}
-                                            {nested.fieldType === "integer" && (
-                                              <input
-                                                type="number"
-                                                style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #ccc" }}
-                                                placeholder="Enter a number..."
-                                                value={nestedAnswer?.value || ""}
-                                                onChange={(e) => handleAnswerChange(
-                                                  record.firebaseKey,
-                                                  `sub_${index}_nested_${nestedIndex}`,
-                                                  nested.title,
-                                                  e.target.value
-                                                )}
-                                                disabled={hasSubmitted || metadata?.forwardedToPO}
-                                              />
-                                            )}
+{nested.fieldType === "integer" && (
+  <input
+    type="number"
+    step="any"
+    style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #ccc" }}
+    placeholder="Enter a number..."
+    value={nestedAnswer?.value || ""}
+    onChange={(e) => handleAnswerChange(
+      record.firebaseKey,
+      `sub_${index}_nested_${nestedIndex}`,
+      nested.title,
+      e.target.value
+    )}
+    disabled={hasSubmitted || metadata?.forwardedToPO}
+  />
+)}
 
                                             {/* Nested Date */}
                                             {nested.fieldType === "date" && (
