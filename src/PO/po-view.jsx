@@ -1531,140 +1531,96 @@ useEffect(() => {
     try {
       setLoading(true);
       
-      // Get the municipality from state
+      // Get the municipality and LGU name from state
       const municipality = location.state.municipality;
       const lguName = location.state.lguName || municipality;
       const cleanName = `${lguName.replace(/[.#$\[\]]/g, '_')}_${selectedAssessmentId}`;
       
-      console.log("Looking for assessment in verified:", municipality);
+      console.log("Loading assessment for:", lguName);
       
-// In po-view.jsx, update the verified assessment section in the loadLGUAnswers function:
-
-// First check if this is a verified assessment
-if (location.state?.isVerified) {
-  console.log("📋 Loading verified assessment from state:", location.state);
-  
-  // Check if we have attachments in the state
-  let attachmentsByIndicator = location.state.attachmentsByIndicator || {};
-  
-  // If attachments are not in state, try to fetch them from Firebase
-  if (Object.keys(attachmentsByIndicator).length === 0) {
-    console.log("📎 No attachments in state, fetching from Firebase...");
-    try {
-      const lguName = location.state.lguName || municipality;
-      const cleanName = `${lguName.replace(/[.#$\[\]]/g, '_')}_${selectedAssessmentId}`;
-      
-      const attachmentsRef = ref(
-        db,
-        `attachments/${selectedYear}/LGU/${cleanName}`
-      );
+      // ===== STEP 1: LOAD ATTACHMENTS FROM FIREBASE =====
+      let attachmentsByIndicator = {};
+      const attachmentsRef = ref(db, `attachments/${selectedYear}/LGU/${cleanName}`);
       const attachmentsSnapshot = await get(attachmentsRef);
       
       if (attachmentsSnapshot.exists()) {
         const attachments = attachmentsSnapshot.val();
-        attachmentsByIndicator = {};
+        console.log("📎 Attachments found:", Object.keys(attachments).length);
         
-        console.log("📎 Attachments from Firebase for verified assessment:", attachments);
-        
-        // Parse attachments using the same logic as in the forwarded section
         Object.keys(attachments).forEach(key => {
           const attachment = attachments[key];
           
-          const keyParts = key.split('_');
-          
-          if (key.includes('_sub_')) {
-            const assessmentId = keyParts[0];
-            const tabId = keyParts[1];
-            const recordKey = keyParts[2];
-            
-            const subIndex = keyParts.indexOf('sub') + 1;
-            const subNumber = keyParts[subIndex];
-            
-            const titleParts = keyParts.slice(subIndex + 1, -1);
-            const title = titleParts.join('_');
-            
-            const indicatorId = `${recordKey}_sub_${subNumber}_${title}`;
-            
-            if (!attachmentsByIndicator[indicatorId]) {
-              attachmentsByIndicator[indicatorId] = [];
+          // Remove timestamp from the end of the key
+          let keyWithoutTimestamp = key;
+          const lastUnderscoreIndex = key.lastIndexOf('_');
+          if (lastUnderscoreIndex > -1) {
+            const possibleTimestamp = key.substring(lastUnderscoreIndex + 1);
+            if (/^\d+$/.test(possibleTimestamp) && possibleTimestamp.length >= 10) {
+              keyWithoutTimestamp = key.substring(0, lastUnderscoreIndex);
             }
-            
-            attachmentsByIndicator[indicatorId].push({
-              key: key,
-              name: attachment.fileName || attachment.name || 'Attachment',
-              url: attachment.url || attachment.fileData,
-              fileData: attachment.fileData || attachment.url,
-              fileSize: attachment.fileSize,
-              uploadedAt: attachment.uploadedAt
-            });
-          } else {
-            const assessmentId = keyParts[0];
-            const tabId = keyParts[1];
-            const recordKey = keyParts[2];
-            const mainIndex = keyParts[3];
-            
-            const titleParts = keyParts.slice(4, -1);
-            const title = titleParts.join('_');
-            
-            const indicatorId = `${recordKey}_${mainIndex}_${title}`;
-            
-            if (!attachmentsByIndicator[indicatorId]) {
-              attachmentsByIndicator[indicatorId] = [];
-            }
-            
-            attachmentsByIndicator[indicatorId].push({
-              key: key,
-              name: attachment.fileName || attachment.name || 'Attachment',
-              url: attachment.url || attachment.fileData,
-              fileData: attachment.fileData || attachment.url,
-              fileSize: attachment.fileSize,
-              uploadedAt: attachment.uploadedAt
-            });
           }
+          
+          const indicatorId = keyWithoutTimestamp;
+          
+          if (!attachmentsByIndicator[indicatorId]) {
+            attachmentsByIndicator[indicatorId] = [];
+          }
+          
+          attachmentsByIndicator[indicatorId].push({
+            key: key,
+            name: attachment.fileName || attachment.name || 'Attachment',
+            url: attachment.url || attachment.fileData,
+            fileData: attachment.fileData || attachment.url,
+            fileSize: attachment.fileSize,
+            uploadedAt: attachment.uploadedAt,
+            fileType: attachment.fileType
+          });
         });
-        
-        console.log("📎 Parsed attachments for verified assessment:", attachmentsByIndicator);
       }
-    } catch (error) {
-      console.error("Error fetching attachments for verified assessment:", error);
-    }
-  }
-  
-  const verifiedLgu = {
-    id: 1,
-    lguName: lguName,
-    year: selectedYear,
-    assessmentId: selectedAssessmentId,
-    assessment: selectedAssessment,
-    status: "Verified",
-    submission: location.state.submission || new Date().toLocaleDateString(),
-    deadline: location.state.deadline || "Not set",
-    data: location.state.data || {},
-    municipality: municipality,
-    lguUid: location.state.lguUid,
-    isVerified: true,
-    verifiedBy: location.state.verifiedBy,
-    verifiedAt: location.state.verifiedAt,
-    attachmentsByIndicator: attachmentsByIndicator // Use the attachments we found
-  };
-  
-  setLguAnswers([verifiedLgu]);
-  setForwardedAssessment(verifiedLgu);
-  setIsVerified(true);
-  setIsReturned(false);
-  setLoading(false);
-  return;
-}
       
-      // If not found in verified, fetch from forwarded
+      // ===== STEP 2: LOAD THE ASSESSMENT DATA =====
+      let lguData = null;
+      
+      // First, check if this is a verified assessment (from state)
+      if (location.state?.isVerified) {
+        console.log("Loading VERIFIED assessment from state");
+        
+        lguData = {
+          id: 1,
+          lguName: lguName,
+          year: selectedYear,
+          assessmentId: selectedAssessmentId,
+          assessment: selectedAssessment,
+          status: "Verified",
+          submission: location.state.submission || new Date().toLocaleDateString(),
+          deadline: location.state.deadline || "Not set",
+          data: location.state.data || {},
+          municipality: municipality,
+          lguUid: location.state.lguUid,
+          isVerified: true,
+          verifiedBy: location.state.verifiedBy,
+          verifiedAt: location.state.verifiedAt,
+          attachmentsByIndicator: attachmentsByIndicator
+        };
+        
+        setLguAnswers([lguData]);
+        setForwardedAssessment(lguData);
+        setIsVerified(true);
+        setIsReturned(false);
+        setLoading(false);
+        return;
+      }
+      
+      // If not verified, load from forwarded node
+      console.log("Loading FORWARDED assessment from Firebase");
       const currentUserUid = auth.currentUser.uid;
       const forwardedRef = ref(db, `forwarded/${currentUserUid}`);
       const snapshot = await get(forwardedRef);
       
       if (snapshot.exists()) {
         const forwardedData = snapshot.val();
-        
         let foundAssessment = null;
+        
         Object.keys(forwardedData).forEach(key => {
           const item = forwardedData[key];
           if (item.lguUid === location.state.lguUid && 
@@ -1675,9 +1631,7 @@ if (location.state?.isVerified) {
         });
         
         if (foundAssessment) {
-          const municipality = location.state?.municipality || foundAssessment.lguName || "Unknown";
-          
-          const lguData = {
+          lguData = {
             id: 1,
             lguName: foundAssessment.lguName || municipality,
             year: foundAssessment.year,
@@ -1692,99 +1646,8 @@ if (location.state?.isVerified) {
             forwardedBy: foundAssessment.forwardedBy,
             forwardedAt: foundAssessment.forwardedAt,
             lguUid: foundAssessment.lguUid,
-            attachmentsByIndicator: {}
+            attachmentsByIndicator: attachmentsByIndicator
           };
-          
-          // IMPORTANT: Check if this assessment has been returned before
-          const answersRef = ref(db, `answers/${selectedYear}/LGU/${cleanName}`);
-          const answersSnapshot = await get(answersRef);
-          
-          let hasBeenReturned = false;
-          if (answersSnapshot.exists()) {
-            const answersData = answersSnapshot.val();
-            const metadata = answersData._metadata || {};
-            hasBeenReturned = metadata.returnedToMLGO === true;
-            
-            console.log("Metadata check:", {
-              returnedToMLGO: metadata.returnedToMLGO,
-              hasBeenReturned
-            });
-          }
-          
-          setIsReturned(false);
-          
-        const attachmentsRef = ref(
-          db,
-          `attachments/${selectedYear}/LGU/${cleanName}`
-        );
-        const attachmentsSnapshot = await get(attachmentsRef);
-        
-        if (attachmentsSnapshot.exists()) {
-          const attachments = attachmentsSnapshot.val();
-          const attachmentsByIndicator = {};
-          
-          Object.keys(attachments).forEach(key => {
-            const attachment = attachments[key];
-            const keyParts = key.split('_');
-            
-            let indicatorId = '';
-            
-            // Get the recordKey (this should be at index 3 based on your logs)
-            const recordKey = keyParts[3];
-            
-            // Check if this is a sub-indicator attachment (contains 'sub')
-            if (key.includes('_sub_')) {
-              // Find the index of 'sub' in the key parts
-              const subIndex = keyParts.findIndex(part => part === 'sub');
-              
-              if (subIndex !== -1) {
-                // The sub number is right after 'sub'
-                const subNumber = keyParts[subIndex + 1];
-                
-                // Check if this is also a nested indicator
-                if (key.includes('_nested_')) {
-                  const nestedIndex = keyParts.findIndex(part => part === 'nested');
-                  if (nestedIndex !== -1) {
-                    const nestedNumber = keyParts[nestedIndex + 1];
-                    // For nested: title parts start after nestedNumber
-                    const titleParts = keyParts.slice(nestedIndex + 2, -1);
-                    const rawTitle = titleParts.join('_');
-                    indicatorId = `${recordKey}_sub_${subNumber}_nested_${nestedNumber}_${rawTitle}`;
-                  }
-                } else {
-                  // For regular sub-indicator: title parts start after subNumber
-                  const titleParts = keyParts.slice(subIndex + 2, -1);
-                  const rawTitle = titleParts.join('_');
-                  indicatorId = `${recordKey}_sub_${subNumber}_${rawTitle}`;
-                }
-              }
-            } 
-            // Main indicator
-            else {
-              const mainIndex = keyParts[4];
-              const titleParts = keyParts.slice(5, -1);
-              const rawTitle = titleParts.join('_');
-              indicatorId = `${recordKey}_${mainIndex}_${rawTitle}`;
-            }
-            
-            if (indicatorId) {
-              if (!attachmentsByIndicator[indicatorId]) {
-                attachmentsByIndicator[indicatorId] = [];
-              }
-              
-              attachmentsByIndicator[indicatorId].push({
-                key: key,
-                name: attachment.fileName || attachment.name || 'Attachment',
-                url: attachment.url || attachment.fileData,
-                fileData: attachment.fileData || attachment.url,
-                fileSize: attachment.fileSize,
-                uploadedAt: attachment.uploadedAt
-              });
-            }
-          });
-          
-          lguData.attachmentsByIndicator = attachmentsByIndicator;
-        }
           
           setLguAnswers([lguData]);
           setForwardedAssessment(foundAssessment);
@@ -1795,6 +1658,7 @@ if (location.state?.isVerified) {
       } else {
         alert("No assessments found.");
       }
+      
     } catch (error) {
       console.error("Error loading assessment:", error);
       alert("Error loading assessment: " + error.message);
@@ -2683,10 +2547,31 @@ useEffect(() => {
   const baseKey = getAnswerKey(record, index, main.title);
   const answer = lgu.data?.[radioKey] ?? lgu.data?.[baseKey];
   
-  // IMPORTANT: Use the EXACT same format as when storing attachments
-  // DO NOT sanitize - keep the title with spaces
-  const indicatorId = `${record.firebaseKey}_${index}_${main.title}`;
-  const indicatorAttachments = lgu.attachmentsByIndicator?.[indicatorId] || [];
+// Try multiple patterns to find attachments (matching MLGO View)
+const attachmentsByIndicator = lgu.attachmentsByIndicator || {};
+
+// Pattern 1: Original format (without assessment ID)
+const pattern1 = `${record.firebaseKey}_${index}_${main.title}`;
+// Pattern 2: With underscores instead of spaces
+const pattern2 = `${record.firebaseKey}_${index}_${main.title.replace(/\s+/g, '_')}`;
+// Pattern 3: With assessment ID and tab ID (matches MLGO)
+const pattern3 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_${index}_${main.title}`;
+// Pattern 4: With assessment ID, tab ID, and underscores
+const pattern4 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_${index}_${main.title.replace(/\s+/g, '_')}`;
+
+let indicatorAttachments = attachmentsByIndicator[pattern1] || 
+                          attachmentsByIndicator[pattern2] || 
+                          attachmentsByIndicator[pattern3] || 
+                          attachmentsByIndicator[pattern4] || [];
+
+// If still not found, search through all keys
+if (indicatorAttachments.length === 0) {
+  Object.keys(attachmentsByIndicator).forEach(key => {
+    if (key.includes(`${record.firebaseKey}_${index}_`)) {
+      indicatorAttachments = [...indicatorAttachments, ...attachmentsByIndicator[key]];
+    }
+  });
+}
   
   return (
                                       <div key={index} className="reference-wrapper">
@@ -2854,101 +2739,108 @@ useEffect(() => {
           gap: "6px",
           width: "100%"
         }}>
-          {(() => {
-            const indicatorId = `${record.firebaseKey}_${index}_${main.title}`;
-            const indicatorAttachments = lgu.attachmentsByIndicator?.[indicatorId] || [];
-            
-            return indicatorAttachments.length > 0 && (
-              <div style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "8px",
-                width: "100%"
-              }}>
-                {indicatorAttachments.map((attachment, idx) => (
-                  <div key={idx} style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px",
-                    backgroundColor: "#e8f5e9",
-                    padding: "4px 8px",
-                    borderRadius: "16px",
-                    fontSize: "11px",
-                    border: "1px solid #c8e6c9",
-                    maxWidth: "900px"
-                  }}>
-                    <span style={{ fontSize: "12px" }}>📎</span>
-                    <span style={{ 
-                      overflow: "hidden", 
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      color: "#0c1a4b",
-                      flex: 1
-                    }}>
-                      {attachment.name || 'Attachment'}
-                    </span>
-                    
-                    {/* Eye button for viewing */}
-                    <button
-                      onClick={() => viewAttachment(attachment)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        padding: "2px 4px",
-                        fontSize: "14px",
-                        color: "#0c1a4b",
-                        display: "flex",
-                        alignItems: "center",
-                        borderRadius: "4px",
-                        transition: "all 0.2s"
-                      }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                      title="View attachment"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/>
-                        <circle cx="12" cy="12" r="3"/>
-                      </svg>
-                    </button>
-                    
-                    {/* Download button */}
-                    <button
-                      onClick={() => downloadAttachment(attachment)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        padding: "2px 4px",
-                        fontSize: "16px",
-                        color: "#0c1a4b",
-                        display: "flex",
-                        alignItems: "center",
-                        borderRadius: "4px",
-                        transition: "all 0.2s"
-                      }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                      title="Download attachment"
-                    >
-                      <FiDownload/>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
+{(() => {
+  const attachmentsByIndicator = lgu.attachmentsByIndicator || {};
+  
+  // Try multiple patterns to find attachments (same as in the lookup)
+  const pattern1 = `${record.firebaseKey}_${index}_${main.title}`;
+  const pattern2 = `${record.firebaseKey}_${index}_${main.title.replace(/\s+/g, '_')}`;
+  const pattern3 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_${index}_${main.title}`;
+  const pattern4 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_${index}_${main.title.replace(/\s+/g, '_')}`;
+  
+  let indicatorAttachments = attachmentsByIndicator[pattern1] || 
+                            attachmentsByIndicator[pattern2] || 
+                            attachmentsByIndicator[pattern3] || 
+                            attachmentsByIndicator[pattern4] || [];
+  
+  // If still not found, search through all keys
+  if (indicatorAttachments.length === 0) {
+    Object.keys(attachmentsByIndicator).forEach(key => {
+      if (key.includes(`${record.firebaseKey}_${index}_`)) {
+        indicatorAttachments = [...indicatorAttachments, ...attachmentsByIndicator[key]];
+      }
+    });
+  }
+  
+  return indicatorAttachments.length > 0 && (
+    <div style={{
+      display: "flex",
+      flexWrap: "wrap",
+      gap: "8px",
+      width: "100%"
+    }}>
+      {indicatorAttachments.map((attachment, idx) => (
+        <div key={idx} style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          backgroundColor: "#e8f5e9",
+          padding: "4px 8px",
+          borderRadius: "16px",
+          fontSize: "11px",
+          border: "1px solid #c8e6c9",
+          maxWidth: "900px"
+        }}>
+          <span style={{ fontSize: "12px" }}>📎</span>
+          <span style={{ 
+            overflow: "hidden", 
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            color: "#0c1a4b",
+            flex: 1
+          }}>
+            {attachment.name || 'Attachment'}
+          </span>
+          
+          <button
+            onClick={() => viewAttachment(attachment)}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "2px 4px",
+              fontSize: "14px",
+              color: "#0c1a4b",
+              display: "flex",
+              alignItems: "center",
+              borderRadius: "4px",
+              transition: "all 0.2s"
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+            title="View attachment"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+          
+          <button
+            onClick={() => downloadAttachment(attachment)}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "2px 4px",
+              fontSize: "16px",
+              color: "#0c1a4b",
+              display: "flex",
+              alignItems: "center",
+              borderRadius: "4px",
+              transition: "all 0.2s"
+            }}
+            onMouseOver={(e) => e.currentTarget.style.backgroundColor = "#8ebd98"}
+            onMouseOut={(e) => e.currentTarget.style.backgroundColor = "transparent"}
+            title="Download attachment"
+          >
+            <FiDownload/>
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+})()}
         </div>
       </div>
     </div>
@@ -2964,17 +2856,31 @@ useEffect(() => {
   const baseKey = getAnswerKey(record, index, sub.title, true);
   const answer = lgu.data?.[radioKey] ?? lgu.data?.[baseKey];
   
-  // Look for attachments that start with the sub-indicator pattern
-  const subPattern = `${record.firebaseKey}_sub_${index}_`;
-  let subIndicatorAttachments = [];
-  const allAttachments = lgu.attachmentsByIndicator || {};
-  
-  Object.keys(allAttachments).forEach(key => {
-    if (key.startsWith(subPattern) && !key.includes('_nested_')) {
-      // This is a direct sub-indicator attachment (not nested)
-      subIndicatorAttachments = [...subIndicatorAttachments, ...allAttachments[key]];
+// Try multiple patterns to find attachments for sub indicators
+const attachmentsByIndicator = lgu.attachmentsByIndicator || {};
+
+// Pattern 1: Original format
+const subPattern1 = `${record.firebaseKey}_sub_${index}_${sub.title}`;
+// Pattern 2: With underscores
+const subPattern2 = `${record.firebaseKey}_sub_${index}_${sub.title.replace(/\s+/g, '_')}`;
+// Pattern 3: With assessment ID and tab ID
+const subPattern3 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_${sub.title}`;
+// Pattern 4: With assessment ID, tab ID, and underscores
+const subPattern4 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_${sub.title.replace(/\s+/g, '_')}`;
+
+let subIndicatorAttachments = attachmentsByIndicator[subPattern1] || 
+                             attachmentsByIndicator[subPattern2] || 
+                             attachmentsByIndicator[subPattern3] || 
+                             attachmentsByIndicator[subPattern4] || [];
+
+// If not found, search through keys containing the sub pattern
+if (subIndicatorAttachments.length === 0) {
+  Object.keys(attachmentsByIndicator).forEach(key => {
+    if (key.includes(`${record.firebaseKey}_sub_${index}_`) && !key.includes('_nested_')) {
+      subIndicatorAttachments = [...subIndicatorAttachments, ...attachmentsByIndicator[key]];
     }
   });
+}
   
   return (
     <div key={index} className="reference-wrapper">
@@ -3198,7 +3104,6 @@ useEffect(() => {
           </div>
         </div>
       )}
-
 {sub.nestedSubIndicators && sub.nestedSubIndicators.length > 0 && (
   <div className="nested-reference-wrapper">
     {sub.nestedSubIndicators.map((nested, nestedIndex) => {
@@ -3206,35 +3111,34 @@ useEffect(() => {
       const baseNestedKey = getAnswerKey(record, index, nested.title, true, nestedIndex);
       const nestedAnswer = lgu.data?.[nestedRadioKey] ?? lgu.data?.[baseNestedKey];
       
-      // FIXED: Build the pattern to search for in attachment keys
-      // Pattern: sub_{index}_nested_{nestedIndex}_ (e.g., "sub_0_nested_0_")
-      const nestedPattern = `sub_${index}_nested_${nestedIndex}_`;
+      // Try multiple patterns to find attachments for nested indicators
+      const attachmentsByIndicator = lgu.attachmentsByIndicator || {};
       
-      // Search through all attachment keys to find matches for this nested indicator
-      let nestedAttachments = [];
-      const allAttachments = lgu.attachmentsByIndicator || {};
+      // Pattern 1: Original format
+      const nestedPattern1 = `${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title}`;
+      // Pattern 2: With underscores
+      const nestedPattern2 = `${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title.replace(/\s+/g, '_')}`;
+      // Pattern 3: With assessment ID and tab ID
+      const nestedPattern3 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title}`;
+      // Pattern 4: With assessment ID, tab ID, and underscores
+      const nestedPattern4 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title.replace(/\s+/g, '_')}`;
       
-      Object.keys(allAttachments).forEach(key => {
-        // Check if this key contains our nested pattern
-        if (key.includes(nestedPattern)) {
-          // Extract the title part from the key (everything after the pattern)
-          const titlePart = key.substring(key.indexOf(nestedPattern) + nestedPattern.length);
-          
-          // Clean both titles for comparison (remove colons, extra spaces, underscores)
-          const cleanKeyTitle = titlePart.replace(/[:_]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
-          const cleanNestedTitle = nested.title.replace(/[:_]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
-          
-          // Check if the titles match or if the key title contains the nested title
-          if (cleanKeyTitle === cleanNestedTitle || cleanKeyTitle.includes(cleanNestedTitle) || cleanNestedTitle.includes(cleanKeyTitle)) {
-            nestedAttachments = [...nestedAttachments, ...allAttachments[key]];
+      let nestedAttachments = attachmentsByIndicator[nestedPattern1] || 
+                             attachmentsByIndicator[nestedPattern2] || 
+                             attachmentsByIndicator[nestedPattern3] || 
+                             attachmentsByIndicator[nestedPattern4] || [];
+      
+      // If not found, search through keys containing the nested pattern
+      if (nestedAttachments.length === 0) {
+        const searchPattern = `${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_`;
+        Object.keys(attachmentsByIndicator).forEach(key => {
+          if (key.includes(searchPattern)) {
+            nestedAttachments = [...nestedAttachments, ...attachmentsByIndicator[key]];
           }
-        }
-      });
+        });
+      }
       
-      console.log(`Looking for nested attachments with pattern: ${nestedPattern}`);
-      console.log(`Nested title: ${nested.title}`);
-      console.log(`Found ${nestedAttachments.length} attachments`);
-      console.log(`Available attachment keys:`, Object.keys(allAttachments));
+      console.log(`Nested indicator "${nested.title}" - Found ${nestedAttachments.length} attachments`);
       
       return (
               <div key={nested.id || nestedIndex} className="nested-reference-item">

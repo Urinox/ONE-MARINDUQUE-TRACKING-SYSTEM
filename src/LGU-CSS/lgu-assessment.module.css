@@ -868,9 +868,188 @@
   flex: 1;
 }
 
+/* Fix for radio button selection issues */
+.reference-field input[type="radio"],
+.reference-field input[type="checkbox"],
+.nested-reference-field input[type="radio"],
+.nested-reference-field input[type="checkbox"] {
+  position: relative;
+  appearance: auto !important;
+  -webkit-appearance: radio !important;
+  -moz-appearance: radio !important;
+  width: auto !important;
+  height: auto !important;
+  margin: 0 8px 0 0 !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: inline-block !important;
+  flex-shrink: 0 !important;
+}
+
+.reference-field label,
+.nested-reference-field label {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  margin-right: 16px;
+}
+
+.reference-field div,
+.nested-reference-field div {
+  cursor: default;
+}
+
+/* Ensure radio buttons are clickable */
+.reference-field,
+.nested-reference-field {
+  cursor: default;
+}
+
+.reference-field input[type="radio"]:hover,
+.reference-field input[type="checkbox"]:hover,
+.nested-reference-field input[type="radio"]:hover,
+.nested-reference-field input[type="checkbox"]:hover {
+  cursor: pointer !important;
+}
+
+/* Prevent parent divs from intercepting clicks */
+.reference-field > div,
+.nested-reference-field > div {
+  pointer-events: none;
+}
+
+.reference-field input,
+.nested-reference-field input {
+  pointer-events: auto !important;
+}
 
 
+/* Force proper radio button behavior */
+input[type="radio"] {
+  appearance: radio !important;
+  -webkit-appearance: radio !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: auto !important;
+  min-height: auto !important;
+  margin: 0 8px 0 0 !important;
+  padding: 0 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: inline-block !important;
+  position: relative !important;
+  z-index: 1 !important;
+  pointer-events: auto !important;
+}
 
+label {
+  pointer-events: auto !important;
+}
 
+/* Prevent any parent from blocking clicks */
+.reference-field,
+.nested-reference-field,
+.reference-row,
+.nested-reference-row {
+  pointer-events: auto !important;
+}
 
+/* Ensure radio containers don't block */
+div:has(> input[type="radio"]) {
+  pointer-events: auto !important;
+}
 
+/* Fix for radio button click issues */
+.reference-field input[type="radio"],
+.reference-field input[type="checkbox"],
+.nested-reference-field input[type="radio"],
+.nested-reference-field input[type="checkbox"] {
+  position: relative;
+  appearance: auto !important;
+  -webkit-appearance: radio !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: auto !important;
+  min-height: auto !important;
+  margin: 0 8px 0 0 !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: inline-block !important;
+  flex-shrink: 0 !important;
+  pointer-events: auto !important;
+}
+
+.reference-field label,
+.nested-reference-field label {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+}
+
+.reference-field div,
+.nested-reference-field div {
+  cursor: default;
+}
+
+.reference-field > div,
+.nested-reference-field > div {
+  pointer-events: none;
+}
+
+.reference-field input,
+.nested-reference-field input {
+  pointer-events: auto !important;
+}
+
+/* Fix for radio button click issues */
+.reference-field input[type="radio"],
+.reference-field input[type="checkbox"],
+.nested-reference-field input[type="radio"],
+.nested-reference-field input[type="checkbox"] {
+  position: relative;
+  appearance: auto !important;
+  -webkit-appearance: radio !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: auto !important;
+  min-height: auto !important;
+  margin: 0 8px 0 0 !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  display: inline-block !important;
+  flex-shrink: 0 !important;
+  pointer-events: auto !important;
+}
+
+.reference-field label,
+.nested-reference-field label {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+}
+
+.reference-field div,
+.nested-reference-field div {
+  cursor: default;
+}
+
+.reference-field > div,
+.nested-reference-field > div {
+  pointer-events: none;
+}
+
+.reference-field input,
+.nested-reference-field input {
+  pointer-events: auto !important;
+}
