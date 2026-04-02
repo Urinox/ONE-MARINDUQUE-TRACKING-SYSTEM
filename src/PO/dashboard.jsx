@@ -39,6 +39,8 @@ export default function Dashboard() {
     image: ""
   });
   const [data, setData] = useState([]);
+  const [returnedData, setReturnedData] = useState([]);
+const [loadingReturned, setLoadingReturned] = useState(true);
 
   // Add state for assessments
   const [assessmentList, setAssessmentList] = useState([]);
@@ -57,7 +59,77 @@ export default function Dashboard() {
 
 // Update the verified data fetching useEffect to include attachments:
 
+// Fetch returned assessments (assessments that were returned by PO to MLGO)
+useEffect(() => {
+  if (!auth.currentUser) return;
 
+  const fetchReturnedData = () => {
+    try {
+      setLoadingReturned(true);
+      
+      const returnedRef = ref(db, `returned`);
+      
+      onValue(returnedRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const allReturned = snapshot.val();
+          const items = [];
+          let counter = 1;
+          
+          console.log("Raw returned data:", allReturned);
+          
+          // Iterate through years
+          Object.keys(allReturned).forEach(year => {
+            if (allReturned[year]?.MLGO) {
+              // Look through MLGOs
+              Object.keys(allReturned[year].MLGO).forEach(mlgoUid => {
+                const mlgoReturns = allReturned[year].MLGO[mlgoUid];
+                
+                Object.keys(mlgoReturns).forEach(assessmentId => {
+                  const returnData = mlgoReturns[assessmentId];
+                  
+                  // Determine municipality
+                  let municipality = returnData.municipality || "Unknown";
+                  
+                  items.push({
+                    id: counter++,
+                    municipality: municipality,
+                    year: year,
+                    assessment: returnData.assessment || "General Assessment",
+                    assessmentId: returnData.assessmentId || assessmentId,
+                    status: "Returned",
+                    submission: returnData.submission || new Date().toLocaleDateString(),
+                    deadline: returnData.deadline || "-",
+                    lguUid: returnData.lguUid || "No UID",
+                    submittedBy: returnData.submittedBy || "Unknown",
+                    originalData: returnData.originalData || {},
+                    data: returnData.originalData || {},
+                    type: "returned",
+                    lguName: returnData.originalLguName || returnData.lguName || municipality,
+                    returnedBy: returnData.returnedBy,
+                    returnedAt: returnData.returnedAt,
+                    poRemarks: returnData.poRemarks
+                  });
+                });
+              });
+            }
+          });
+          
+          console.log("Final mapped returned data:", items);
+          setReturnedData(items);
+        } else {
+          console.log("No returned data found");
+          setReturnedData([]);
+        }
+        setLoadingReturned(false);
+      });
+    } catch (error) {
+      console.error("Error fetching returned data:", error);
+      setLoadingReturned(false);
+    }
+  };
+
+  fetchReturnedData();
+}, [auth.currentUser?.uid]);
 
 useEffect(() => {
   if (!auth.currentUser) return;
@@ -395,75 +467,64 @@ useEffect(() => {
           Object.keys(data).forEach(key => {
             const item = data[key];
             
-let municipality = "Unknown";
-let assessment = item.assessment || "General Assessment"; // Get assessment from data
-let assessmentId = item.assessmentId || "unknown";
-let lookupAttempted = false;
-
-// Try to get municipality from UID if it exists
-if (item.lguUid && item.lguUid !== "No UID" && item.lguUid !== "Unknown") {
-  lookupAttempted = true;
-  console.log(`Looking up UID: ${item.lguUid} in subAdminMunicipalities`);
-  
-  if (subAdminMunicipalities[item.lguUid]) {
-    municipality = subAdminMunicipalities[item.lguUid];
-    console.log(`Found municipality: ${municipality} for UID: ${item.lguUid}`);
-  } else {
-    console.log(`UID ${item.lguUid} not found in subAdminMunicipalities map`);
-    // Continue to fallbacks - don't return
-  }
-}
-
-// ALWAYS try fallbacks if municipality is still Unknown
-if (municipality === "Unknown") {
-  // Fallback: try to get from municipality field directly
-  if (item.municipality) {
-    municipality = item.municipality;
-    console.log(`Using direct municipality field: ${municipality}`);
-  }
-  // Fallback: try lguName
-  else if (item.lguName) {
-    municipality = item.lguName;
-    console.log(`Using lguName: ${municipality}`);
-  }
-}
+            let municipality = "Unknown";
+            let assessment = item.assessment || "General Assessment";
+            let assessmentId = item.assessmentId || "unknown";
             
-            // Fallback: try to get from municipality field directly
-            if (municipality === "Unknown" && item.municipality) {
-              municipality = item.municipality;
-              console.log(`Using direct municipality field: ${municipality}`);
+            // Determine status - check if this is a returned item
+            let itemStatus = item.status || "Pending";
+            
+            // Check if this assessment has been returned
+            // Look for returned flag in the data
+            if (item.wasReturned === true || 
+                item.returnedToMLGO === true ||
+                item.status === "Returned") {
+              itemStatus = "Returned";
+              console.log("Found returned item, setting status to Returned");
             }
             
-            // Fallback: try lguName
-            if (municipality === "Unknown" && item.lguName) {
-              municipality = item.lguName;
-              console.log(`Using lguName: ${municipality}`);
+            // Try to get municipality from UID if it exists
+            if (item.lguUid && item.lguUid !== "No UID" && item.lguUid !== "Unknown") {
+              if (subAdminMunicipalities[item.lguUid]) {
+                municipality = subAdminMunicipalities[item.lguUid];
+                console.log(`Found municipality: ${municipality} for UID: ${item.lguUid}`);
+              }
+            }
+            
+            // Fallbacks if municipality is still Unknown
+            if (municipality === "Unknown") {
+              if (item.municipality) {
+                municipality = item.municipality;
+                console.log(`Using direct municipality field: ${municipality}`);
+              } else if (item.lguName) {
+                municipality = item.lguName;
+                console.log(`Using lguName: ${municipality}`);
+              }
             }
             
             items.push({
               id: counter++,
               municipality: municipality,
               year: item.year || "Unknown",
-              assessment: item.assessment || "General Assessment", // Use item.assessment directly
-              assessmentId: item.assessmentId || "unknown",
-              status: item.status || "Pending",
+              assessment: assessment,
+              assessmentId: assessmentId,
+              status: itemStatus,
               submission: item.submission || new Date().toLocaleDateString(),
               deadline: item.deadline || "-",
               lguUid: item.lguUid || "No UID",
               submittedBy: item.submittedBy || "Unknown",
               userRole: item.userRole || "Unknown",
               originalData: item.originalData || {},
-              // Add data field for view component
               data: item.originalData || {},
-              // Type field
               type: "forwarded",
-              lguName: item.lguName || municipality
+              lguName: item.lguName || municipality,
+              wasReturned: item.wasReturned || item.returnedToMLGO || false
             });
           });
           
-          // REMOVED THE FILTER - now showing ALL items
           console.log("Final mapped forwarded data:", items);
-          setForwardedData(items); // Show ALL items
+          console.log("Returned items count:", items.filter(i => i.status === "Returned").length);
+          setForwardedData(items);
           
         } else {
           console.log("No forwarded data found");
@@ -580,9 +641,34 @@ const handleImageUpload = (e) => {
 
 const handleView = (item) => {
   console.log("View:", item);
+  console.log("Item type:", item.type);
   
-  // Check if this is a verified assessment
-  if (item.type === "verified") {
+  // For returned assessments
+  if (item.type === "returned") {
+    navigate("/po-view", { 
+      state: { 
+        year: item.year,
+        municipality: item.municipality,
+        assessment: item.assessment,
+        assessmentId: item.assessmentId,
+        lguUid: item.lguUid,
+        submittedBy: item.submittedBy,
+        data: item.originalData || item.data,
+        lguName: item.lguName || item.municipality,
+        submission: item.submission,
+        deadline: item.deadline,
+        isVerified: false,
+        isReturned: true,
+        wasReturned: true,
+        returnedBy: item.returnedBy,
+        returnedAt: item.returnedAt,
+        poRemarks: item.poRemarks,
+        attachmentsByIndicator: item.attachmentsByIndicator || {}
+      } 
+    });
+  }
+  // For verified assessments
+  else if (item.type === "verified") {
     navigate("/po-view", { 
       state: { 
         year: item.year,
@@ -599,12 +685,12 @@ const handleView = (item) => {
         verifiedBy: item.verifiedBy,
         verifiedAt: item.verifiedAt,
         originalData: item.data || item.originalData,
-        // Include attachments from the verified data
         attachmentsByIndicator: item.attachmentsByIndicator || {}
       } 
     });
-  } else {
-    // For forwarded assessments
+  }
+  // For forwarded assessments
+  else {
     navigate("/po-view", { 
       state: { 
         year: item.year,
@@ -619,7 +705,6 @@ const handleView = (item) => {
         deadline: item.deadline,
         isVerified: false,
         wasReturned: item.wasReturned || false,
-        // Include attachments if they exist in the forwarded data
         attachmentsByIndicator: item.attachmentsByIndicator || {}
       } 
     });
@@ -740,7 +825,7 @@ const handleDeleteAssessment = async (assessmentName) => {
   }
 };
   
-  const statuses = ["Verified", "Pending"];
+const statuses = ["Verified", "Pending", "Returned"];
 
   const updateFilter = (type, value) => {
     // If changing the year, clear the assessment filter
@@ -767,24 +852,16 @@ const handleDeleteAssessment = async (assessmentName) => {
 // ===== ADD THE VERIFIED FILTERING LOGIC HERE (ONLY CHANGE) =====
 // Combine forwardedData and verifiedData for display, removing verified items from forwarded
 // Combine forwardedData and verifiedData for display
+
 const allData = useMemo(() => {
   console.log("Forwarded data:", forwardedData);
   console.log("Verified data:", verifiedData);
+  console.log("Returned data:", returnedData);
   
-  // Create a Set of verified item keys
-  const verifiedKeys = new Set(
-    verifiedData.map(v => {
-      const key = `${v.year || ''}-${v.municipality || v.lguName || ''}-${v.assessmentId || v.assessment || ''}`;
-      console.log("Verified key:", key);
-      return key;
-    })
-  );
-  
-  // Map forwarded items - DON'T filter them out, just mark them
+  // Map forwarded items
   const mappedForwarded = forwardedData.map(item => ({
     ...item,
     type: 'forwarded',
-    // Ensure we have all required fields
     municipality: item.municipality || item.lguName || "Unknown",
     assessment: item.assessment || "General Assessment",
     assessmentId: item.assessmentId || "unknown",
@@ -799,13 +876,26 @@ const allData = useMemo(() => {
     municipality: item.municipality || item.lguName || "Unknown",
     assessment: item.assessment || "General Assessment",
     assessmentId: item.assessmentId || "unknown",
-    year: item.year || "Unknown"
+    year: item.year || "Unknown",
+    status: "Verified"
   }));
   
-  // Combine both arrays - show ALL items
-  const combined = [...mappedForwarded, ...mappedVerified];
+  // Map returned items
+  const mappedReturned = returnedData.map(item => ({
+    ...item,
+    type: 'returned',
+    municipality: item.municipality || item.lguName || "Unknown",
+    assessment: item.assessment || "General Assessment",
+    assessmentId: item.assessmentId || "unknown",
+    year: item.year || "Unknown",
+    status: "Returned"
+  }));
   
-  console.log("Combined data:", combined);
+  // Combine all three arrays - show ALL items
+  const combined = [...mappedForwarded, ...mappedVerified, ...mappedReturned];
+  
+  console.log("Combined data (forwarded + verified + returned):", combined);
+  console.log("Returned count:", mappedReturned.length);
   
   // Sort by date (most recent first)
   return combined.sort((a, b) => {
@@ -813,7 +903,7 @@ const allData = useMemo(() => {
     const dateB = b.submission ? new Date(b.submission) : new Date(0);
     return dateB - dateA;
   });
-}, [forwardedData, verifiedData]);
+}, [forwardedData, verifiedData, returnedData]);
 
 // Remove duplicates based on lguUid and year and type
 const uniqueData = allData.filter((item, index, self) => 
@@ -857,21 +947,18 @@ const totalPages = Math.ceil(filteredData.length / rowsPerPage);
 
 // Get unique assessment names based on selected year
 const assessmentFilterOptions = useMemo(() => {
-  // Start with raw data
-  let dataToUse = [...forwardedData, ...verifiedData];
+  let dataToUse = [...forwardedData, ...verifiedData, ...returnedData];
   
-  // If a year is selected in filters, filter by that year first
   if (filters.year) {
     dataToUse = dataToUse.filter(item => item.year === filters.year);
   }
   
-  // Get unique assessment names
   const allAssessments = dataToUse
     .map(item => item.assessment)
     .filter(assessment => assessment && assessment !== "General Assessment" && assessment !== "N/A");
   
   return [...new Set(allAssessments)].sort();
-}, [forwardedData, verifiedData, filters.year]);
+}, [forwardedData, verifiedData, returnedData, filters.year]);
 
   const renderDropdown = (type, list) => (
     <div className="dropdown">
@@ -1541,7 +1628,7 @@ useEffect(() => {
         </tr>
       </thead>
       <tbody>
-        {loadingForwarded || loadingVerified ? (
+      {loadingForwarded || loadingVerified || loadingReturned ? (
           <tr>
             <td colSpan="8" style={{ textAlign: "center", padding: "20px" }}>
               Loading...

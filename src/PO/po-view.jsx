@@ -1611,6 +1611,37 @@ useEffect(() => {
         return;
       }
       
+      // Check if this is a returned assessment (from state)
+if (location.state?.isReturned || location.state?.wasReturned) {
+  console.log("Loading RETURNED assessment from state");
+  
+  lguData = {
+    id: 1,
+    lguName: lguName,
+    year: selectedYear,
+    assessmentId: selectedAssessmentId,
+    assessment: selectedAssessment,
+    status: "Returned",
+    submission: location.state.submission || new Date().toLocaleDateString(),
+    deadline: location.state.deadline || "Not set",
+    data: location.state.data || {},
+    municipality: municipality,
+    lguUid: location.state.lguUid,
+    isReturned: true,
+    returnedBy: location.state.returnedBy,
+    returnedAt: location.state.returnedAt,
+    poRemarks: location.state.poRemarks,
+    attachmentsByIndicator: attachmentsByIndicator
+  };
+  
+  setLguAnswers([lguData]);
+  setForwardedAssessment(lguData);
+  setIsVerified(false);
+  setIsReturned(true);
+  setLoading(false);
+  return;
+}
+
       // If not verified, load from forwarded node
       console.log("Loading FORWARDED assessment from Firebase");
       const currentUserUid = auth.currentUser.uid;

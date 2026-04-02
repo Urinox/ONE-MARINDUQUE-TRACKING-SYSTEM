@@ -47,7 +47,8 @@ export default function MLGOView() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [savingAnswers, setSavingAnswers] = useState(false);
-  
+  const [actionTaken, setActionTaken] = useState(false);
+
   // ===== DYNAMIC TABS STATE =====
   const [tabs, setTabs] = useState([]);
   const [activeTab, setActiveTab] = useState(null);
@@ -581,11 +582,17 @@ const sanitizeFieldName = (fieldName) => {
       return;
     }
   
+    // Disable buttons immediately
+    setActionTaken(true);
+  
     const confirmForward = window.confirm(
       "Are you sure you want to forward this assessment to the Provincial Office?"
     );
     
-    if (!confirmForward) return;
+    if (!confirmForward) {
+      setActionTaken(false);
+      return;
+    }
   
     try {
       setLoading(true);
@@ -771,30 +778,45 @@ const sanitizeFieldName = (fieldName) => {
     }
   };
   
-  // When loading assessment data
-  useEffect(() => {
-    if (lguAnswers.length > 0) {
-      const lgu = lguAnswers[0];
-      
-      if (lgu.isReturnedFromPO) {
-        setIsReturnedFromPO(true);
-      }
-      
-      if (lgu.data?._metadata?.forwarded) {
-        setIsForwarded(true);
-      } else {
-        setIsForwarded(false);
-      }
-      
-      console.log("Assessment status:", {
-        isReturnedFromPO: lgu.isReturnedFromPO,
-        forwarded: lgu.data?._metadata?.forwarded
-      });
+// When loading assessment data
+useEffect(() => {
+  if (lguAnswers.length > 0) {
+    const lgu = lguAnswers[0];
+    
+    if (lgu.isReturnedFromPO) {
+      setIsReturnedFromPO(true);
+      setActionTaken(true);
+    }
+    
+    if (lgu.isForwarded) {
+      setIsForwarded(true);
+      setActionTaken(true);
+    }
+    
+    if (lgu.isReturnedToLGU) {
+      setIsReturnedToLGU(true);
+      setActionTaken(true);
+    }
+    
+    if (lgu.data?._metadata?.forwarded) {
+      setIsForwarded(true);
+      setActionTaken(true);
     } else {
-      setIsReturnedFromPO(false);
       setIsForwarded(false);
     }
-  }, [lguAnswers]);
+    
+    console.log("Assessment status:", {
+      isReturnedFromPO: lgu.isReturnedFromPO,
+      forwarded: lgu.data?._metadata?.forwarded,
+      isForwarded: lgu.isForwarded,
+      isReturnedToLGU: lgu.isReturnedToLGU
+    });
+  } else {
+    setIsReturnedFromPO(false);
+    setIsForwarded(false);
+    setActionTaken(false);
+  }
+}, [lguAnswers]);
   
 
   const [data, setData] = useState([]);
@@ -806,11 +828,17 @@ const sanitizeFieldName = (fieldName) => {
       return;
     }
   
+    // Disable buttons immediately
+    setActionTaken(true);
+  
     const confirmReturn = window.confirm(
       "Are you sure you want to return this assessment to the LGU? This will make it editable again for them."
     );
     
-    if (!confirmReturn) return;
+    if (!confirmReturn) {
+      setActionTaken(false);
+      return;
+    }
   
     try {
       setLoading(true);
@@ -2565,70 +2593,72 @@ const getIndicatorAnswer = (indicator, path) => {
     gap: "10px"
   }}>
   
-  {/* Return to LGU Button */}
-  <div style={{ position: "relative", display: "inline-block" }}>
-    <button
-      onClick={handleReturnToLGU}
-      disabled={loading || location.state?.isVerified || isReturnedToLGU || isForwarded}
-      style={{
-        backgroundColor: (location.state?.isVerified || isReturnedToLGU || isForwarded) ? "#990202e6" : "#990202",
-        color: "white",
-        border: "none",
-        padding: "8px 20px",
-        borderRadius: "5px",
-        fontSize: "14px",
-        cursor: (location.state?.isVerified || isReturnedToLGU || isForwarded) ? "not-allowed" : "pointer",
-        fontWeight: "600",
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        whiteSpace: "nowrap",
-        opacity: (location.state?.isVerified || isReturnedToLGU || isForwarded) ? 0.6 : 1
-      }}
-    >
-      <span>↩</span>
-      {location.state?.isVerified ? "Verified (Cannot Return)" : 
-       isForwarded ? "Forwarded (Cannot Return)" :
-       isReturnedToLGU ? "Returned to LGU" : "Return to LGU"}
-    </button>
-  </div>
+{/* Return to LGU Button */}
+<div style={{ position: "relative", display: "inline-block" }}>
+  <button
+    onClick={handleReturnToLGU}
+    disabled={loading || location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken}
+    style={{
+      backgroundColor: (location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken) ? "#990202e6" : "#990202",
+      color: "white",
+      border: "none",
+      padding: "8px 20px",
+      borderRadius: "5px",
+      fontSize: "14px",
+      cursor: (location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken) ? "not-allowed" : "pointer",
+      fontWeight: "600",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      whiteSpace: "nowrap",
+      opacity: (location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken) ? 0.6 : 1
+    }}
+  >
+    <span>↩</span>
+    {location.state?.isVerified ? "Verified (Cannot Return)" : 
+     isForwarded ? "Forwarded (Cannot Return)" :
+     isReturnedToLGU ? "Returned to LGU" : 
+     actionTaken ? "Processing..." : "Return to LGU"}
+  </button>
+</div>
   
-  {/* Forward to Provincial Office Button */}
-  <div style={{ position: "relative", display: "inline-block" }}>
-    <button
-      onClick={handleForwardToPO}
-      disabled={loading || location.state?.isVerified || isReturnedToLGU || isForwarded}
-      onMouseEnter={(e) => {
-        if (!location.state?.isVerified && !isReturnedToLGU && !isForwarded) {
-          const tooltip = e.currentTarget.parentElement.querySelector('.forward-tooltip');
-          if (tooltip) tooltip.style.display = 'block';
-        }
-      }}
-      onMouseLeave={(e) => {
+ {/* Forward to Provincial Office Button */}
+<div style={{ position: "relative", display: "inline-block" }}>
+  <button
+    onClick={handleForwardToPO}
+    disabled={loading || location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken}
+    onMouseEnter={(e) => {
+      if (!location.state?.isVerified && !isReturnedToLGU && !isForwarded && !actionTaken) {
         const tooltip = e.currentTarget.parentElement.querySelector('.forward-tooltip');
-        if (tooltip) tooltip.style.display = 'none';
-      }}
-      style={{
-        backgroundColor: (location.state?.isVerified || isReturnedToLGU || isForwarded) ? "#006735e6" : "#006736",
-        color: "white",
-        border: "none",
-        padding: "8px 20px",
-        borderRadius: "5px",
-        fontSize: "14px",
-        cursor: (location.state?.isVerified || isReturnedToLGU || isForwarded) ? "not-allowed" : "pointer",
-        fontWeight: "600",
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        whiteSpace: "nowrap",
-        opacity: (location.state?.isVerified || isReturnedToLGU || isForwarded) ? 0.6 : 1
-      }}
-    >
-      <span>→</span>
-      {location.state?.isVerified ? "Verified (Cannot Forward)" : 
-       isForwarded ? "Forwarded to PO" :
-       isReturnedToLGU ? "Returned to LGU" : "Forward to Provincial Office"}
-    </button>
+        if (tooltip) tooltip.style.display = 'block';
+      }
+    }}
+    onMouseLeave={(e) => {
+      const tooltip = e.currentTarget.parentElement.querySelector('.forward-tooltip');
+      if (tooltip) tooltip.style.display = 'none';
+    }}
+    style={{
+      backgroundColor: (location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken) ? "#006735e6" : "#006736",
+      color: "white",
+      border: "none",
+      padding: "8px 20px",
+      borderRadius: "5px",
+      fontSize: "14px",
+      cursor: (location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken) ? "not-allowed" : "pointer",
+      fontWeight: "600",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      whiteSpace: "nowrap",
+      opacity: (location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken) ? 0.6 : 1
+    }}
+  >
+    <span>→</span>
+    {location.state?.isVerified ? "Verified (Cannot Forward)" : 
+     isForwarded ? "Forwarded to PO" :
+     isReturnedToLGU ? "Returned to LGU" : 
+     actionTaken ? "Processing..." : "Forward to Provincial Office"}
+  </button>
     
     {!location.state?.isVerified && !isReturnedToLGU && !isForwarded && (
       <div 

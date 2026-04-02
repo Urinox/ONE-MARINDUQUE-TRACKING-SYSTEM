@@ -306,7 +306,6 @@ export default function MLGO() {
   
     fetchVerifiedSubmissions();
   }, [currentUserMunicipality, refreshTrigger]); // Add refreshTrigger
-
 // Fetch pending/returned submissions (answers)
 useEffect(() => {
   if (!auth.currentUser || !currentUserMunicipality) return;
@@ -336,33 +335,33 @@ useEffect(() => {
                 }
 
                 if (municipality === currentUserMunicipality) {
-                  // Check if forwarded FIRST - this should take precedence
+                  // DECLARE status FIRST
+                  let status = "Draft";
+                  
+                  // Check if forwarded - DON'T SKIP, just mark status
                   const isForwarded = lguData._metadata.forwarded === true || 
                                      lguData._metadata.forwardedToPO === true ||
                                      lguData._metadata.status === "Forwarded";
                   
-                  // Skip forwarded items entirely
+                  // If forwarded, set status to "Forwarded" but DON'T skip
                   if (isForwarded) {
-                    console.log("Skipping forwarded item:", {
+                    status = "Forwarded";
+                    console.log("Found forwarded item, keeping in table:", {
                       year,
                       assessment: lguData._metadata.assessment,
                       municipality,
-                      status: lguData._metadata.status
+                      status: "Forwarded"
                     });
-                    return; // Skip this item
-                  }
-                  
-                  let status = "Draft";
-
-                  // First check if there's a status field in metadata
-                  if (lguData._metadata.status) {
-                    status = lguData._metadata.status;
                   } 
-                  // Check if returned from PO (using the flag)
+                  // SECOND: Check if returned from PO
                   else if (lguData._metadata.returnedToMLGO === true) {
                     status = "Returned";
                   } 
-                  // Check if submitted but not forwarded
+                  // THIRD: Check status field
+                  else if (lguData._metadata.status) {
+                    status = lguData._metadata.status;
+                  } 
+                  // FOURTH: Check if submitted
                   else if (lguData._metadata.submitted === true) {
                     status = "Pending";
                   }
@@ -400,7 +399,11 @@ useEffect(() => {
           }
         });
 
-        console.log("Fetched submissions (excluding forwarded):", submissionsList.length);
+        console.log("Fetched submissions:", submissionsList.length);
+        console.log("Forwarded count:", submissionsList.filter(s => s.status === "Forwarded").length);
+        console.log("Returned count:", submissionsList.filter(s => s.status === "Returned").length);
+        console.log("Pending count:", submissionsList.filter(s => s.status === "Pending").length);
+        
         setSubmissions(submissionsList);
       } else {
         setSubmissions([]);
@@ -478,9 +481,7 @@ returnedList.push({
   fetchReturnedSubmissions();
 }, [auth.currentUser?.uid, currentUserMunicipality, refreshTrigger]);
 
-
-
-// Combine all submissions (pending + verified + returned)
+// Combine all submissions (pending + verified + returned + forwarded)
 const allSubmissions = useMemo(() => {
   console.log("Building allSubmissions with:", {
     submissionsCount: submissions.length,
@@ -488,7 +489,7 @@ const allSubmissions = useMemo(() => {
     returnedCount: returnedSubmissions.length
   });
   
-  // Helper function to check if an item is forwarded
+  // Helper function to check if an item is forwarded - just for logging
   const isForwarded = (item) => {
     return item.status === "Forwarded" ||
            item.data?._metadata?.forwarded === true ||
@@ -496,55 +497,78 @@ const allSubmissions = useMemo(() => {
            item.data?._metadata?.status === "Forwarded";
   };
   
-  // Filter out forwarded items from all sources
-  const filteredSubmissions = submissions.filter(s => !isForwarded(s));
-  const filteredVerified = verifiedSubmissions.filter(v => !isForwarded(v));
-  const filteredReturned = returnedSubmissions.filter(r => !isForwarded(r));
+  // DON'T filter out forwarded items - keep them all
+  // Just log them for debugging
+  const forwardedItems = submissions.filter(s => isForwarded(s));
+  console.log("Forwarded items kept in table:", forwardedItems.length);
   
-  // Create a Set of verified item keys
+  // Use all submissions without filtering out forwarded items
+  const allSubmissionsData = [...submissions, ...verifiedSubmissions, ...returnedSubmissions];
+  
+  // Create a Set of verified item keys to avoid duplicates
   const verifiedKeys = new Set(
-    filteredVerified
+    verifiedSubmissions
       .filter(v => v.assessment && v.assessment !== "General Assessment")
       .map(v => `${v.year}-${v.assessmentId}-${v.municipality}`)
   );
   
   // Create a Set of returned item keys
   const returnedKeys = new Set(
-    filteredReturned
+    returnedSubmissions
       .filter(r => r.assessment && r.assessment !== "General Assessment")
       .map(r => `${r.year}-${r.assessmentId}-${r.municipality}`)
   );
   
-  // Filter out pending items that have been verified or returned
-  const filteredPending = filteredSubmissions.filter(pending => 
-    !verifiedKeys.has(`${pending.year}-${pending.assessmentId}-${pending.municipality}`) &&
-    !returnedKeys.has(`${pending.year}-${pending.assessmentId}-${pending.municipality}`)
+  // Create a Set of forwarded item keys (to avoid duplicates)
+  const forwardedKeys = new Set(
+    submissions
+      .filter(s => s.status === "Forwarded")
+      .map(s => `${s.year}-${s.assessmentId}-${s.municipality}`)
   );
+  
+  // Filter out duplicate pending items that have been verified, returned, or forwarded
+  const uniqueSubmissions = submissions.filter(s => {
+    const key = `${s.year}-${s.assessmentId}-${s.municipality}`;
+    // Keep if not verified, not returned, and not forwarded (or if it's forwarded we want to keep it with its status)
+    if (s.status === "Forwarded") return true; // Keep forwarded items
+    return !verifiedKeys.has(key) && !returnedKeys.has(key);
+  });
   
   // Filter out any items with "General Assessment"
-  const validPending = filteredPending.filter(p => 
-    p.assessment && p.assessment !== "General Assessment"
+  const validSubmissions = uniqueSubmissions.filter(s => 
+    s.assessment && s.assessment !== "General Assessment"
   );
   
-  const validVerified = filteredVerified.filter(v => 
+  const validVerified = verifiedSubmissions.filter(v => 
     v.assessment && v.assessment !== "General Assessment"
   );
   
-  const validReturned = filteredReturned.filter(r => 
+  const validReturned = returnedSubmissions.filter(r => 
     r.assessment && r.assessment !== "General Assessment"
   );
   
-  // Combine all
-  const combined = [...validPending, ...validVerified, ...validReturned];
+  // Combine all - KEEP forwarded items
+  const combined = [...validSubmissions, ...validVerified, ...validReturned];
   
-  // Final filter to ensure no forwarded items
-  const finalFiltered = combined.filter(item => !isForwarded(item));
+  // Remove the final filter that was removing forwarded items
+  // Just log for debugging
+  console.log("Total submissions to display:", combined.length);
+  console.log("Includes forwarded:", combined.filter(s => s.status === "Forwarded").length);
+  console.log("Includes returned:", combined.filter(s => s.status === "Returned").length);
+  console.log("Includes pending:", combined.filter(s => s.status === "Pending").length);
+  console.log("Includes verified:", combined.filter(s => s.status === "Verified").length);
   
-  console.log("Final filtered submissions:", finalFiltered.length);
-  
-  // Sort by year descending
-  return finalFiltered.sort((a, b) => {
+  // Sort by year descending, then by status priority (Pending first, then Forwarded, then Returned, then Verified)
+  return combined.sort((a, b) => {
     if (b.year !== a.year) return b.year - a.year;
+    
+    // Status priority order
+    const statusOrder = { "Pending": 1, "Forwarded": 2, "Returned": 3, "Verified": 4 };
+    const orderA = statusOrder[a.status] || 5;
+    const orderB = statusOrder[b.status] || 5;
+    
+    if (orderA !== orderB) return orderA - orderB;
+    
     const timeA = a.returnedAt || a.verifiedAt || 0;
     const timeB = b.returnedAt || b.verifiedAt || 0;
     return timeB - timeA;

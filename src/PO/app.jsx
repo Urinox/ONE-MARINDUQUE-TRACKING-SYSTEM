@@ -99,47 +99,47 @@ export default function App() {
     return Math.floor(100000 + Math.random() * 900000).toString();
   };
 
-  const sendVerificationEmail = async (email, code) => {
-    try {
-      console.log("Sending verification code:", code, "to:", email);
-      
-      if (!email) {
-        console.error("Email is empty!");
-        return false;
-      }
-      
-      const templateParams = {
-        to_email: email,
-        to_name: email.split('@')[0],
-        passcode: code,
-        email: email,
-        from_name: "SUKAT: Strategic Unit Key For Assessment and Tracking",
-        from_email: "plgrcmarinduque@gmail.com",
-        reply_to: "support@marinduque.gov.ph"
-      };
-  
-      console.log("Template params:", templateParams);
-  
-      const response = await emailjs.send(
-        import.meta.env.VITE_EMAILJS_SERVICE_ID || "service_po3vf6l",
-        import.meta.env.VITE_EMAILJS_TEMPLATE_ID || "template_knqwdpj",
-        templateParams
-      );
-  
-      console.log("EmailJS response:", response);
-      
-      if (response.status === 200) {
-        console.log(`✅ Verification code sent to ${email}`);
-        return true;
-      } else {
-        console.error("EmailJS error:", response);
-        return false;
-      }
-    } catch (error) {
-      console.error("❌ Failed to send email:", error);
+ const sendVerificationEmail = async (email, code) => {
+  try {
+    console.log("Sending verification code:", code, "to:", email);
+    
+    if (!email) {
+      console.error("Email is empty!");
       return false;
     }
-  };
+    
+    // IMPORTANT: Only include variables that exist in your template
+    const templateParams = {
+      to_email: email,
+      to_name: email.split('@')[0],
+      passcode: code
+    };
+
+    console.log("Template params:", templateParams);
+    console.log("Using Service ID:", import.meta.env.VITE_EMAILJS_SERVICE_ID);
+    console.log("Using Template ID:", import.meta.env.VITE_EMAILJS_TEMPLATE_ID);
+
+    const response = await emailjs.send(
+      import.meta.env.VITE_EMAILJS_SERVICE_ID,
+      import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
+      templateParams
+    );
+  
+    console.log("EmailJS response:", response);
+    
+    if (response.status === 200) {
+      console.log(`✅ Verification code sent to ${email}`);
+      return true;
+    } else {
+      console.error("EmailJS error:", response);
+      return false;
+    }
+  } catch (error) {
+    console.error("❌ Failed to send email:", error);
+    console.error("Error details:", error);
+    return false;
+  }
+};
 
   const handleRegister = async (email, password) => {
     if (!email || !password) {
