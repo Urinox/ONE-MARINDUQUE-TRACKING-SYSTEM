@@ -57,9 +57,7 @@ const [loadingReturned, setLoadingReturned] = useState(true);
     return assessmentList.filter(a => a.year === newRecord.year);
   }, [assessmentList, newRecord.year]);
 
-// Update the verified data fetching useEffect to include attachments:
-
-// Fetch returned assessments (assessments that were returned by PO to MLGO)
+// Update the fetchReturnedData useEffect
 useEffect(() => {
   if (!auth.currentUser) return;
 
@@ -75,11 +73,15 @@ useEffect(() => {
           const items = [];
           let counter = 1;
           
-          console.log("Raw returned data:", allReturned);
+          console.log("Raw returned data structure:", JSON.stringify(allReturned, null, 2));
           
           // Iterate through years
           Object.keys(allReturned).forEach(year => {
+            console.log(`Checking year: ${year}`);
+            
             if (allReturned[year]?.MLGO) {
+              console.log(`Found MLGO data for year ${year}:`, Object.keys(allReturned[year].MLGO));
+              
               // Look through MLGOs
               Object.keys(allReturned[year].MLGO).forEach(mlgoUid => {
                 const mlgoReturns = allReturned[year].MLGO[mlgoUid];
@@ -87,8 +89,15 @@ useEffect(() => {
                 Object.keys(mlgoReturns).forEach(assessmentId => {
                   const returnData = mlgoReturns[assessmentId];
                   
+                  console.log(`Found returned assessment:`, {
+                    year,
+                    mlgoUid,
+                    assessmentId,
+                    returnData
+                  });
+                  
                   // Determine municipality
-                  let municipality = returnData.municipality || "Unknown";
+                  let municipality = returnData.municipality || returnData.lguName || "Unknown";
                   
                   items.push({
                     id: counter++,
@@ -111,15 +120,21 @@ useEffect(() => {
                   });
                 });
               });
+            } else {
+              console.log(`No MLGO data for year ${year}`);
             }
           });
           
           console.log("Final mapped returned data:", items);
+          console.log("Total returned items found:", items.length);
           setReturnedData(items);
         } else {
-          console.log("No returned data found");
+          console.log("No returned data found at path: returned/");
           setReturnedData([]);
         }
+        setLoadingReturned(false);
+      }, (error) => {
+        console.error("Error in onValue listener:", error);
         setLoadingReturned(false);
       });
     } catch (error) {
@@ -446,6 +461,7 @@ useEffect(() => {
   fetchVerifiedData();
 }, [auth.currentUser?.uid, subAdminMunicipalities]);
 
+
 useEffect(() => {
   if (!auth.currentUser) return;
 
@@ -462,7 +478,6 @@ useEffect(() => {
           let counter = 1;
           
           console.log("Raw forwarded data:", data);
-          console.log("Sub-admin municipalities:", subAdminMunicipalities);
           
           Object.keys(data).forEach(key => {
             const item = data[key];
@@ -471,35 +486,11 @@ useEffect(() => {
             let assessment = item.assessment || "General Assessment";
             let assessmentId = item.assessmentId || "unknown";
             
-            // Determine status - check if this is a returned item
-            let itemStatus = item.status || "Pending";
-            
-            // Check if this assessment has been returned
-            // Look for returned flag in the data
-            if (item.wasReturned === true || 
-                item.returnedToMLGO === true ||
-                item.status === "Returned") {
-              itemStatus = "Returned";
-              console.log("Found returned item, setting status to Returned");
-            }
-            
-            // Try to get municipality from UID if it exists
-            if (item.lguUid && item.lguUid !== "No UID" && item.lguUid !== "Unknown") {
-              if (subAdminMunicipalities[item.lguUid]) {
-                municipality = subAdminMunicipalities[item.lguUid];
-                console.log(`Found municipality: ${municipality} for UID: ${item.lguUid}`);
-              }
-            }
-            
-            // Fallbacks if municipality is still Unknown
-            if (municipality === "Unknown") {
-              if (item.municipality) {
-                municipality = item.municipality;
-                console.log(`Using direct municipality field: ${municipality}`);
-              } else if (item.lguName) {
-                municipality = item.lguName;
-                console.log(`Using lguName: ${municipality}`);
-              }
+            // Try to get municipality
+            if (item.municipality) {
+              municipality = item.municipality;
+            } else if (item.lguName) {
+              municipality = item.lguName;
             }
             
             items.push({
@@ -508,22 +499,19 @@ useEffect(() => {
               year: item.year || "Unknown",
               assessment: assessment,
               assessmentId: assessmentId,
-              status: itemStatus,
+              status: "Pending",  // FORCE to Pending always
               submission: item.submission || new Date().toLocaleDateString(),
               deadline: item.deadline || "-",
               lguUid: item.lguUid || "No UID",
               submittedBy: item.submittedBy || "Unknown",
-              userRole: item.userRole || "Unknown",
               originalData: item.originalData || {},
               data: item.originalData || {},
               type: "forwarded",
-              lguName: item.lguName || municipality,
-              wasReturned: item.wasReturned || item.returnedToMLGO || false
+              lguName: item.lguName || municipality
             });
           });
           
           console.log("Final mapped forwarded data:", items);
-          console.log("Returned items count:", items.filter(i => i.status === "Returned").length);
           setForwardedData(items);
           
         } else {
@@ -534,12 +522,13 @@ useEffect(() => {
       });
     } catch (error) {
       console.error("Error fetching forwarded data:", error);
+      setForwardedData([]);
       setLoadingForwarded(false);
     }
   };
 
   fetchForwardedData();
-}, [auth.currentUser?.uid, subAdminMunicipalities]);
+}, [auth.currentUser?.uid]);
 
 
 
@@ -848,11 +837,7 @@ const statuses = ["Verified", "Pending", "Returned"];
     setCurrentPage(1);
   };
 
-
-// ===== ADD THE VERIFIED FILTERING LOGIC HERE (ONLY CHANGE) =====
-// Combine forwardedData and verifiedData for display, removing verified items from forwarded
-// Combine forwardedData and verifiedData for display
-
+// ===== UPDATE THIS useMemo IN YOUR DASHBOARD =====
 const allData = useMemo(() => {
   console.log("Forwarded data:", forwardedData);
   console.log("Verified data:", verifiedData);
@@ -880,7 +865,7 @@ const allData = useMemo(() => {
     status: "Verified"
   }));
   
-  // Map returned items
+  // Map returned items - CRITICAL: Make sure these are included
   const mappedReturned = returnedData.map(item => ({
     ...item,
     type: 'returned',
@@ -888,14 +873,18 @@ const allData = useMemo(() => {
     assessment: item.assessment || "General Assessment",
     assessmentId: item.assessmentId || "unknown",
     year: item.year || "Unknown",
-    status: "Returned"
+    status: "Returned"  // This is important for the status badge
   }));
   
-  // Combine all three arrays - show ALL items
+  console.log("Mapped returned items count:", mappedReturned.length);
+  console.log("Mapped returned items:", mappedReturned);
+  
+  // Combine all three arrays - show ALL items including returned
   const combined = [...mappedForwarded, ...mappedVerified, ...mappedReturned];
   
   console.log("Combined data (forwarded + verified + returned):", combined);
-  console.log("Returned count:", mappedReturned.length);
+  console.log("Total items:", combined.length);
+  console.log("Returned count in combined:", combined.filter(i => i.status === "Returned").length);
   
   // Sort by date (most recent first)
   return combined.sort((a, b) => {
@@ -905,28 +894,47 @@ const allData = useMemo(() => {
   });
 }, [forwardedData, verifiedData, returnedData]);
 
-// Remove duplicates based on lguUid and year and type
-const uniqueData = allData.filter((item, index, self) => 
-  index === self.findIndex((t) => 
-    (t.municipality || t.lguName) === (item.municipality || item.lguName) &&
-    t.year === item.year &&
-    t.assessment === item.assessment && // Include assessment in uniqueness check
-    t.assessmentId === item.assessmentId &&
-    t.type === item.type
-  )
-);
-// **FIX: Reassign sequential IDs starting from 1**
-const dataWithSequentialIds = uniqueData.map((item, index) => ({
+
+const displayedData = useMemo(() => {
+  // Map forwarded items (Pending) - ONLY show these
+  const mappedForwarded = forwardedData.map(item => ({
+    ...item,
+    type: 'forwarded',
+    status: "Pending"
+  }));
+  
+  // Map verified items
+  const mappedVerified = verifiedData.map(item => ({
+    ...item,
+    type: 'verified',
+    status: "Verified"
+  }));
+  
+  // DO NOT show returned items at all - EXCLUDE them completely
+  // const mappedReturned = returnedData.map(item => ({...})); // DELETE THIS LINE
+  
+  // Combine only forwarded and verified - NO RETURNED ITEMS
+  const combined = [...mappedForwarded, ...mappedVerified];
+  
+  return combined.sort((a, b) => {
+    const dateA = a.submission ? new Date(a.submission) : new Date(0);
+    const dateB = b.submission ? new Date(b.submission) : new Date(0);
+    return dateB - dateA;
+  });
+}, [forwardedData, verifiedData]); // Remove returnedData from dependencies
+
+
+
+const dataWithSequentialIds = displayedData.map((item, index) => ({
   ...item,
-  id: index + 1  // This will give 1, 2, 3, 4, 5, 6 in order
+  id: index + 1
 }));
 
 const filteredData = dataWithSequentialIds.filter((item) => {
-  // Check if search term matches municipality
   const matchesSearch = search === "" || 
     item.municipality?.toLowerCase().includes(search.toLowerCase()) ||
     item.year?.toLowerCase().includes(search.toLowerCase()) ||
-    item.assessment?.toLowerCase().includes(search.toLowerCase()) || // Add assessment to search
+    item.assessment?.toLowerCase().includes(search.toLowerCase()) ||
     item.status?.toLowerCase().includes(search.toLowerCase()) ||
     item.submittedBy?.toLowerCase().includes(search.toLowerCase());
   
@@ -934,7 +942,7 @@ const filteredData = dataWithSequentialIds.filter((item) => {
     (!filters.municipality || item.municipality === filters.municipality) &&
     (!filters.year || item.year === filters.year) &&
     (!filters.status || item.status?.toLowerCase() === filters.status.toLowerCase()) &&
-    (!filters.assessment || item.assessment === filters.assessment) && // Add assessment filter
+    (!filters.assessment || item.assessment === filters.assessment) &&
     matchesSearch
   );
 });

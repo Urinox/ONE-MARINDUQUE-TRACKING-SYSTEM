@@ -638,8 +638,8 @@ export default function LGU() {
       doc.setFont("helvetica", "bold");
       doc.text(`AREA:`, margin.left, infoStartY + 70);
   
-      doc.setFont("helvetica", "normal");
-      doc.text(`${tabName}`, margin.left+40, infoStartY + 70);     
+      doc.setFont("helvetica", "bold");
+      doc.text(`${tabName}`, margin.left, infoStartY + 70);     
       
       // ===== TABLE HEADER =====     
       const headers = [      
@@ -1361,7 +1361,7 @@ export default function LGU() {
         // Add area name for this tab with styling
         doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
-        doc.text(`AREA: ${tabName}`, margin.left, infoStartY + 75);
+        doc.text(`${tabName}`, margin.left, infoStartY + 75);
         
         // ===== TABLE HEADER =====
         const headers = [

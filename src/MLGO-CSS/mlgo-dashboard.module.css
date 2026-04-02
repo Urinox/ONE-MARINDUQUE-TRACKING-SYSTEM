@@ -812,19 +812,33 @@ th, td {
 }
 
 .status.pending {
-  background-color: #990202;
+  background-color: #ffc107;
+  color: #333;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+.status.forwarded {
+  background-color: #065e00;
   color: #ffffff;
   padding: 4px 8px;
   border-radius: 4px;
   font-weight: 500;
 }
-
-.status.verified {
-  background-color: #d4edda;
-  color: #155724;
+.status.returned {
+  background-color: #9b0000;
+  color: #ffffff;
   padding: 4px 8px;
   border-radius: 4px;
   font-weight: 500;
+}
+.status.verified {
+  background-color: #28a745;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .pagination {

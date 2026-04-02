@@ -415,10 +415,7 @@ const exportTabToPDF = async () => {
     doc.text(`${formattedDate}`, margin.left + 40, infoStartY + 55);
 
     doc.setFont("helvetica", "bold");
-    doc.text(`AREA:`, margin.left, infoStartY + 70);
-
-    doc.setFont("helvetica", "normal");
-    doc.text(`${tabName}`, margin.left + 40, infoStartY + 70);     
+    doc.text(`${tabName}`, margin.left, infoStartY + 70);     
     
     // ===== TABLE HEADER =====     
     const headers = [      
@@ -1034,7 +1031,7 @@ const exportAllTabsToPDF = async () => {
       // Add area name for this tab with styling
       doc.setFontSize(12);
       doc.setFont("helvetica", "bold");
-      doc.text(`AREA: ${tabName}`, margin.left, infoStartY + 75);
+      doc.text(`${tabName}`, margin.left, infoStartY + 75);
       
       // ===== TABLE HEADER =====
       const headers = [
@@ -1581,35 +1578,40 @@ useEffect(() => {
       // ===== STEP 2: LOAD THE ASSESSMENT DATA =====
       let lguData = null;
       
-      // First, check if this is a verified assessment (from state)
-      if (location.state?.isVerified) {
-        console.log("Loading VERIFIED assessment from state");
-        
-        lguData = {
-          id: 1,
-          lguName: lguName,
-          year: selectedYear,
-          assessmentId: selectedAssessmentId,
-          assessment: selectedAssessment,
-          status: "Verified",
-          submission: location.state.submission || new Date().toLocaleDateString(),
-          deadline: location.state.deadline || "Not set",
-          data: location.state.data || {},
-          municipality: municipality,
-          lguUid: location.state.lguUid,
-          isVerified: true,
-          verifiedBy: location.state.verifiedBy,
-          verifiedAt: location.state.verifiedAt,
-          attachmentsByIndicator: attachmentsByIndicator
-        };
-        
-        setLguAnswers([lguData]);
-        setForwardedAssessment(lguData);
-        setIsVerified(true);
-        setIsReturned(false);
-        setLoading(false);
-        return;
-      }
+// First, check if this is a verified assessment (from state)
+if (location.state?.isVerified) {
+  console.log("Loading VERIFIED assessment from state");
+  
+  // Use attachments from state if available, otherwise use loaded attachments
+  const verifiedAttachments = location.state.attachmentsByIndicator || attachmentsByIndicator;
+  
+  lguData = {
+    id: 1,
+    lguName: lguName,
+    year: selectedYear,
+    assessmentId: selectedAssessmentId,
+    assessment: selectedAssessment,
+    status: "Verified",
+    submission: location.state.submission || new Date().toLocaleDateString(),
+    deadline: location.state.deadline || "Not set",
+    data: location.state.data || {},
+    municipality: municipality,
+    lguUid: location.state.lguUid,
+    isVerified: true,
+    verifiedBy: location.state.verifiedBy,
+    verifiedAt: location.state.verifiedAt,
+    attachmentsByIndicator: verifiedAttachments  // Use attachments from state
+  };
+  
+  console.log("Verified attachments loaded:", Object.keys(verifiedAttachments).length);
+  
+  setLguAnswers([lguData]);
+  setForwardedAssessment(lguData);
+  setIsVerified(true);
+  setIsReturned(false);
+  setLoading(false);
+  return;
+}
       
       // Check if this is a returned assessment (from state)
 if (location.state?.isReturned || location.state?.wasReturned) {
@@ -1706,7 +1708,6 @@ if (location.state?.isReturned || location.state?.wasReturned) {
 }, [auth.currentUser, selectedYear, selectedAssessmentId, location.state]);
 
 const handleReturnAssessment = async () => {
-  // Check both lguAnswers and forwardedAssessment
   if (!lguAnswers.length || !forwardedAssessment) {
     console.log("Missing data:", { 
       lguAnswersLength: lguAnswers.length, 
@@ -1717,7 +1718,7 @@ const handleReturnAssessment = async () => {
   }
 
   const confirmReturn = window.confirm(
-    "Are you sure you want to return this assessment to the MLGO? This will make it editable again for them."
+    "Are you sure you want to return this assessment to the MLGO?"
   );
   
   if (!confirmReturn) return;
@@ -1726,11 +1727,9 @@ const handleReturnAssessment = async () => {
     setLoading(true);
     const lgu = lguAnswers[0];
     
-    // Clean the LGU name for Firebase path
     const originalLguName = lgu.lguName.replace(/[.#$\[\]]/g, '_');
     const cleanLguName = `${originalLguName}_${selectedAssessmentId}`;
     
-    // Get the MLGO's UID from the forwarded assessment
     const mlgoUid = forwardedAssessment.lguUid || lgu.lguUid;
     
     if (!mlgoUid) {
@@ -1741,35 +1740,25 @@ const handleReturnAssessment = async () => {
     
     console.log("Returning assessment to MLGO with UID:", mlgoUid);
     
-    // Get the current tab's remark and all tab remarks
     const currentTabRemark = remarks[activeTab] || "";
     const allTabRemarks = { ...remarks };
     
-    // ===== CRITICAL: Get the original data from forwardedAssessment =====
-    // This is the key - we need to preserve the EXACT structure of answers
     let originalAnswers = {};
     let originalMetadata = {};
     
-    // Check if forwardedAssessment.originalData exists and has the right structure
     if (forwardedAssessment.originalData) {
       if (forwardedAssessment.originalData._metadata) {
-        // If it has metadata, extract answers and metadata separately
         originalMetadata = forwardedAssessment.originalData._metadata;
         const { _metadata, ...answers } = forwardedAssessment.originalData;
         originalAnswers = answers;
       } else {
-        // If no metadata, assume everything is answers
         originalAnswers = forwardedAssessment.originalData;
       }
     } else if (lgu.data) {
-      // Fallback to lgu.data
       originalAnswers = lgu.data;
     }
     
-    console.log("Original answers count:", Object.keys(originalAnswers).length);
-    console.log("Sample answer keys:", Object.keys(originalAnswers).slice(0, 5));
-    
-    // 1. Save to RETURNED node with ALL remarks
+    // 1. Save to RETURNED node
     const returnedData = {
       originalLguName: lgu.lguName,
       lguUid: mlgoUid,
@@ -1784,9 +1773,7 @@ const handleReturnAssessment = async () => {
       submission: lgu.submission,
       deadline: lgu.deadline,
       submittedBy: lgu.submittedBy || forwardedAssessment.submittedBy,
-      // Store ALL tab remarks
       poRemarks: allTabRemarks,
-      // Also store current tab remark for quick access
       currentTabRemark: currentTabRemark,
       attachmentsByIndicator: lgu.attachmentsByIndicator || {},
       status: "returned",
@@ -1794,170 +1781,118 @@ const handleReturnAssessment = async () => {
       forwardedAt: forwardedAssessment.forwardedAt
     };
 
-    // Save to returned node (organized by year then MLGO UID)
     const returnedRef = ref(db, `returned/${selectedYear}/MLGO/${mlgoUid}/${selectedAssessmentId}`);
     await set(returnedRef, returnedData);
-    console.log("✅ Saved to returned node with remarks:", allTabRemarks);
-    
-// 2. Update answers node with return flags but PRESERVE ALL original answers
-const answersRef = ref(db, `answers/${selectedYear}/LGU/${cleanLguName}`);
+    console.log("✅ Saved to returned node");
 
-// Get existing metadata if any (from the current answers node)
-const answersSnapshot = await get(answersRef);
-let existingMetadata = {};
-let existingAnswers = {};
+    // 2. UPDATE answers node
+    const answersRef = ref(db, `answers/${selectedYear}/LGU/${cleanLguName}`);
+    const answersSnapshot = await get(answersRef);
+    let existingMetadata = {};
+    let existingAnswers = {};
 
-if (answersSnapshot.exists()) {
-  const data = answersSnapshot.val();
-  existingMetadata = data._metadata || {};
-  const { _metadata, ...answers } = data;
-  existingAnswers = answers;
-}
-
-// Use existingAnswers if originalAnswers is empty
-const finalAnswers = Object.keys(originalAnswers).length > 0 ? originalAnswers : existingAnswers;
-
-// Create updated metadata that preserves everything
-const updatedMetadata = {
-  ...originalMetadata,
-  ...existingMetadata,
-  
-  // Essential user info
-  uid: originalMetadata.uid || existingMetadata.uid || mlgoUid,
-  email: originalMetadata.email || existingMetadata.email || forwardedAssessment.submittedBy || "",
-  name: originalMetadata.name || existingMetadata.name || lgu.lguName,
-  municipality: originalMetadata.municipality || existingMetadata.municipality || lgu.municipality,
-  
-  // CRITICAL: Set status to "Returned" for dashboard filtering
-  status: "Returned",
-  
-  // Return flags
-  returnedToMLGO: true,
-  returnedAt: Date.now(),
-  returnedBy: auth.currentUser?.email,
-  returnedByName: profileData.name || auth.currentUser?.email,
-  poRemarks: allTabRemarks,
-  remarks: currentTabRemark || "Assessment returned for revision",
-  
-  // Important flags
-  submitted: false,  // Allow MLGO to edit
-  forwarded: false,
-  forwardedToPO: false,
-  
-  // Preserve metadata
-  lastSaved: Date.now(),
-  year: originalMetadata.year || selectedYear,
-  assessment: originalMetadata.assessment || selectedAssessment,
-  assessmentId: originalMetadata.assessmentId || selectedAssessmentId,
-  deadline: originalMetadata.deadline || lgu.deadline
-};
-
-const answersData = {
-  ...finalAnswers,
-  _metadata: updatedMetadata
-};
-
-await set(answersRef, answersData);
-console.log("✅ Updated answers node with return metadata, status: Returned");
-console.log("Total answers preserved:", Object.keys(finalAnswers).length);
-    
-    // 3. Remove from forwarded node
-    const forwardedRef = ref(db, `forwarded/${auth.currentUser.uid}`);
-    const forwardedSnapshot = await get(forwardedRef);
-    
-    if (forwardedSnapshot.exists()) {
-      const forwardedData = forwardedSnapshot.val();
-      
-      // Find and delete the specific forwarded record
-      for (const [key, item] of Object.entries(forwardedData)) {
-        if (item.lguUid === mlgoUid && item.year === selectedYear && item.assessmentId === selectedAssessmentId) {
-          await set(ref(db, `forwarded/${auth.currentUser.uid}/${key}`), null);
-          console.log("✅ Removed from forwarded node");
-          break;
-        }
-      }
+    if (answersSnapshot.exists()) {
+      const data = answersSnapshot.val();
+      existingMetadata = data._metadata || {};
+      const { _metadata, ...answers } = data;
+      existingAnswers = answers;
     }
-    
-// In handleReturnAssessment function, replace the notification section with:
 
-console.log("🔍 DEBUG - Creating return notification:");
-console.log("MLGO UID from forwardedAssessment:", mlgoUid);
+    const finalAnswers = Object.keys(originalAnswers).length > 0 ? originalAnswers : existingAnswers;
 
-// Also try to get the MLGO's UID from the answers node as a fallback
-let correctMlgoUid = mlgoUid;
+    const updatedMetadata = {
+      ...originalMetadata,
+      ...existingMetadata,
+      uid: originalMetadata.uid || existingMetadata.uid || mlgoUid,
+      email: originalMetadata.email || existingMetadata.email || forwardedAssessment.submittedBy || "",
+      name: originalMetadata.name || existingMetadata.name || lgu.lguName,
+      municipality: originalMetadata.municipality || existingMetadata.municipality || lgu.municipality,
+      status: "Returned",
+      returnedToMLGO: true,
+      returnedAt: Date.now(),
+      returnedBy: auth.currentUser?.email,
+      returnedByName: profileData.name || auth.currentUser?.email,
+      poRemarks: allTabRemarks,
+      remarks: currentTabRemark || "Assessment returned for revision",
+      submitted: false,
+      forwarded: false,
+      forwardedToPO: false,
+      lastSaved: Date.now(),
+      year: originalMetadata.year || selectedYear,
+      assessment: originalMetadata.assessment || selectedAssessment,
+      assessmentId: originalMetadata.assessmentId || selectedAssessmentId,
+      deadline: originalMetadata.deadline || lgu.deadline
+    };
 
-try {
-  // Try to find the correct MLGO UID from the answers node
-  const answersRef = ref(db, `answers/${selectedYear}/LGU/${cleanLguName}`);
-  const answersSnapshot = await get(answersRef);
-  if (answersSnapshot.exists()) {
-    const metadata = answersSnapshot.val()._metadata;
-    if (metadata && metadata.uid) {
-      correctMlgoUid = metadata.uid;
-      console.log("Found MLGO UID from metadata:", correctMlgoUid);
+    const answersData = {
+      ...finalAnswers,
+      _metadata: updatedMetadata
+    };
+
+    await set(answersRef, answersData);
+    console.log("✅ Updated answers node");
+
+// ===== CRITICAL: DELETE FROM FORWARDED NODE =====
+const forwardedRef = ref(db, `forwarded/${auth.currentUser.uid}`);
+const forwardedSnapshot = await get(forwardedRef);
+
+if (forwardedSnapshot.exists()) {
+  const forwardedData = forwardedSnapshot.val();
+  let foundKey = null;
+  
+  for (const [key, item] of Object.entries(forwardedData)) {
+    if (item.lguUid === mlgoUid && 
+        item.year === selectedYear && 
+        item.assessmentId === selectedAssessmentId) {
+      foundKey = key;
+      break;
     }
   }
-} catch (error) {
-  console.log("Could not get MLGO UID from metadata, using original:", mlgoUid);
-}
-
-const notificationReturnId = Date.now().toString();
-const notificationReturnData = {
-  id: notificationReturnId,
-  type: "assessment_returned_from_po",
-  title: `"${selectedAssessment}" Assessment (${selectedYear}) was returned by PO.`,
-  message: currentTabRemark || "Assessment returned by PO. Please review the remarks for each tab.",
-  from: auth.currentUser?.email,
-  fromName: profileData.name || auth.currentUser?.email,
-  timestamp: Date.now(),
-  read: false,
-  year: selectedYear,
-  assessmentId: selectedAssessmentId,
-  assessment: selectedAssessment,
-  lguName: lgu.lguName,
-  municipality: lgu.lguName,
-  poRemarks: allTabRemarks,
-  currentTabRemark: currentTabRemark,
-  tabName: activeTab ? tabs.find(t => t.id === activeTab)?.name || "" : "",
-  tabRemarks: currentTabRemark,
-  returnedPath: `returned/${selectedYear}/MLGO/${correctMlgoUid}/${selectedAssessmentId}`,
-  action: "view_returned_assessment"
-};
-
-console.log("Saving notification for MLGO UID:", correctMlgoUid);
-
-try {
-  // Save to both possible UIDs to ensure it reaches the MLGO
-  await set(ref(db, `notifications/${selectedYear}/MLGO/${mlgoUid}/${notificationReturnId}`), notificationReturnData);
-  console.log("✅ Saved to original UID:", mlgoUid);
   
-  if (correctMlgoUid !== mlgoUid) {
-    await set(ref(db, `notifications/${selectedYear}/MLGO/${correctMlgoUid}/${notificationReturnId}`), notificationReturnData);
-    console.log("✅ Saved to correct UID from metadata:", correctMlgoUid);
+  if (foundKey) {
+    // DELETE the item from forwarded node
+    await set(ref(db, `forwarded/${auth.currentUser.uid}/${foundKey}`), null);
+    console.log("✅ DELETED from forwarded node (removed from PO's table)");
   }
-  
-  console.log("✅ Return notification saved successfully");
-} catch (error) {
-  console.error("❌ Error saving notification:", error);
 }
-
-    console.log("✅ Notification created for MLGO with remarks");
     
-    // Set returned flag to true to disable buttons
+    // Create notification for MLGO
+    const notificationReturnId = Date.now().toString();
+    const notificationReturnData = {
+      id: notificationReturnId,
+      type: "assessment_returned_from_po",
+      title: `"${selectedAssessment}" Assessment (${selectedYear}) was returned by PO.`,
+      message: currentTabRemark || "Assessment returned by PO. Please review the remarks.",
+      from: auth.currentUser?.email,
+      fromName: profileData.name || auth.currentUser?.email,
+      timestamp: Date.now(),
+      read: false,
+      year: selectedYear,
+      assessmentId: selectedAssessmentId,
+      assessment: selectedAssessment,
+      lguName: lgu.lguName,
+      municipality: lgu.municipality,
+      poRemarks: allTabRemarks,
+      currentTabRemark: currentTabRemark,
+      action: "view_returned_assessment"
+    };
+
+    await set(ref(db, `notifications/${selectedYear}/MLGO/${mlgoUid}/${notificationReturnId}`), notificationReturnData);
+    console.log("✅ Notification created for MLGO");
+    
     setIsReturned(true);
-    
     alert("Assessment returned to MLGO successfully.");
     
-    // Clear the current tab's remarks after successful return
     setRemarks(prev => ({ ...prev, [activeTab]: "" }));
     
-    // Navigate back to dashboard
+    // Navigate back to dashboard with refresh flag
     navigate("/dashboard", { 
       state: { 
         returnedAssessment: true,
         year: selectedYear,
         assessmentId: selectedAssessmentId,
-        lguUid: mlgoUid
+        lguUid: mlgoUid,
+        refreshNeeded: true
       } 
     });
     

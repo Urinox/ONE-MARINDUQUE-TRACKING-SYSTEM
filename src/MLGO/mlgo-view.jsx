@@ -98,6 +98,7 @@ export default function MLGOView() {
   };
 
  // ===== UPDATED: Helper function to get the correct answer key =====
+// ===== UPDATED: Helper function to get the correct answer key =====
 const getAnswerKey = (record, mainIndex, field, isSub = false, nestedIndex = null, valueType = "default") => {
   // Generate a consistent key format that matches how attachments are stored
   const parts = [selectedAssessmentId, activeTab, record.firebaseKey];
@@ -112,58 +113,89 @@ const getAnswerKey = (record, mainIndex, field, isSub = false, nestedIndex = nul
     parts.push(mainIndex.toString());
   }
   
-  // Handle field type prefix
+  // Handle field type prefix - IMPORTANT: Add underscore for checkbox
   if (valueType === "radio") {
     parts.push("radio");
   } else if (valueType === "checkbox") {
-    parts.push("checkbox");
+    parts.push("checkbox");  // This will become "checkbox_" when joined
   }
   
-  // Add the field name at the end, sanitized
-  parts.push(sanitizeFieldName(field));
+  // Add the field name at the end - use the original field name, not sanitized
+  parts.push(field);
   
   // Join with underscores
   return parts.join('_');
 };
-  // ===== NEW: Helper function to get attachments =====
-  const getAttachmentsForIndicator = (indicatorPath, attachmentsByIndicator) => {
-    if (!attachmentsByIndicator || Object.keys(attachmentsByIndicator).length === 0) return [];
-    
-    console.log(`Looking for attachments matching path: ${indicatorPath}`);
-    
-    const matchingAttachments = [];
-    
-    // Try exact match first
-    if (attachmentsByIndicator[indicatorPath]) {
-      matchingAttachments.push(...attachmentsByIndicator[indicatorPath]);
-    }
-    
-    // Try partial matches (for when the key might have additional suffixes)
-    Object.keys(attachmentsByIndicator).forEach(key => {
-      // Check if the indicator path is a prefix of the key
-      if (key.startsWith(indicatorPath) && !attachmentsByIndicator[indicatorPath]) {
-        console.log(`Found partial match: ${key} matches ${indicatorPath}`);
-        matchingAttachments.push(...attachmentsByIndicator[key]);
+// ===== IMPROVED: Helper function to get attachments with flexible matching =====
+const getAttachmentsForIndicator = (indicatorPath, attachmentsByIndicator) => {
+  if (!attachmentsByIndicator || Object.keys(attachmentsByIndicator).length === 0) return [];
+  
+  console.log(`🔍 Looking for attachments matching path: "${indicatorPath}"`);
+  console.log(`📋 Available indicator IDs:`, Object.keys(attachmentsByIndicator));
+  
+  const matchingAttachments = [];
+  
+  // Generate variations of the search path
+  const searchVariations = [
+    indicatorPath,                                    // Original
+    indicatorPath.replace(/_/g, ' '),                // Replace underscores with spaces
+    indicatorPath.replace(/ /g, '_'),                // Replace spaces with underscores
+    indicatorPath.replace(/_+/g, ' '),               // Multiple underscores to spaces
+    indicatorPath.replace(/\s+/g, '_'),              // Multiple spaces to underscores
+  ];
+  
+  // Remove duplicates
+  const uniqueVariations = [...new Set(searchVariations)];
+  console.log(`🔍 Search variations:`, uniqueVariations);
+  
+  // Try multiple matching strategies
+  Object.keys(attachmentsByIndicator).forEach(storedKey => {
+    // Check if any variation matches
+    for (const variation of uniqueVariations) {
+      // Strategy 1: Exact match
+      if (storedKey === variation) {
+        console.log(`✅ EXACT match found: ${storedKey} (from variation: ${variation})`);
+        matchingAttachments.push(...attachmentsByIndicator[storedKey]);
+        break;
       }
-    });
-    
-    return matchingAttachments;
-  };
+      // Strategy 2: Stored key starts with variation
+      else if (storedKey.startsWith(variation)) {
+        console.log(`✅ PREFIX match: "${storedKey}" starts with "${variation}"`);
+        matchingAttachments.push(...attachmentsByIndicator[storedKey]);
+        break;
+      }
+      // Strategy 3: Variation starts with stored key
+      else if (variation.startsWith(storedKey)) {
+        console.log(`✅ REVERSE PREFIX match: "${variation}" starts with "${storedKey}"`);
+        matchingAttachments.push(...attachmentsByIndicator[storedKey]);
+        break;
+      }
+    }
+  });
+  
+  console.log(`📎 Found ${matchingAttachments.length} attachment(s) for "${indicatorPath}"`);
+  
+  if (matchingAttachments.length === 0) {
+    console.log(`⚠️ No attachments found for indicator path: "${indicatorPath}"`);
+    console.log(`💡 Tip: Try one of these variations manually:`, uniqueVariations);
+  }
+  
+  return matchingAttachments;
+};
 
-  // ===== SANITIZE FIELD NAMES TO MATCH ATTACHMENT KEYS =====
+// ===== SANITIZE FIELD NAMES TO MATCH ATTACHMENT KEYS =====
 const sanitizeFieldName = (fieldName) => {
   if (!fieldName) return '';
-  // Replace colons, semicolons, commas, and other special characters with underscores
+  // Convert to lowercase for consistency
   let sanitized = fieldName
+    .toLowerCase()  // Add this line for consistency
     .replace(/[:;,\-()]/g, '_')  // Replace : ; , - ( ) with underscore
-    .replace(/\s+/g, ' ')         // Normalize spaces
-    .trim();
+    .replace(/\s+/g, '_')        // Replace spaces with underscore
+    .replace(/[^a-zA-Z0-9_]/g, '_')  // Replace any other special chars
+    .replace(/_+/g, '_');        // Replace multiple underscores with single
   
-  // Replace any remaining special characters with underscore
-  sanitized = sanitized.replace(/[^a-zA-Z0-9\s_]/g, '_');
-  
-  // Replace spaces with underscores for consistency with attachment keys
-  sanitized = sanitized.replace(/\s+/g, '_');
+  // Remove leading/trailing underscores
+    sanitized = sanitized.replace(/[.#$\[\]/]/g, '_');
   
   return sanitized;
 };
@@ -327,158 +359,188 @@ const sanitizeFieldName = (fieldName) => {
     setPreviewAttachment(null);
   };
 
-  // ===== LOAD LGU ANSWERS =====
-  useEffect(() => {
-    if (!auth.currentUser || !selectedYear || !location.state?.lguName || !selectedAssessmentId) return;
+// ===== LOAD LGU ANSWERS =====
+useEffect(() => {
+  if (!auth.currentUser || !selectedYear || !location.state?.lguName || !selectedAssessmentId) return;
 
-    const loadLGUAnswers = async () => {
-      try {
-        setLoading(true);
+  const loadLGUAnswers = async () => {
+    try {
+      setLoading(true);
+      
+      // Get the LGU name from state
+      const lguName = location.state.lguName || location.state.municipality;
+      const cleanName = `${lguName.replace(/[.#$\[\]]/g, '_')}_${selectedAssessmentId}`;
+      
+      console.log("Loading LGU answers from:", `answers/${selectedYear}/LGU/${cleanName}`);
+      
+      const answersRef = ref(db, `answers/${selectedYear}/LGU/${cleanName}`);
+      const snapshot = await get(answersRef);
+      
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const { _metadata, ...answers } = data;
         
-        // Get the LGU name from state
-        const lguName = location.state.lguName || location.state.municipality;
-        const cleanName = `${lguName.replace(/[.#$\[\]]/g, '_')}_${selectedAssessmentId}`;
+        console.log("Loaded LGU answers metadata:", _metadata);
         
-        console.log("Loading LGU answers from:", `answers/${selectedYear}/LGU/${cleanName}`);
+        // Check if this assessment has PO remarks in metadata
+        if (_metadata?.poRemarks) {
+          setRemarks(_metadata.poRemarks);
+        }
         
-        const answersRef = ref(db, `answers/${selectedYear}/LGU/${cleanName}`);
-        const snapshot = await get(answersRef);
+        // Determine status and flags based on metadata
+        const isReturnedFromPO = _metadata?.returnedToMLGO || false;
+        const isForwarded = _metadata?.forwarded || _metadata?.forwardedToPO || false;
+        const isReturnedToLGU = _metadata?.returnedToLGU || location.state?.isReturnedToLGU || false;
         
-        if (snapshot.exists()) {
-          const data = snapshot.val();
-          const { _metadata, ...answers } = data;
+        // Create LGU answers object
+        const lguData = {
+          id: 1,
+          lguName: lguName,
+          year: selectedYear,
+          assessment: selectedAssessment,
+          assessmentId: selectedAssessmentId,
+          status: isReturnedFromPO ? "Returned from PO" : 
+                  isForwarded ? "Forwarded" : 
+                  _metadata?.submitted ? "Submitted" : "Draft",
+          submission: _metadata?.lastSaved 
+            ? new Date(_metadata.lastSaved).toLocaleDateString('en-US', {
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
+              })
+            : "N/A",
+          deadline: submissionDeadline || "Not set",
+          data: answers,
+          municipality: _metadata?.municipality || location.state.municipality,
+          userUid: _metadata?.uid,
+          isVerified: location.state?.isVerified || false,
+          isReturnedFromPO: isReturnedFromPO,
+          isForwarded: isForwarded,
+          attachmentsByIndicator: {}
+        };
+        
+        setLguAnswers([lguData]);
+        
+        // Set flags based on persisted metadata
+        setIsReturnedFromPO(isReturnedFromPO);
+        setIsForwarded(isForwarded);
+        setIsReturnedToLGU(isReturnedToLGU);
+        
+        console.log("Assessment status:", {
+          isReturnedFromPO,
+          isForwarded,
+          isReturnedToLGU,
+          metadata: _metadata
+        });
+        
+        // ===== LOAD ATTACHMENTS WITH DEBUG LOGGING =====
+        const attachmentsRef = ref(
+          db,
+          `attachments/${selectedYear}/LGU/${cleanName}`
+        );
+        const attachmentsSnapshot = await get(attachmentsRef);
+        
+        if (attachmentsSnapshot.exists()) {
+          const attachments = attachmentsSnapshot.val();
+          const attachmentsByIndicator = {};
           
-          console.log("Loaded LGU answers metadata:", _metadata);
+          console.log("📎 Total attachments found:", Object.keys(attachments).length);
           
-          // Check if this assessment has PO remarks in metadata
-          if (_metadata?.poRemarks) {
-            setRemarks(_metadata.poRemarks);
-          }
+          // ===== DEBUG: Log all attachment keys to see the actual format =====
+          console.log("🔍 === DEBUGGING ATTACHMENT KEYS ===");
+          Object.keys(attachments).forEach(key => {
+            console.log(`📎 Attachment key: ${key}`);
+            console.log(`   Full key length: ${key.length}`);
+            
+            // Try to extract what indicator this belongs to
+            const parts = key.split('_');
+            console.log(`   Parts (${parts.length}):`, parts);
+            
+            // Try to identify the pattern
+            console.log(`   Part 0 (assessmentId): ${parts[0]}`);
+            console.log(`   Part 1 (tabId): ${parts[1]}`);
+            console.log(`   Part 2 (firebaseKey): ${parts[2]}`);
+            console.log(`   Part 3 (index): ${parts[3]}`);
+            console.log(`   Part 4 (fieldName): ${parts[4]}`);
+            
+            // Check if there's a timestamp at the end
+            const lastPart = parts[parts.length - 1];
+            const isTimestamp = /^\d+$/.test(lastPart) && lastPart.length >= 10;
+            console.log(`   Has timestamp suffix: ${isTimestamp ? 'YES - ' + lastPart : 'NO'}`);
+            
+            // Show the key without timestamp for matching
+            if (isTimestamp) {
+              const keyWithoutTimestamp = parts.slice(0, -1).join('_');
+              console.log(`   Key without timestamp: ${keyWithoutTimestamp}`);
+            }
+            
+            console.log(`   Attachment name: ${attachments[key]?.fileName || attachments[key]?.name || 'Unknown'}`);
+            console.log('---');
+          });
+          console.log("🔍 === END DEBUG ===");
           
-          // Determine status and flags based on metadata
-          const isReturnedFromPO = _metadata?.returnedToMLGO || false;
-          const isForwarded = _metadata?.forwarded || _metadata?.forwardedToPO || false;
-          const isReturnedToLGU = _metadata?.returnedToLGU || location.state?.isReturnedToLGU || false;
-          
-          // Create LGU answers object
-          const lguData = {
-            id: 1,
-            lguName: lguName,
-            year: selectedYear,
-            assessment: selectedAssessment,
-            assessmentId: selectedAssessmentId,
-            status: isReturnedFromPO ? "Returned from PO" : 
-                    isForwarded ? "Forwarded" : 
-                    _metadata?.submitted ? "Submitted" : "Draft",
-            submission: _metadata?.lastSaved 
-              ? new Date(_metadata.lastSaved).toLocaleDateString('en-US', {
-                  day: '2-digit',
-                  month: 'long',
-                  year: 'numeric'
-                })
-              : "N/A",
-            deadline: submissionDeadline || "Not set",
-            data: answers,
-            municipality: _metadata?.municipality || location.state.municipality,
-            userUid: _metadata?.uid,
-            isVerified: location.state?.isVerified || false,
-            isReturnedFromPO: isReturnedFromPO,
-            isForwarded: isForwarded,
-            attachmentsByIndicator: {}
-          };
-          
-          setLguAnswers([lguData]);
-          
-          // Set flags based on persisted metadata
-          setIsReturnedFromPO(isReturnedFromPO);
-          setIsForwarded(isForwarded);
-          setIsReturnedToLGU(isReturnedToLGU);
-          
-          console.log("Assessment status:", {
-            isReturnedFromPO,
-            isForwarded,
-            isReturnedToLGU,
-            metadata: _metadata
+          // Process each attachment
+          Object.keys(attachments).forEach(key => {
+            const attachment = attachments[key];
+            
+            // Log the full key for debugging
+            console.log(`Processing attachment key: ${key}`);
+            
+            // Remove timestamp from the end if present
+            let keyWithoutTimestamp = key;
+            const lastUnderscoreIndex = key.lastIndexOf('_');
+            if (lastUnderscoreIndex > -1) {
+              const possibleTimestamp = key.substring(lastUnderscoreIndex + 1);
+              if (/^\d+$/.test(possibleTimestamp) && possibleTimestamp.length >= 10) {
+                keyWithoutTimestamp = key.substring(0, lastUnderscoreIndex);
+              }
+            }
+            
+            // This keyWithoutTimestamp should be our indicator identifier
+            const indicatorId = keyWithoutTimestamp;
+            
+            console.log(`  Mapped to indicatorId: ${indicatorId}`);
+            
+            if (!attachmentsByIndicator[indicatorId]) {
+              attachmentsByIndicator[indicatorId] = [];
+            }
+            
+            // Add the attachment to the indicator
+            attachmentsByIndicator[indicatorId].push({
+              key: key,
+              name: attachment.fileName || attachment.name || 'Attachment',
+              url: attachment.url || attachment.fileData,
+              fileData: attachment.fileData || attachment.url,
+              fileSize: attachment.fileSize,
+              uploadedAt: attachment.uploadedAt,
+              fileType: attachment.fileType
+            });
           });
           
-          // ===== IMPROVED: Load attachments with proper mapping =====
-          const attachmentsRef = ref(
-            db,
-            `attachments/${selectedYear}/LGU/${cleanName}`
-          );
-          const attachmentsSnapshot = await get(attachmentsRef);
-          
-          if (attachmentsSnapshot.exists()) {
-            const attachments = attachmentsSnapshot.val();
-            const attachmentsByIndicator = {};
-            
-            console.log("📎 Total attachments found:", Object.keys(attachments).length);
-            
-            // Process each attachment
-            Object.keys(attachments).forEach(key => {
-              const attachment = attachments[key];
-              
-              // Log the full key for debugging
-              console.log(`Processing attachment key: ${key}`);
-              
-              // Remove timestamp from the end if present
-              let keyWithoutTimestamp = key;
-              const lastUnderscoreIndex = key.lastIndexOf('_');
-              if (lastUnderscoreIndex > -1) {
-                const possibleTimestamp = key.substring(lastUnderscoreIndex + 1);
-                if (/^\d+$/.test(possibleTimestamp) && possibleTimestamp.length >= 10) {
-                  keyWithoutTimestamp = key.substring(0, lastUnderscoreIndex);
-                }
-              }
-              
-              // This keyWithoutTimestamp should be our indicator identifier
-              const indicatorId = keyWithoutTimestamp;
-              
-              console.log(`  Mapped to indicatorId: ${indicatorId}`);
-              
-              if (!attachmentsByIndicator[indicatorId]) {
-                attachmentsByIndicator[indicatorId] = [];
-              }
-              
-              // Add the attachment to the indicator
-              attachmentsByIndicator[indicatorId].push({
-                key: key,
-                name: attachment.fileName || attachment.name || 'Attachment',
-                url: attachment.url || attachment.fileData,
-                fileData: attachment.fileData || attachment.url,
-                fileSize: attachment.fileSize,
-                uploadedAt: attachment.uploadedAt,
-                fileType: attachment.fileType
-              });
-            });
-            
-            lguData.attachmentsByIndicator = attachmentsByIndicator;
-            console.log("📎 Attachments mapped to indicators:", Object.keys(attachmentsByIndicator));
-            
-            // Debug: Log sample mapping
-            if (Object.keys(attachmentsByIndicator).length > 0) {
-              console.log("Sample indicator IDs:");
-              Object.keys(attachmentsByIndicator).slice(0, 3).forEach(id => {
-                console.log(`  - ${id}: ${attachmentsByIndicator[id].length} attachment(s)`);
-              });
-            }
-          } else {
-            console.log("📎 No attachments found for this assessment");
-          }
+          lguData.attachmentsByIndicator = attachmentsByIndicator;
+          console.log("📎 Attachments mapped to indicators:", Object.keys(attachmentsByIndicator));
+          console.log("📎 Indicator IDs available for lookup:");
+          Object.keys(attachmentsByIndicator).forEach(id => {
+            console.log(`  - ${id}: ${attachmentsByIndicator[id].length} attachment(s)`);
+          });
           
         } else {
-          console.log("No answers found for this assessment");
-          setLguAnswers([]);
+          console.log("📎 No attachments found for this assessment");
         }
-      } catch (error) {
-        console.error("Error loading LGU answers:", error);
-      } finally {
-        setLoading(false);
+        
+      } else {
+        console.log("No answers found for this assessment");
+        setLguAnswers([]);
       }
-    };
-  
-    loadLGUAnswers();
-  }, [selectedYear, location.state, selectedAssessmentId, submissionDeadline]);
+    } catch (error) {
+      console.error("Error loading LGU answers:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  loadLGUAnswers();
+}, [selectedYear, location.state, selectedAssessmentId, submissionDeadline]);
 
   useEffect(() => {
     if (location.state?.year) {
@@ -576,240 +638,244 @@ const sanitizeFieldName = (fieldName) => {
     fetchMunicipalityMap();
   }, []);
 
-  const handleForwardToPO = async () => {
-    if (!lguAnswers.length) {
-      alert("No assessment data to forward");
-      return;
-    }
+const handleForwardToPO = async () => {
+  if (!lguAnswers.length) {
+    alert("No assessment data to forward");
+    return;
+  }
+
+  setActionTaken(true);
+
+  const confirmForward = window.confirm(
+    "Are you sure you want to forward this assessment to the Provincial Office?"
+  );
   
-    // Disable buttons immediately
-    setActionTaken(true);
-  
-    const confirmForward = window.confirm(
-      "Are you sure you want to forward this assessment to the Provincial Office?"
-    );
+  if (!confirmForward) {
+    setActionTaken(false);
+    return;
+  }
+
+  try {
+    setLoading(true);
+    const lgu = lguAnswers[0];
     
-    if (!confirmForward) {
+    // Find admin UID (PO)
+    const usersRef = ref(db, "users");
+    const usersSnapshot = await get(usersRef);
+    let poUid = null;
+    
+    if (usersSnapshot.exists()) {
+      const users = usersSnapshot.val();
+      poUid = Object.keys(users).find(
+        uid => users[uid]?.role === "admin"
+      );
+    }
+    
+    if (!poUid) {
+      alert("No Provincial Office admin found");
       setActionTaken(false);
       return;
     }
-  
-    try {
-      setLoading(true);
-      const lgu = lguAnswers[0];
-      
-      // Find admin UID (PO)
-      const usersRef = ref(db, "users");
-      const usersSnapshot = await get(usersRef);
-      let poUid = null;
-      
-      if (usersSnapshot.exists()) {
-        const users = usersSnapshot.val();
-        poUid = Object.keys(users).find(
-          uid => users[uid]?.role === "admin"
-        );
-      }
-      
-      if (!poUid) {
-        alert("No Provincial Office admin found");
-        return;
-      }
-      
-      const currentUserUid = auth.currentUser?.uid;
-      
-      if (!currentUserUid) {
-        alert("You must be logged in to forward assessments");
-        return;
-      }
-      
-      console.log("Current user UID (sub-admin):", currentUserUid);
-      
-      // Get the clean name for the assessment
-      const cleanName = `${lgu.lguName.replace(/[.#$\[\]]/g, '_')}_${selectedAssessmentId}`;
-      const answersRef = ref(db, `answers/${selectedYear}/LGU/${cleanName}`);
-      const snapshot = await get(answersRef);
-      
-      if (!snapshot.exists()) {
-        alert("Assessment data not found");
-        return;
-      }
-      
-      const currentData = snapshot.val();
-      const metadata = currentData._metadata || {};
-      
-      // Get all answers data (without metadata)
-      const { _metadata, ...answersData } = currentData;
-      
-      // Prepare forward data
-      const forwardData = {
-        lguUid: metadata.uid || currentUserUid,
-        year: selectedYear,
-        assessment: selectedAssessment,
-        assessmentId: selectedAssessmentId,
-        status: "Pending",
-        submission: new Date().toLocaleDateString('en-US', {
-          month: 'long',
-          day: '2-digit',
-          year: 'numeric'
-        }),
-        deadline: submissionDeadline ? new Date(submissionDeadline).toLocaleDateString('en-US', {
-          month: 'long',
-          day: '2-digit',
-          year: 'numeric'
-        }) : "Not set",
-        originalData: currentData,
-        forwardedAt: Date.now(),
-        forwardedBy: auth.currentUser?.email,
-        forwardedByName: profileData.name || auth.currentUser?.email,
-        submittedBy: metadata.email || auth.currentUser?.email,
-        lguName: lgu.lguName,
-        municipality: lgu.municipality || metadata.municipality,
-        mlgoUid: currentUserUid,
-        cleanName: cleanName
-      };
-      
-      console.log("Forwarding data to PO:", forwardData);
-      
-      // Save to forwarded node under PO's UID
-      const forwardedRef = ref(db, `forwarded/${poUid}`);
-      const newForwardedRef = push(forwardedRef);
-      await set(newForwardedRef, forwardData);
-      
-      console.log("✅ Forwarded to PO successfully at path:", `forwarded/${poUid}/${newForwardedRef.key}`);
-      
-      // Also save to a more organized structure as backup (optional)
-      const organizedRef = ref(db, `forwarded-assessments/${poUid}/${selectedYear}/${selectedAssessmentId}/${cleanName}`);
-      await set(organizedRef, forwardData);
-      
-      // ===== FIX: UPDATE the answers node with forwarded flags =====
-      const updatedMetadata = {
-        ...metadata,
-        // Keep existing metadata
-        uid: metadata.uid || currentUserUid,
-        email: metadata.email || auth.currentUser?.email,
-        name: metadata.name || lgu.lguName,
-        municipality: metadata.municipality || lgu.municipality,
-        
-        // CRITICAL: Set status to "Forwarded" so dashboard filters it out
-        status: "Forwarded",  // <--- ADD THIS LINE
-        
-        // Add forwarding flags
-        forwarded: true,
-        forwardedToPO: true,
-        forwardedAt: Date.now(),
-        forwardedBy: auth.currentUser?.email,
-        forwardedByName: profileData.name || auth.currentUser?.email,
-        forwardedTo: poUid,
-        
-        // Ensure submitted is true
-        submitted: true,
-        
-        // Clear any return flags
-        returned: false,
-        returnedToMLGO: false,
-        returnedAt: null,
-        returnedBy: null,
-        returnedByName: null,
-        
-        // Preserve last saved info
-        lastSaved: Date.now()
-      };
-      
-      const updatedData = {
-        ...answersData,
-        _metadata: updatedMetadata
-      };
-      
-      // Update the answers node with forwarded metadata
-      await set(answersRef, updatedData);
-      console.log("✅ Updated answers node with forwarded metadata");
-      
-      // Also check if there's an entry in returned node and remove it
-      const returnedRef = ref(db, `returned/${selectedYear}/MLGO/${currentUserUid}/${selectedAssessmentId}`);
-      const returnedSnapshot = await get(returnedRef);
-      if (returnedSnapshot.exists()) {
-        await set(returnedRef, null);
-        console.log("✅ Removed from returned node");
-      }
-      
-      // Create a notification for the PO
-      const notificationRef = ref(db, `notifications/${selectedYear}/PO/${poUid}`);
-      const notificationId = Date.now().toString();
-      const notificationData = {
-        id: notificationId,
-        type: "assessment_forwarded",
-        title: `"${selectedAssessment}" Assessment (${selectedYear}) was forwarded by MLGO (${userMunicipality || profileData.municipality || "Unknown Municipality"})`,
-        message: `Assessment from ${lgu.lguName} has been forwarded to PO by MLGO from ${userMunicipality || profileData.municipality || "Unknown Municipality"}.`,
-        from: auth.currentUser?.email,
-        fromName: profileData.name || auth.currentUser?.email,
-        fromMunicipality: userMunicipality || profileData.municipality,
-        timestamp: Date.now(),
-        read: false,
-        year: selectedYear,
-        assessment: selectedAssessment,
-        assessmentId: selectedAssessmentId,
-        municipality: lgu.municipality,
-        lguName: lgu.lguName,
-        lguUid: metadata.uid || currentUserUid,
-        mlgoMunicipality: userMunicipality || profileData.municipality,
-        cleanName: cleanName,
-        action: "view_assessment"
-      };
-      await set(ref(db, `notifications/${selectedYear}/PO/${poUid}/${notificationId}`), notificationData);
-      
-      alert("Assessment forwarded to Provincial Office successfully!");
-      
-      // Navigate to dashboard with refresh flag
-      navigate("/mlgo-dashboard", { 
-        state: { 
-          forwardedAssessment: true,
-          year: selectedYear,
-          assessmentId: selectedAssessmentId,
-          lguUid: currentUserUid,
-          refreshNeeded: true
-        } 
-      });
-      
-    } catch (error) {
-      console.error("Error forwarding to PO:", error);
-      alert("Failed to forward assessment: " + error.message);
-    } finally {
-      setLoading(false);
+    
+    const currentUserUid = auth.currentUser?.uid;
+    
+    if (!currentUserUid) {
+      alert("You must be logged in to forward assessments");
+      setActionTaken(false);
+      return;
     }
-  };
+    
+    console.log("=== FORWARDING TO PO ===");
+    console.log("PO UID:", poUid);
+    console.log("MLGO UID:", currentUserUid);
+    console.log("Selected Year:", selectedYear);
+    console.log("Selected Assessment:", selectedAssessment);
+    console.log("Selected Assessment ID:", selectedAssessmentId);
+    
+    // Get the clean name for the assessment
+    const cleanName = `${lgu.lguName.replace(/[.#$\[\]]/g, '_')}_${selectedAssessmentId}`;
+    const answersRef = ref(db, `answers/${selectedYear}/LGU/${cleanName}`);
+    const snapshot = await get(answersRef);
+    
+    if (!snapshot.exists()) {
+      alert("Assessment data not found");
+      setActionTaken(false);
+      return;
+    }
+    
+    const currentData = snapshot.val();
+    const metadata = currentData._metadata || {};
+    
+    // Get all answers data (without metadata)
+    const { _metadata, ...answersData } = currentData;
+    
+    // Prepare forward data with ALL required fields
+    const forwardData = {
+      lguUid: metadata.uid || currentUserUid,
+      year: selectedYear,
+      assessment: selectedAssessment,
+      assessmentId: selectedAssessmentId,
+      status: "Pending",
+      submission: new Date().toLocaleDateString('en-US', {
+        month: 'long',
+        day: '2-digit',
+        year: 'numeric'
+      }),
+      deadline: submissionDeadline ? new Date(submissionDeadline).toLocaleDateString('en-US', {
+        month: 'long',
+        day: '2-digit',
+        year: 'numeric'
+      }) : "Not set",
+      originalData: currentData,
+      forwardedAt: Date.now(),
+      forwardedBy: auth.currentUser?.email,
+      forwardedByName: profileData.name || auth.currentUser?.email,
+      submittedBy: metadata.email || auth.currentUser?.email,
+      lguName: lgu.lguName,
+      municipality: lgu.municipality || metadata.municipality,
+      mlgoUid: currentUserUid,
+      cleanName: cleanName,
+      // Important: Add these fields for the PO dashboard
+      type: "forwarded",
+      isNewForward: true
+    };
+    
+    console.log("Forward data to save:", forwardData);
+    
+    // CRITICAL: Save to forwarded node under PO's UID with a unique key
+    const forwardedRef = ref(db, `forwarded/${poUid}`);
+    const newForwardedRef = push(forwardedRef);
+    await set(newForwardedRef, forwardData);
+    
+    console.log("✅ Forwarded to PO successfully at path:", `forwarded/${poUid}/${newForwardedRef.key}`);
+    
+    // VERIFY the data was saved
+    const verifySnapshot = await get(forwardedRef);
+    console.log("Verification - Forwarded node now has:", verifySnapshot.val());
+    
+    // ===== DELETE FROM RETURNED NODE IF IT EXISTS =====
+    const returnedRef = ref(db, `returned/${selectedYear}/MLGO/${currentUserUid}/${selectedAssessmentId}`);
+    const returnedSnapshot = await get(returnedRef);
+    if (returnedSnapshot.exists()) {
+      await set(returnedRef, null);
+      console.log("✅ Removed from returned node");
+    }
+    
+    // UPDATE answers node with forwarded flags
+    const updatedMetadata = {
+      ...metadata,
+      uid: metadata.uid || currentUserUid,
+      email: metadata.email || auth.currentUser?.email,
+      name: metadata.name || lgu.lguName,
+      municipality: metadata.municipality || lgu.municipality,
+      status: "Forwarded",
+      forwarded: true,
+      forwardedToPO: true,
+      forwardedAt: Date.now(),
+      forwardedBy: auth.currentUser?.email,
+      forwardedByName: profileData.name || auth.currentUser?.email,
+      forwardedTo: poUid,
+      submitted: true,
+      returned: false,
+      returnedToMLGO: false,
+      returnedAt: null,
+      returnedBy: null,
+      returnedByName: null,
+      lastSaved: Date.now()
+    };
+    
+    const updatedData = {
+      ...answersData,
+      _metadata: updatedMetadata
+    };
+    
+    await set(answersRef, updatedData);
+    console.log("✅ Updated answers node with forwarded metadata");
+    
+    // Create notification for PO
+    const notificationRef = ref(db, `notifications/${selectedYear}/PO/${poUid}`);
+    const notificationId = Date.now().toString();
+    const notificationData = {
+      id: notificationId,
+      type: "assessment_forwarded",
+      title: `"${selectedAssessment}" Assessment (${selectedYear}) was forwarded by MLGO (${userMunicipality || profileData.municipality || "Unknown Municipality"})`,
+      message: `Assessment from ${lgu.lguName} has been forwarded to PO.`,
+      from: auth.currentUser?.email,
+      fromName: profileData.name || auth.currentUser?.email,
+      fromMunicipality: userMunicipality || profileData.municipality,
+      timestamp: Date.now(),
+      read: false,
+      year: selectedYear,
+      assessment: selectedAssessment,
+      assessmentId: selectedAssessmentId,
+      municipality: lgu.municipality,
+      lguName: lgu.lguName,
+      lguUid: metadata.uid || currentUserUid,
+      mlgoMunicipality: userMunicipality || profileData.municipality,
+      cleanName: cleanName,
+      action: "view_assessment"
+    };
+    
+    await set(ref(db, `notifications/${selectedYear}/PO/${poUid}/${notificationId}`), notificationData);
+    console.log("✅ Notification created for PO");
+    
+    alert("Assessment forwarded to Provincial Office successfully!");
+    
+    // Navigate to dashboard with refresh flag
+    navigate("/mlgo-dashboard", { 
+      state: { 
+        forwardedAssessment: true,
+        year: selectedYear,
+        assessmentId: selectedAssessmentId,
+        lguUid: currentUserUid,
+        refreshNeeded: true
+      } 
+    });
+    
+  } catch (error) {
+    console.error("Error forwarding to PO:", error);
+    alert("Failed to forward assessment: " + error.message);
+    setActionTaken(false);
+  } finally {
+    setLoading(false);
+  }
+};
   
-// When loading assessment data
+
 useEffect(() => {
   if (lguAnswers.length > 0) {
     const lgu = lguAnswers[0];
     
-    if (lgu.isReturnedFromPO) {
+    // Check if this is a returned assessment (from PO or MLGO)
+    const isReturnedFromPOFlag = lgu.isReturnedFromPO || lgu.data?._metadata?.returnedToMLGO === true;
+    const isReturnedToLGUFlag = lgu.isReturnedToLGU || lgu.data?._metadata?.returnedToLGU === true;
+    const isForwardedFlag = lgu.isForwarded || lgu.data?._metadata?.forwarded === true || lgu.data?._metadata?.forwardedToPO === true;
+    
+    // CRITICAL: For returned assessments, actionTaken should be FALSE
+    // so that buttons become clickable again
+    if (isReturnedFromPOFlag) {
       setIsReturnedFromPO(true);
-      setActionTaken(true);
-    }
-    
-    if (lgu.isForwarded) {
-      setIsForwarded(true);
-      setActionTaken(true);
-    }
-    
-    if (lgu.isReturnedToLGU) {
+      setActionTaken(false);  // Reset actionTaken so buttons work
+      console.log("📌 Assessment returned from PO - buttons should be enabled");
+    } else if (isReturnedToLGUFlag) {
       setIsReturnedToLGU(true);
-      setActionTaken(true);
-    }
-    
-    if (lgu.data?._metadata?.forwarded) {
+      setActionTaken(false);  // Reset actionTaken so buttons work
+      console.log("📌 Assessment returned to LGU - buttons should be enabled");
+    } else if (isForwardedFlag) {
       setIsForwarded(true);
       setActionTaken(true);
+      console.log("📌 Assessment forwarded - buttons disabled");
     } else {
+      // Regular submitted/draft state
       setIsForwarded(false);
+      setActionTaken(false);
     }
     
     console.log("Assessment status:", {
-      isReturnedFromPO: lgu.isReturnedFromPO,
-      forwarded: lgu.data?._metadata?.forwarded,
-      isForwarded: lgu.isForwarded,
-      isReturnedToLGU: lgu.isReturnedToLGU
+      isReturnedFromPO: isReturnedFromPOFlag,
+      isReturnedToLGU: isReturnedToLGUFlag,
+      isForwarded: isForwardedFlag,
+      actionTaken: isReturnedFromPOFlag || isReturnedToLGUFlag ? false : isForwardedFlag
     });
   } else {
     setIsReturnedFromPO(false);
@@ -1197,12 +1263,9 @@ useEffect(() => {
       
       doc.setFont("helvetica", "normal"); 
       doc.text(`${formattedDate}`, margin.left + 40, infoStartY + 55);
-  
+
       doc.setFont("helvetica", "bold");
-      doc.text(`AREA:`, margin.left, infoStartY + 70);
-  
-      doc.setFont("helvetica", "normal");
-      doc.text(`${tabName}`, margin.left + 40, infoStartY + 70);     
+      doc.text(`${tabName}`, margin.left, infoStartY + 75);     
       
       // ===== TABLE HEADER =====     
       const headers = [      
@@ -1902,7 +1965,7 @@ const getIndicatorAnswer = (indicator, path) => {
         // Add area name for this tab with styling
         doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
-        doc.text(`AREA: ${tabName}`, margin.left, infoStartY + 75);
+        doc.text(`${tabName}`, margin.left, infoStartY + 75);
         
         // ===== TABLE HEADER =====
         const headers = [
@@ -2753,9 +2816,18 @@ const answer = lgu.data?.[radioKeySanitized] ?? lgu.data?.[radioKeyOriginal] ?? 
     
 // Get attachments using the improved helper function
 const attachmentsByIndicator = lgu.attachmentsByIndicator || {};
-const sanitizedTitle = main.title.replace(/[:;,\-()]/g, '_').replace(/\s+/g, '_');
-const indicatorPath = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_${index}_${sanitizedTitle}`;
-const indicatorAttachments = getAttachmentsForIndicator(indicatorPath, attachmentsByIndicator);
+// In the main indicators section, update how you build the indicatorPath:
+const sanitizedTitle = main.title.replace(/[.#$\[\]/]/g, '_');
+
+// Also try without lowercase for flexibility
+const indicatorPath1 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_${index}_${sanitizedTitle}`;
+const indicatorPath2 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_${index}_${main.title.replace(/[:;,\-()\s]/g, '_')}`;
+
+// Try both paths
+let indicatorAttachments = getAttachmentsForIndicator(indicatorPath1, attachmentsByIndicator);
+if (indicatorAttachments.length === 0) {
+  indicatorAttachments = getAttachmentsForIndicator(indicatorPath2, attachmentsByIndicator);
+}
     
     return (
       <div key={index} className="reference-wrapper">
@@ -2856,9 +2928,9 @@ const indicatorAttachments = getAttachmentsForIndicator(indicatorPath, attachmen
           <div className="reference-verification-full" style={{ width: "100%" }}>
             <div className="reference-row" style={{ display: "flex", border: "none" }}>
               <div className="reference-label" style={{
-                width: "46%",
+                width: "45%",
                 background: "transparent",
-                borderRight: "1px solid rgba(8, 26, 75, 0.25)",
+                borderRight: "1px solid #cfcfcf",
                 padding: "6px 12px",
                 border: "none",
                 display: "flex",
@@ -2886,6 +2958,7 @@ const indicatorAttachments = getAttachmentsForIndicator(indicatorPath, attachmen
               </div>
               
               <div className="reference-field" style={{
+                borderLeft: "1px solid #cfcfcf",
                 width: "55%",
                 padding: "6px 12px",
                 background: "#ffffff",
@@ -3082,9 +3155,9 @@ const subIndicatorAttachments = getAttachmentsForIndicator(subPath, attachmentsB
           <div className="reference-verification-full" style={{ width: "100%" }}>
             <div className="reference-row" style={{ display: "flex", border: "none" }}>
               <div className="reference-label" style={{
-                width: "46%",
+                width: "45%",
                 background: "transparent",
-                borderRight: "1px solid rgba(8, 26, 75, 0.25)",
+                borderRight: "1px solid #cfcfcf",
                 padding: "6px 12px",
                 border: "none",
                 display: "flex",
@@ -3112,6 +3185,7 @@ const subIndicatorAttachments = getAttachmentsForIndicator(subPath, attachmentsB
               </div>
               
               <div className="reference-field" style={{
+                borderLeft: "1px solid #cfcfcf",
                 width: "55%",
                 padding: "6px 12px",
                 background: "#ffffff",
@@ -3306,9 +3380,9 @@ const nestedAttachments = getAttachmentsForIndicator(nestedPath, attachmentsByIn
                     <div className="reference-verification-full" style={{ width: "100%" }}>
                       <div className="reference-row" style={{ display: "flex", border: "none" }}>
                         <div className="reference-label" style={{
-                          width: "46%",
+                          width: "45%",
                           background: "transparent",
-                          borderRight: "1px solid rgba(8, 26, 75, 0.25)",
+                          borderRight: "1px solid #cfcfcf",
                           padding: "6px 12px",
                           border: "none",
                           display: "flex",
@@ -3336,6 +3410,7 @@ const nestedAttachments = getAttachmentsForIndicator(nestedPath, attachmentsByIn
                         </div>
                         
                         <div className="reference-field" style={{
+                          borderLeft: "1px solid #cfcfcf",
                           width: "55%",
                           padding: "6px 12px",
                           background: "#ffffff",
