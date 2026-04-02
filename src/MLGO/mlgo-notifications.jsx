@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { db, auth} from "src/firebase";
 import style from "src/MLGO-CSS/mlgo-notifications.module.css";
@@ -220,8 +221,18 @@ export default function MLGONotification() {
   const loadNotifications = async () => {
     setNotificationLoading(true);
     try {
-      const userUid = auth.currentUser.uid;
-      console.log("Loading notifications for MLGO UID:", userUid);
+      const currentUserUid = auth.currentUser.uid;
+      console.log("Current MLGO UID:", currentUserUid);
+      
+      // Get current MLGO's municipality from profile
+      const profileRef = ref(db, `profiles/${currentUserUid}`);
+      const profileSnapshot = await get(profileRef);
+      let currentMunicipality = "";
+      
+      if (profileSnapshot.exists()) {
+        currentMunicipality = profileSnapshot.val().municipality || "";
+        console.log("Current MLGO Municipality:", currentMunicipality);
+      }
       
       const notificationsRootRef = ref(db, `notifications`);
       const rootSnapshot = await get(notificationsRootRef);
@@ -229,44 +240,42 @@ export default function MLGONotification() {
       let allNotifications = [];
       
       if (rootSnapshot.exists()) {
-        console.log("Notifications root exists:", rootSnapshot.val());
         const yearsData = rootSnapshot.val();
         
-        Object.keys(yearsData).forEach(year => {
-          console.log(`Checking year ${year}:`, yearsData[year]);
+        for (const year of Object.keys(yearsData)) {
           const yearData = yearsData[year];
           
-          // Check if MLGO node exists for this year
           if (yearData.MLGO) {
-            console.log(`MLGO node exists for year ${year}:`, yearData.MLGO);
-            
-            // Check if this specific MLGO has notifications
-            if (yearData.MLGO[userUid]) {
-              console.log(`Notifications found for MLGO ${userUid} in year ${year}:`, yearData.MLGO[userUid]);
+            // Loop through ALL MLGO UIDs
+            for (const mlgoUid of Object.keys(yearData.MLGO)) {
+              // Get this MLGO's profile to check municipality
+              const mlgoProfileRef = ref(db, `profiles/${mlgoUid}`);
+              const mlgoProfileSnapshot = await get(mlgoProfileRef);
               
-              const yearNotifications = yearData.MLGO[userUid];
-              Object.keys(yearNotifications).forEach(key => {
-                const notification = yearNotifications[key];
-                console.log(`Notification ${key}:`, notification);
+              if (mlgoProfileSnapshot.exists()) {
+                const mlgoMunicipality = mlgoProfileSnapshot.val().municipality || "";
                 
-                allNotifications.push({
-                  id: key,
-                  year: year,
-                  ...notification
-                });
-              });
-            } else {
-              console.log(`No notifications for MLGO ${userUid} in year ${year}`);
+                // Only show notifications for MLGOs that match current user's municipality
+                if (mlgoMunicipality === currentMunicipality) {
+                  const mlgoNotifications = yearData.MLGO[mlgoUid];
+                  
+                  for (const key of Object.keys(mlgoNotifications)) {
+                    const notification = mlgoNotifications[key];
+                    allNotifications.push({
+                      id: key,
+                      year: year,
+                      sourceMlgoUid: mlgoUid,
+                      ...notification
+                    });
+                  }
+                }
+              }
             }
-          } else {
-            console.log(`No MLGO node for year ${year}`);
           }
-        });
-      } else {
-        console.log("Notifications root does not exist");
+        }
       }
 
-      console.log("All notifications loaded:", allNotifications);
+      console.log("Notifications loaded for municipality", currentMunicipality, ":", allNotifications.length);
       allNotifications.sort((a, b) => b.timestamp - a.timestamp);
       setNotifications(allNotifications);
       setNotificationLoading(false);
@@ -280,21 +289,23 @@ export default function MLGONotification() {
 }, [auth.currentUser?.uid]);
 
   // Delete notification
-  const deleteNotification = async (notificationId, year) => {
-    if (!auth.currentUser) return;
-    if (!window.confirm("Delete this notification?")) return;
+const deleteNotification = async (notificationId, year) => {
+  if (!auth.currentUser) return;
+  if (!window.confirm("Delete this notification?")) return;
+  
+  try {
+    const notification = notifications.find(n => n.id === notificationId);
+    if (!notification) return;
     
-    try {
-      const userUid = auth.currentUser.uid;
-      
-      const notificationRef = ref(db, `notifications/${year}/MLGO/${userUid}/${notificationId}`);
-      await set(notificationRef, null);
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
-    } catch (error) {
-      console.error("Error deleting notification:", error);
-      alert("Failed to delete notification");
-    }
-  };
+    const mlgoUid = notification.sourceMlgoUid;
+    const notificationRef = ref(db, `notifications/${year}/MLGO/${mlgoUid}/${notificationId}`);
+    await set(notificationRef, null);
+    setNotifications(prev => prev.filter(n => n.id !== notificationId));
+  } catch (error) {
+    console.error("Error deleting notification:", error);
+    alert("Failed to delete notification");
+  }
+};
 
   // Format date
   const formatDate = (timestamp) => {
@@ -319,31 +330,30 @@ export default function MLGONotification() {
   const unreadCount = notifications.filter(n => !n.read).length;
 
   // Mark notification as read
-  const markAsRead = async (notificationId, year) => {
-    if (!auth.currentUser) return;
+ const markAsRead = async (notificationId, year) => {
+  if (!auth.currentUser) return;
+  
+  try {
+    const notification = notifications.find(n => n.id === notificationId);
+    if (!notification) return;
     
-    try {
-      const userUid = auth.currentUser.uid;
-      const notification = notifications.find(n => n.id === notificationId);
-      if (!notification) return;
-      
-      const notificationRef = ref(db, `notifications/${year}/MLGO/${userUid}/${notificationId}`);
-      await set(notificationRef, {
-        ...notification,
-        read: true
-      });
-      
-      setNotifications(prev => 
-        prev.map(n => 
-          n.id === notificationId ? { ...n, read: true } : n
-        )
-      );
-    } catch (error) {
-      console.error("Error marking notification as read:", error);
-      alert("Failed to mark as read");
-    }
-  };
-
+    const mlgoUid = notification.sourceMlgoUid;
+    const notificationRef = ref(db, `notifications/${year}/MLGO/${mlgoUid}/${notificationId}`);
+    await set(notificationRef, {
+      ...notification,
+      read: true
+    });
+    
+    setNotifications(prev => 
+      prev.map(n => 
+        n.id === notificationId ? { ...n, read: true } : n
+      )
+    );
+  } catch (error) {
+    console.error("Error marking notification as read:", error);
+    alert("Failed to mark as read");
+  }
+};
   // Mark all as read
   const markAllAsRead = async () => {
     if (!auth.currentUser || notifications.length === 0) return;

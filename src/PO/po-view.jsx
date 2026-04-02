@@ -1395,7 +1395,7 @@ console.log("✅ Saved to verified node with attachments:", lgu.attachmentsByInd
     const notificationData = {
       id: notificationId,
       type: "assessment_verified",
-      title: `"${selectedAssessment}" Assessment (${selectedYear}) has been verified by PO.`,
+      title: `"${selectedAssessment}" Assessment (${selectedYear}) has been verified by the Provincial Office.`,
       message: currentTabRemark || "Assessment has been verified by the Provincial Office.",
       from: auth.currentUser?.email || "",
       fromName: profileData.name || auth.currentUser?.email || "",

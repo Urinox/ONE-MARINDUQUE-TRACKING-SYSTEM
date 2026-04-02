@@ -52,49 +52,73 @@ export default function MLGO() {
   const [returnedSubmissions, setReturnedSubmissions] = useState([]); // NEW: Store returned assessments
   const [assessmentList, setAssessmentList] = useState([]); // Store assessments
 
-  // Fetch unread notifications count
-  useEffect(() => {
-    if (!auth.currentUser) return;
+ // Fetch unread notifications count
+useEffect(() => {
+  if (!auth.currentUser) return;
 
-    const fetchUnreadCount = async () => {
-      try {
-        const userUid = auth.currentUser.uid;
-        const notificationsRootRef = ref(db, `notifications`);
-        const rootSnapshot = await get(notificationsRootRef);
-        
-        let count = 0;
-        
-        if (rootSnapshot.exists()) {
-          const yearsData = rootSnapshot.val();
-          
-          Object.keys(yearsData).forEach(year => {
-            const yearData = yearsData[year];
-            if (yearData.MLGO && yearData.MLGO[userUid]) {
-              const yearNotifications = yearData.MLGO[userUid];
-              Object.keys(yearNotifications).forEach(key => {
-                if (!yearNotifications[key].read) {
-                  count++;
-                }
-              });
-            }
-          });
-        }
-        
-        setUnreadCount(count);
-      } catch (error) {
-        console.error("Error fetching unread count:", error);
+  const fetchUnreadCount = async () => {
+    try {
+      const currentUserUid = auth.currentUser.uid;
+      
+      // Get current MLGO's municipality
+      const profileRef = ref(db, `profiles/${currentUserUid}`);
+      const profileSnapshot = await get(profileRef);
+      let currentMunicipality = "";
+      
+      if (profileSnapshot.exists()) {
+        currentMunicipality = profileSnapshot.val().municipality || "";
       }
-    };
+      
+      const notificationsRootRef = ref(db, `notifications`);
+      const rootSnapshot = await get(notificationsRootRef);
+      
+      let count = 0;
+      
+      if (rootSnapshot.exists()) {
+        const yearsData = rootSnapshot.val();
+        
+        for (const year of Object.keys(yearsData)) {
+          const yearData = yearsData[year];
+          
+          if (yearData.MLGO) {
+            // Loop through ALL MLGO UIDs
+            for (const mlgoUid of Object.keys(yearData.MLGO)) {
+              // Check if this MLGO has the same municipality as current user
+              const mlgoProfileRef = ref(db, `profiles/${mlgoUid}`);
+              const mlgoProfileSnapshot = await get(mlgoProfileRef);
+              
+              if (mlgoProfileSnapshot.exists()) {
+                const mlgoMunicipality = mlgoProfileSnapshot.val().municipality || "";
+                
+                if (mlgoMunicipality === currentMunicipality) {
+                  const mlgoNotifications = yearData.MLGO[mlgoUid];
+                  Object.keys(mlgoNotifications).forEach(key => {
+                    if (!mlgoNotifications[key].read) {
+                      count++;
+                    }
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      setUnreadCount(count);
+    } catch (error) {
+      console.error("Error fetching unread count:", error);
+    }
+  };
 
+  fetchUnreadCount();
+  
+  const notificationsRef = ref(db, `notifications`);
+  const unsubscribe = onValue(notificationsRef, () => {
     fetchUnreadCount();
-    
-    const notificationsRef = ref(db, `notifications`);
-    const unsubscribe = onValue(notificationsRef, () => {
-      fetchUnreadCount();
-    });
-    
-    return () => unsubscribe();
-  }, [auth.currentUser?.uid]);
+  });
+  
+  return () => unsubscribe();
+}, [auth.currentUser?.uid]);
 
   
 

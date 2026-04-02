@@ -277,7 +277,7 @@ export default function App() {
 
     try {
       const newCode = generateVerificationCode();
-      const expiresAt = Date.now() + 1 * 60 * 1000;
+     const expiresAt = Date.now() + 60 * 60 * 1000;  // 1 hour
 
       await update(ref(db, `users/${pendingUser.uid}`), {
         verificationCode: newCode,
@@ -294,7 +294,7 @@ export default function App() {
     }
   };
 
-  async function handleLogin(email, password) {
+ async function handleLogin(email, password) {
     // Prevent multiple login attempts
     if (isLoggingIn) {
       console.log("Login already in progress, skipping...");
@@ -327,7 +327,6 @@ export default function App() {
         console.log("No users found in database");
         setLoginError("No users found in the system.");
         alert("No users found in the system.");
-        setIsLoggingIn(false);
         return;
       }
 
@@ -357,73 +356,70 @@ export default function App() {
         console.log("No user found with email:", email);
         setLoginError("No account found with this email.");
         alert("No account found with this email.");
-        setIsLoggingIn(false);
         return;
       }
   
-// Step 2: Check verification status
-console.log("Step 2: Checking verification status");
-if (!userData.verified) {
-  console.log("User not verified");
-  setLoginError("Please verify your email first.");
-  alert("Please verify your email first.");
-  
-  const shouldResend = window.confirm("Would you like us to send the verification code?");
-  if (shouldResend) {
-    console.log("Resending verification code...");
-    const newCode = generateVerificationCode();
-    const expiresAt = Date.now() + 15 * 60 * 1000; // Fixed: 15 minutes for verification code
-    
-    await update(ref(db, `users/${userUid}`), {
-      verificationCode: newCode,
-      codeExpiresAt: expiresAt,
-      lastVerificationSent: Date.now()
-    });
-    
-    await sendVerificationEmail(email, newCode);
-    
-    setPendingUser({ uid: userUid, email });
-    setShowVerifyModal(true);
-    
-    alert("A new verification code has been sent to your email.");
-  }
-  setIsLoggingIn(false);
-  return;
-}
+      // Step 2: Check verification status
+      console.log("Step 2: Checking verification status");
+      if (!userData.verified) {
+        console.log("User not verified");
+        setLoginError("Please verify your email first.");
+        alert("Please verify your email first.");
+        
+        const shouldResend = window.confirm("Would you like us to send the verification code?");
+        if (shouldResend) {
+          console.log("Resending verification code...");
+          const newCode = generateVerificationCode();
+          const expiresAt = Date.now() + 15 * 60 * 1000;
+          
+          await update(ref(db, `users/${userUid}`), {
+            verificationCode: newCode,
+            codeExpiresAt: expiresAt,
+            lastVerificationSent: Date.now()
+          });
+          
+          await sendVerificationEmail(email, newCode);
+          
+          setPendingUser({ uid: userUid, email });
+          setShowVerifyModal(true);
+          
+          alert("A new verification code has been sent to your email.");
+        }
+        return;
+      }
 
-// Step 2.5: Check if verification is still valid (within 1 minute)
-console.log("Step 2.5: Checking verification timestamp");
-const oneMinuteAgo = Date.now() - 15 * 60 * 1000;  // 15 minute in milliseconds
+      // Step 2.5: Check if verification is still valid (1 hour)
+      console.log("Step 2.5: Checking verification timestamp");
+   const tenDaysAgo = Date.now() - (10 * 24 * 60 * 60 * 1000);
 
-if (!userData.verifiedAt || userData.verifiedAt < oneMinuteAgo) {
-  console.log("Verification expired - needs OTP again");
-  setLoginError("Your verification has expired. Please verify again.");
-  
-  // Set them as unverified in the database
-  await update(ref(db, `users/${userUid}`), {
-    verified: false,
-    verifiedAt: null
-  });
-  
-  // Generate and send new OTP
-  const newCode = generateVerificationCode();
-  const expiresAt = Date.now() + 15 * 60 * 1000;
-  
-  await update(ref(db, `users/${userUid}`), {
-    verificationCode: newCode,
-    codeExpiresAt: expiresAt,
-    lastVerificationSent: Date.now()
-  });
-  
-  await sendVerificationEmail(email, newCode);
-  
-  setPendingUser({ uid: userUid, email });
-  setShowVerifyModal(true);
-  
-  alert("Your verification has expired. A new verification code has been sent to your email.");
-  setIsLoggingIn(false);
-  return;
-}
+if (!userData.verifiedAt || userData.verifiedAt < tenDaysAgo) {
+        console.log("Verification expired - needs OTP again");
+        setLoginError("Your verification has expired. Please verify again.");
+        
+        // Set them as unverified in the database
+        await update(ref(db, `users/${userUid}`), {
+          verified: false,
+          verifiedAt: null
+        });
+        
+        // Generate and send new OTP
+        const newCode = generateVerificationCode();
+        const expiresAt = Date.now() + 60 * 60 * 1000;
+        
+        await update(ref(db, `users/${userUid}`), {
+          verificationCode: newCode,
+          codeExpiresAt: expiresAt,
+          lastVerificationSent: Date.now()
+        });
+        
+        await sendVerificationEmail(email, newCode);
+        
+        setPendingUser({ uid: userUid, email });
+        setShowVerifyModal(true);
+        
+        alert("Your verification has expired. A new verification code has been sent to your email.");
+        return;
+      }
   
       // Step 3: Attempt Firebase sign-in
       console.log("Step 3: Attempting Firebase authentication...");
@@ -442,25 +438,22 @@ if (!userData.verifiedAt || userData.verifiedAt < oneMinuteAgo) {
       
       console.log("=== LOGIN SUCCESSFUL ===");
       
-      // Use a small timeout to ensure context updates are processed
-      setTimeout(() => {
-        switch(role) {
-          case 'admin':
-            navigate('/dashboard', { replace: true });
-            break;
-          case 'sub-admin':
-            navigate('/mlgo-dashboard', { replace: true });
-            break;
-          case 'user':
-            navigate('/lgu-assessment', { replace: true });
-            break;
-          default:
-            console.error("Unknown role:", role);
-            setLoginError("No access assigned");
-            alert('No access assigned');
-            setIsLoggingIn(false);
-        }
-      }, 100);
+      // Navigate immediately
+      switch(role) {
+        case 'admin':
+          navigate('/dashboard', { replace: true });
+          break;
+        case 'sub-admin':
+          navigate('/mlgo-dashboard', { replace: true });
+          break;
+        case 'user':
+          navigate('/lgu-assessment', { replace: true });
+          break;
+        default:
+          console.error("Unknown role:", role);
+          setLoginError("No access assigned");
+          alert('No access assigned');
+      }
       
     } catch (error) {
       console.error("=== LOGIN ERROR ===");
@@ -492,9 +485,13 @@ if (!userData.verifiedAt || userData.verifiedAt < oneMinuteAgo) {
       
       setLoginError(errorMessage);
       alert(errorMessage);
+      
+    } finally {
+      // ✅ THIS IS THE KEY FIX - Always reset loading state
+      console.log("Login process completed, resetting isLoggingIn");
       setIsLoggingIn(false);
     }
-  }
+}
 
   const handleForgotPassword = async () => {
     if (!userId) {
@@ -517,52 +514,106 @@ if (!userData.verifiedAt || userData.verifiedAt < oneMinuteAgo) {
     }
   };
 
-  const handleGoogleSignIn = async () => {
-    const provider = new GoogleAuthProvider();
+const handleGoogleSignIn = async () => {
+  const provider = new GoogleAuthProvider();
+  
+  try {
+    const result = await signInWithPopup(auth, provider);
+    const user = result.user;
     
-    try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
+    console.log("Google Sign-In attempt for:", user.email);
 
-      const snapshot = await get(ref(db, `users/${user.uid}`));
-      const now = Date.now();
+    // Check if user exists in your database
+    const snapshot = await get(ref(db, `users/${user.uid}`));
+    const now = Date.now();
+    
+    // CASE 1: User doesn't exist in your database
+    if (!snapshot.exists()) {
+      console.log("New Google user - checking if email is registered elsewhere");
       
-      let userRole = "user";
+      // Check if this email is already registered with email/password
+      const usersRef = ref(db, 'users');
+      const allUsers = await get(usersRef);
+      let existingUserWithEmail = null;
       
-      if (!snapshot.exists()) {
-        await set(ref(db, `users/${user.uid}`), {
-          email: user.email,
-          role: "user",
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-          createdAt: new Date().toISOString(),
-          verified: true,
-          verifiedAt: now
-        });
-      } else {
-        const userData = snapshot.val();
-        userRole = userData.role || "user";
+      if (allUsers.exists()) {
+        const users = allUsers.val();
+        for (const [uid, data] of Object.entries(users)) {
+          if (data.email && data.email.toLowerCase() === user.email.toLowerCase()) {
+            existingUserWithEmail = { uid, ...data };
+            break;
+          }
+        }
       }
-
-      // Update AuthContext
-      setUser(user);
-      setUserRole(userRole);
-
-      if (userRole === 'admin') {
-        navigate('/dashboard', { replace: true });
-      } else if (userRole === 'sub-admin') {
-        navigate('/mlgo-dashboard', { replace: true });
-      } else if (userRole === 'user') {
-        navigate('/lgu-assessment', { replace: true });
-      } else {
-        alert('No access assigned');
+      
+      // If email exists but user is trying Google Sign-In
+      if (existingUserWithEmail) {
+        alert(`An account with ${user.email} already exists. Please sign in with your email and password instead.`);
+        await auth.signOut(); // Sign out the Google user
+        return;
       }
-
-    } catch (error) {
-      console.error('Google Sign-In error:', error.message);
-      alert('Failed to sign in with Google: ' + error.message);
+      
+      // New user - require email verification first
+      alert(`Welcome! Please register with your email and password first to verify your account. Google Sign-In is only for existing verified users.`);
+      await auth.signOut(); // Sign them out immediately
+      return;
     }
-  };
+    
+    // CASE 2: User exists in database - check verification status
+    const userData = snapshot.val();
+    console.log("Existing user found. Verification status:", userData.verified);
+    
+    // Check if user is verified
+    if (!userData.verified) {
+      alert(`Please verify your email first. A verification code was sent to ${user.email}. Please check your email or sign in with email/password to verify.`);
+      await auth.signOut(); // Sign them out
+      
+      // Optionally show verification modal
+      setPendingUser({ uid: user.uid, email: user.email });
+      setShowVerifyModal(true);
+      return;
+    }
+    
+// Check if verification is still valid (10 days)
+const tenDaysAgo = Date.now() - (10 * 24 * 60 * 60 * 1000);
+if (!userData.verifiedAt || userData.verifiedAt < tenDaysAgo) {
+  alert(`Your verification has expired. Please sign in with email/password to get a new verification code.`);
+  await auth.signOut();
+  return;
+}
+    
+    // CASE 3: User is verified - allow login
+    console.log("Google Sign-In successful for verified user");
+    const userRole = userData.role || "user";
+    
+    // Update AuthContext
+    setUser(user);
+    setUserRole(userRole);
+    
+    // Navigate based on role
+    if (userRole === 'admin') {
+      navigate('/dashboard', { replace: true });
+    } else if (userRole === 'sub-admin') {
+      navigate('/mlgo-dashboard', { replace: true });
+    } else if (userRole === 'user') {
+      navigate('/lgu-assessment', { replace: true });
+    } else {
+      alert('No access assigned');
+      await auth.signOut();
+    }
+    
+  } catch (error) {
+    console.error('Google Sign-In error:', error.message);
+    alert('Failed to sign in with Google: ' + error.message);
+    
+    // Make sure to clean up on error
+    try {
+      await auth.signOut();
+    } catch (signOutError) {
+      console.error("Error signing out after Google failure:", signOutError);
+    }
+  }
+};
 
   return (
     <div className="app-container">

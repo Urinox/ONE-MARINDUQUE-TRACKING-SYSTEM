@@ -1950,28 +1950,41 @@ export default function LGU() {
             }
           }
           
-          if (mlgoUid) {
-            const notificationRef = ref(db, `notifications/${selectedYearDisplay}/MLGO/${mlgoUid}`);
-            const notificationId = Date.now().toString();
-            const notificationData = {
-              id: notificationId,
-              type: "assessment_submitted",
-              title: `Assessment "${selectedAssessment}" (${selectedYearDisplay}) has been resubmitted by LGU.`,
-              message: `Assessment from ${profileData.name || auth.currentUser.email} has been resubmitted.`,
-              from: auth.currentUser?.email,
-              fromName: profileData.name || auth.currentUser?.email,
-              fromMunicipality: userMunicipality,
-              timestamp: Date.now(),
-              read: false,
-              year: selectedYearDisplay,
-              assessmentId: selectedAssessmentId,
-              assessment: selectedAssessment,
-              municipality: userMunicipality,
-              action: "view_assessment"
-            };
-            
-            await set(ref(db, `notifications/${selectedYearDisplay}/MLGO/${mlgoUid}/${notificationId}`), notificationData);
-          }
+      if (mlgoUid) {
+  // Check if this is a first submission or a resubmission
+  const isResubmission = existingSnapshot.exists() && 
+                         (existingMetadata?.returned === true || 
+                          existingMetadata?.returnedToLGU === true ||
+                          existingMetadata?.returnedAt !== null);
+  
+  const notificationTitle = isResubmission
+    ? `Assessment "${selectedAssessment}" (${selectedYearDisplay}) has been resubmitted by ${profileData.name || auth.currentUser.email}`
+    : `Assessment "${selectedAssessment}" (${selectedYearDisplay}) has been submitted by ${profileData.name || auth.currentUser.email}`;
+  
+  const notificationMessage = isResubmission
+    ? `Assessment has been resubmitted after revision.`
+    : `Assessment has been submitted for validation.`;
+  
+  const notificationData = {
+    id: Date.now().toString(),
+    type: isResubmission ? "assessment_resubmitted" : "assessment_submitted",
+    title: notificationTitle,
+    message: notificationMessage,
+    from: auth.currentUser?.email,
+    fromName: profileData.name || auth.currentUser?.email,
+    fromMunicipality: userMunicipality,
+    timestamp: Date.now(),
+    read: false,
+    year: selectedYearDisplay,
+    assessmentId: selectedAssessmentId,
+    assessment: selectedAssessment,
+    municipality: userMunicipality,
+    action: "view_assessment"
+  };
+  
+  await set(ref(db, `notifications/${selectedYearDisplay}/MLGO/${mlgoUid}/${notificationData.id}`), notificationData);
+  console.log(`✅ Notification sent to MLGO: ${mlgoUid} - Type: ${isResubmission ? "RESUBMITTED" : "SUBMITTED"}`);
+}
           
           setHasSubmitted(true);
           setMetadata(newMetadata);

@@ -93,6 +93,10 @@ export default function POIndicators() {
     email: displayName,
     image: ""
   });
+
+  const [editingTabId, setEditingTabId] = useState(null);
+const [editingTabName, setEditingTabName] = useState("");
+
   const [profileData, setProfileData] = useState({
     name: "",
     email: displayName,
@@ -227,6 +231,39 @@ const handleDeleteTab = async (tabId, tabName) => {
   } catch (error) {
     console.error("Error deleting tab:", error);
     alert("Failed to delete tab");
+  }
+};
+
+// Update tab name
+const handleUpdateTabName = async (tabId, newName) => {
+  if (!auth.currentUser || !selectedYear || !selectedAssessmentId) return;
+  if (!newName.trim()) {
+    alert("Area name cannot be empty");
+    return;
+  }
+
+  try {
+    const tabRef = ref(
+      db,
+      `assessment-tabs/${auth.currentUser.uid}/${selectedYear}/${selectedAssessmentId}/${tabId}/name`
+    );
+    await set(tabRef, newName);
+    
+    // Update local state
+    setTabs(prev => prev.map(tab => 
+      tab.id === tabId ? { ...tab, name: newName } : tab
+    ));
+    
+    // If this was the active tab, update activeItem name
+    if (activeTab === tabId) {
+      setActiveItem(newName);
+    }
+    
+    setEditingTabId(null);
+    setEditingTabName("");
+  } catch (error) {
+    console.error("Error updating tab name:", error);
+    alert("Failed to update area name");
   }
 };
 
@@ -1047,73 +1084,101 @@ const handleSaveChanges = async () => {
         overflowY: "auto",
         paddingRight: "5px"
       }}>
-        {tabs.length > 0 ? (
-          tabs.map((tab) => (
-            <div
-              key={tab.id}
-              className={`sidebar-item ${activeItem === tab.name ? "active" : ""}`}
-              style={{ 
-                display: "flex", 
-                alignItems: "center", 
-                justifyContent: "space-between",
-                padding: "10px",
-                position: "relative"
-              }}
-            >
-              <span 
-                style={{ 
-                  flex: 1, 
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  paddingRight: "25px"
-                }}
-                onClick={() => handleTabChange(tab.id, tab.name)}
-                title={tab.name}
-              >
-                {tab.name}
-              </span>
-{tabs.length >= 0 && (
-  <button
-    onClick={(e) => {
-      e.stopPropagation();
-      handleDeleteTab(tab.id, tab.name);
-    }}
-    style={{
-      background: "none",
-      border: "none",
-      color: "#ff6b6b",
-      cursor: "pointer",
-      fontSize: "18px",
-      fontWeight: "bold",
-      padding: "0 5px",
-      position: "absolute",
-      right: "5px",
-      top: "50%",
-      transform: "translateY(-50%)",
-      borderRadius: "50%",
-      width: "24px",
-      height: "24px",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      transition: "all 0.2s ease"
-    }}
-    onMouseEnter={(e) => {
-      e.currentTarget.style.backgroundColor = "rgba(255, 107, 107, 0.1)";
-    }}
-    onMouseLeave={(e) => {
-      e.currentTarget.style.backgroundColor = "transparent";
-    }}
-    title="Delete tab"
-  >
-    ×
-  </button>
-)}
-            </div>
-          ))
-        ) : (
+{tabs.length > 0 ? (
+  tabs.map((tab) => (
+    <div
+      key={tab.id}
+      className={`sidebar-item ${activeItem === tab.name ? "active" : ""}`}
+      style={{ 
+        display: "flex", 
+        alignItems: "center", 
+        justifyContent: "space-between",
+        padding: "10px",
+        position: "relative"
+      }}
+    >
+      {editingTabId === tab.id ? (
+        <input
+          type="text"
+          value={editingTabName}
+          onChange={(e) => setEditingTabName(e.target.value)}
+          onBlur={() => handleUpdateTabName(tab.id, editingTabName)}
+          onKeyPress={(e) => {
+            if (e.key === 'Enter') {
+              handleUpdateTabName(tab.id, editingTabName);
+            }
+          }}
+          autoFocus
+          style={{
+            flex: 1,
+            padding: "4px 8px",
+            borderRadius: "4px",
+            border: "1px solid #0c1a4b",
+            backgroundColor: "white",
+            color: "#333",
+            fontSize: "14px",
+            marginRight: "5px"
+          }}
+        />
+      ) : (
+        <span 
+          style={{ 
+            flex: 1, 
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            paddingRight: "25px"
+          }}
+          onClick={() => handleTabChange(tab.id, tab.name)}
+          onDoubleClick={() => {
+            setEditingTabId(tab.id);
+            setEditingTabName(tab.name);
+          }}
+          title="Double-click to edit area name"
+        >
+          {tab.name}
+        </span>
+      )}
+      
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleDeleteTab(tab.id, tab.name);
+        }}
+        style={{
+          background: "none",
+          border: "none",
+          color: "#ff6b6b",
+          cursor: "pointer",
+          fontSize: "18px",
+          fontWeight: "bold",
+          padding: "0 5px",
+          position: "absolute",
+          right: "5px",
+          top: "50%",
+          transform: "translateY(-50%)",
+          borderRadius: "50%",
+          width: "24px",
+          height: "24px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          transition: "all 0.2s ease"
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = "rgba(255, 107, 107, 0.1)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = "transparent";
+        }}
+        title="Delete tab"
+      >
+        ×
+      </button>
+    </div>
+  ))
+) : (
           <div className="sidebar-item disabled" style={{ opacity: 0.5, cursor: 'not-allowed' }}>
             No areas created yet.
           </div>

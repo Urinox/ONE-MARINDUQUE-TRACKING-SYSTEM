@@ -562,36 +562,62 @@ const prevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
               {formatDate(item.timestamp || item.returnedAt)}
             </td>
             
-            <td style={{ 
-              padding: "10px 12px", 
-              textAlign: "center"
-            }}>
-<button
-  onClick={(e) => {
-    e.stopPropagation();
-    if (item.type === 'remark') {
-      deleteRemark(item.id, item.year);
-    } else {
-      deleteNotification(item.id, item.year);
-    }
-  }}
-  style={{
-    background: "none",
-    border: "none",
-    color: "#dc3545",
-    cursor: "pointer",
-    fontSize: "16px",
-    padding: "5px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    margin: "0 auto"
-  }}
-  title="Delete"
->
-  <FiTrash2 />
-</button>
-            </td>
+      <td style={{ 
+  padding: "10px 12px", 
+  textAlign: "center"
+}}>
+  <div style={{ display: "flex", gap: "5px", justifyContent: "center" }}>
+    {/* Mark as Read button - only show for notifications (not remarks) and if not read */}
+    {item.type !== 'remark' && !item.read && (
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          markAsRead(item.id, item.year);
+        }}
+        style={{
+          background: "none",
+          border: "none",
+          color: "#28a745",
+          cursor: "pointer",
+          fontSize: "16px",
+          padding: "5px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center"
+        }}
+        title="Mark as read"
+      >
+        ✓
+      </button>
+    )}
+    
+    {/* Delete button */}
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        if (item.type === 'remark') {
+          deleteRemark(item.id, item.year);
+        } else {
+          deleteNotification(item.id, item.year);
+        }
+      }}
+      style={{
+        background: "none",
+        border: "none",
+        color: "#dc3545",
+        cursor: "pointer",
+        fontSize: "16px",
+        padding: "5px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      }}
+      title="Delete"
+    >
+      <FiTrash2 />
+    </button>
+  </div>
+</td>
           </tr>
         ))
       ) : (
