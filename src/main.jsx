@@ -23,6 +23,7 @@ import MLGOView from "./MLGO/mlgo-view.jsx";
 import POView from "./PO/po-view.jsx";
 import MLGONotification from "./MLGO/mlgo-notifications.jsx";
 import PONotification from "./PO/po-notifications.jsx";
+import ResetPassword from "./PO/resetpassword";
 
 // Protected Route Component (using Auth Context)
 function ProtectedRoute({ children, allowedRoles }) {
@@ -53,7 +54,7 @@ function Root() {
       <AppLayout>
         <Routes>
           <Route path="/login" element={<App />} />
-
+          <Route path="/reset-password" element={<ResetPassword />} />
           {/* PO/Admin Routes */}
           <Route
             path="/dashboard"

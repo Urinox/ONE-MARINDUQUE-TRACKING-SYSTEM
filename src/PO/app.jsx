@@ -496,83 +496,26 @@ if (!userData.verifiedAt || userData.verifiedAt < oneMinuteAgo) {
     }
   }
 
-const handleForgotPassword = async () => {
-  if (!userId) {
-    alert('Please enter your email address');
-    return;
-  }
-
-  setIsLoggingIn(true);
-
-  try {
-    // Check if user exists in database
-    const usersRef = ref(db, 'users');
-    const snapshot = await get(usersRef);
-    
-    let userExists = false;
-    let userUid = null;
-    
-    if (snapshot.exists()) {
-      const users = snapshot.val();
-      for (const [uid, data] of Object.entries(users)) {
-        if (data.email && data.email.toLowerCase() === userId.toLowerCase()) {
-          userExists = true;
-          userUid = uid;
-          break;
-        }
-      }
-    }
-    
-    if (!userExists) {
-      alert('No account found with this email.');
-      setIsLoggingIn(false);
+  const handleForgotPassword = async () => {
+    if (!userId) {
+      alert('Please enter your email address');
       return;
     }
-    
-    // Generate reset token (6 digits)
-    const resetToken = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 60 * 60 * 1000; // 1 hour
-    
-    // Save to database
-    await update(ref(db, `users/${userUid}`), {
-      passwordResetToken: resetToken,
-      passwordResetExpiresAt: expiresAt
-    });
-    
-    // Create FULL reset link with the complete URL
-    const resetLink = `${window.location.origin}/reset-password?token=${resetToken}&email=${encodeURIComponent(userId)}`;
-    
-    // IMPORTANT: Use EXACT variable names that match your template
-    const templateParams = {
-      reset_link: resetLink,    // Must match {{reset_link}} in template
-      to_email: userId          // Must match {{to_email}} in template
-    };
-    
-    console.log("Sending reset email to:", userId);
-    console.log("Reset link:", resetLink);
-    console.log("Template params:", templateParams);
-    
-    const response = await emailjs.send(
-      import.meta.env.VITE_EMAILJS_SERVICE_ID,
-      import.meta.env.VITE_EMAILJS_RESET_TEMPLATE_ID,
-      templateParams
-    );
-    
-    console.log("EmailJS response:", response);
-    
-    if (response.status === 200) {
-      alert('Password reset link has been sent to your email!');
-    } else {
-      alert('Failed to send reset email. Status: ' + response.status);
+
+    try {
+      await sendPasswordResetEmail(auth, userId);
+      alert('Password reset email sent! Check your inbox.');
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      if (error.code === 'auth/user-not-found') {
+        alert('No account found with this email.');
+      } else if (error.code === 'auth/invalid-email') {
+        alert('Invalid email address.');
+      } else {
+        alert('Error sending reset email: ' + error.message);
+      }
     }
-    
-  } catch (error) {
-    console.error('Error sending reset email:', error);
-    alert('Failed to send reset email: ' + (error.text || error.message));
-  } finally {
-    setIsLoggingIn(false);
-  }
-};
+  };
 
   const handleGoogleSignIn = async () => {
     const provider = new GoogleAuthProvider();
