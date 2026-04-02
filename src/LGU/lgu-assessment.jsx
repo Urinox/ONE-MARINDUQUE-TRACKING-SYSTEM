@@ -1986,62 +1986,62 @@ export default function LGU() {
     }
   };
 
-  const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
-    if (!file) return;
-    
-    setUploadingFile(true);
-    
-    try {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        // Sanitize the field name using the same function as MLGO
-        const sanitizedField = sanitizeFieldNameForAttachment(field);
-        const sanitizedIndicatorKey = sanitizeKey(indicatorKey);
-        const sanitizedMainIndex = sanitizeKey(String(mainIndex));
-        
-        const tabId = activeTab;
-        
-        console.log("=== UPLOADING ATTACHMENT ===");
-        console.log("activeTab (tab ID):", activeTab);
-        console.log("indicatorKey (record key):", indicatorKey);
-        console.log("mainIndex:", mainIndex);
-        console.log("field (original):", field);
-        console.log("field (sanitized):", sanitizedField);
-        
-        // Generate unique key for attachment - THIS MUST MATCH MLGO'S EXPECTED FORMAT
-        let uniqueKey = `${selectedAssessmentId}_${tabId}_${sanitizedIndicatorKey}_${sanitizedMainIndex}_${sanitizedField}_${Date.now()}`;
-        
-        console.log("Generated uniqueKey:", uniqueKey);
-        
-        const attachmentData = {
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size,
-          fileData: reader.result,
-          uploadedAt: Date.now(),
-          indicatorKey: sanitizedIndicatorKey,
-          mainIndex: sanitizedMainIndex,
-          field: sanitizedField,
-          tabId: tabId,
-          assessmentId: selectedAssessmentId
-        };
-        
-        setAttachments(prev => ({
-          ...prev,
-          [uniqueKey]: attachmentData
-        }));
-        
-        alert(`File "${file.name}" attached successfully!`);
-        setUploadingFile(false);
+const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
+  if (!file) return;
+  
+  setUploadingFile(true);
+  
+  try {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      // Change this line - use sanitizeKey instead of sanitizeFieldNameForAttachment
+      const sanitizedField = sanitizeKey(field);
+      const sanitizedIndicatorKey = sanitizeKey(indicatorKey);
+      const sanitizedMainIndex = sanitizeKey(String(mainIndex));
+      
+      const tabId = activeTab;
+      
+      console.log("=== UPLOADING ATTACHMENT ===");
+      console.log("activeTab (tab ID):", activeTab);
+      console.log("indicatorKey (record key):", indicatorKey);
+      console.log("mainIndex:", mainIndex);
+      console.log("field (original):", field);
+      console.log("field (sanitized):", sanitizedField);
+      
+      // Generate unique key for attachment - THIS MUST MATCH MLGO'S EXPECTED FORMAT
+      let uniqueKey = `${selectedAssessmentId}_${tabId}_${sanitizedIndicatorKey}_${sanitizedMainIndex}_${sanitizedField}_${Date.now()}`;
+      
+      console.log("Generated uniqueKey:", uniqueKey);
+      
+      const attachmentData = {
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        fileData: reader.result,
+        uploadedAt: Date.now(),
+        indicatorKey: sanitizedIndicatorKey,
+        mainIndex: sanitizedMainIndex,
+        field: sanitizedField,
+        tabId: tabId,
+        assessmentId: selectedAssessmentId
       };
       
-      reader.readAsDataURL(file);
-    } catch (error) {
-      console.error("Error uploading file:", error);
-      alert("Failed to upload file");
+      setAttachments(prev => ({
+        ...prev,
+        [uniqueKey]: attachmentData
+      }));
+      
+      alert(`File "${file.name}" attached successfully!`);
       setUploadingFile(false);
-    }
-  };
+    };
+    
+    reader.readAsDataURL(file);
+  } catch (error) {
+    console.error("Error uploading file:", error);
+    alert("Failed to upload file");
+    setUploadingFile(false);
+  }
+};
 
   const triggerFileUpload = (indicatorKey, mainIndex, field) => {
     const fileInput = document.createElement('input');

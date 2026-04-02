@@ -112,7 +112,6 @@ export default function App() {
     const templateParams = {
       to_email: email,
       to_name: email.split('@')[0],
-      passcode: code
     };
 
     console.log("Template params:", templateParams);
