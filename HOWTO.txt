@@ -1,3 +1,6 @@
+git clone -b master "https://github.com/Urinox/ONE-MARINDUQUE-TRACKING-SYSTEM"
+
+
 =========[HOW TO RUN LOCALLY]=========
 1. Open the Terminal
 2. Type "npm run dev"
