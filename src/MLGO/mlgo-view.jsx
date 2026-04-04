@@ -126,76 +126,16 @@ const getAnswerKey = (record, mainIndex, field, isSub = false, nestedIndex = nul
   // Join with underscores
   return parts.join('_');
 };
-// ===== IMPROVED: Helper function to get attachments with flexible matching =====
-const getAttachmentsForIndicator = (indicatorPath, attachmentsByIndicator) => {
-  if (!attachmentsByIndicator || Object.keys(attachmentsByIndicator).length === 0) return [];
-  
-  console.log(`🔍 Looking for attachments matching path: "${indicatorPath}"`);
-  console.log(`📋 Available indicator IDs:`, Object.keys(attachmentsByIndicator));
-  
-  const matchingAttachments = [];
-  
-  // Generate variations of the search path
-  const searchVariations = [
-    indicatorPath,                                    // Original
-    indicatorPath.replace(/_/g, ' '),                // Replace underscores with spaces
-    indicatorPath.replace(/ /g, '_'),                // Replace spaces with underscores
-    indicatorPath.replace(/_+/g, ' '),               // Multiple underscores to spaces
-    indicatorPath.replace(/\s+/g, '_'),              // Multiple spaces to underscores
-  ];
-  
-  // Remove duplicates
-  const uniqueVariations = [...new Set(searchVariations)];
-  console.log(`🔍 Search variations:`, uniqueVariations);
-  
-  // Try multiple matching strategies
-  Object.keys(attachmentsByIndicator).forEach(storedKey => {
-    // Check if any variation matches
-    for (const variation of uniqueVariations) {
-      // Strategy 1: Exact match
-      if (storedKey === variation) {
-        console.log(`✅ EXACT match found: ${storedKey} (from variation: ${variation})`);
-        matchingAttachments.push(...attachmentsByIndicator[storedKey]);
-        break;
-      }
-      // Strategy 2: Stored key starts with variation
-      else if (storedKey.startsWith(variation)) {
-        console.log(`✅ PREFIX match: "${storedKey}" starts with "${variation}"`);
-        matchingAttachments.push(...attachmentsByIndicator[storedKey]);
-        break;
-      }
-      // Strategy 3: Variation starts with stored key
-      else if (variation.startsWith(storedKey)) {
-        console.log(`✅ REVERSE PREFIX match: "${variation}" starts with "${storedKey}"`);
-        matchingAttachments.push(...attachmentsByIndicator[storedKey]);
-        break;
-      }
-    }
-  });
-  
-  console.log(`📎 Found ${matchingAttachments.length} attachment(s) for "${indicatorPath}"`);
-  
-  if (matchingAttachments.length === 0) {
-    console.log(`⚠️ No attachments found for indicator path: "${indicatorPath}"`);
-    console.log(`💡 Tip: Try one of these variations manually:`, uniqueVariations);
-  }
-  
-  return matchingAttachments;
-};
 
-// ===== SANITIZE FIELD NAMES TO MATCH ATTACHMENT KEYS =====
 const sanitizeFieldName = (fieldName) => {
   if (!fieldName) return '';
-  // Convert to lowercase for consistency
+  // DO NOT convert to lowercase - match LGU's sanitization exactly
   let sanitized = fieldName
-    .toLowerCase()  // Add this line for consistency
     .replace(/[:;,\-()]/g, '_')  // Replace : ; , - ( ) with underscore
     .replace(/\s+/g, '_')        // Replace spaces with underscore
     .replace(/[^a-zA-Z0-9_]/g, '_')  // Replace any other special chars
-    .replace(/_+/g, '_');        // Replace multiple underscores with single
-  
-  // Remove leading/trailing underscores
-    sanitized = sanitized.replace(/[.#$\[\]/]/g, '_');
+    .replace(/_+/g, '_')         // Replace multiple underscores with single
+    .replace(/[.#$\[\]/]/g, '_'); // Remove special Firebase characters
   
   return sanitized;
 };
@@ -432,102 +372,58 @@ useEffect(() => {
           isReturnedToLGU,
           metadata: _metadata
         });
-        
-        // ===== LOAD ATTACHMENTS WITH DEBUG LOGGING =====
-        const attachmentsRef = ref(
-          db,
-          `attachments/${selectedYear}/LGU/${cleanName}`
-        );
-        const attachmentsSnapshot = await get(attachmentsRef);
-        
-        if (attachmentsSnapshot.exists()) {
-          const attachments = attachmentsSnapshot.val();
-          const attachmentsByIndicator = {};
-          
-          console.log("📎 Total attachments found:", Object.keys(attachments).length);
-          
-          // ===== DEBUG: Log all attachment keys to see the actual format =====
-          console.log("🔍 === DEBUGGING ATTACHMENT KEYS ===");
-          Object.keys(attachments).forEach(key => {
-            console.log(`📎 Attachment key: ${key}`);
-            console.log(`   Full key length: ${key.length}`);
-            
-            // Try to extract what indicator this belongs to
-            const parts = key.split('_');
-            console.log(`   Parts (${parts.length}):`, parts);
-            
-            // Try to identify the pattern
-            console.log(`   Part 0 (assessmentId): ${parts[0]}`);
-            console.log(`   Part 1 (tabId): ${parts[1]}`);
-            console.log(`   Part 2 (firebaseKey): ${parts[2]}`);
-            console.log(`   Part 3 (index): ${parts[3]}`);
-            console.log(`   Part 4 (fieldName): ${parts[4]}`);
-            
-            // Check if there's a timestamp at the end
-            const lastPart = parts[parts.length - 1];
-            const isTimestamp = /^\d+$/.test(lastPart) && lastPart.length >= 10;
-            console.log(`   Has timestamp suffix: ${isTimestamp ? 'YES - ' + lastPart : 'NO'}`);
-            
-            // Show the key without timestamp for matching
-            if (isTimestamp) {
-              const keyWithoutTimestamp = parts.slice(0, -1).join('_');
-              console.log(`   Key without timestamp: ${keyWithoutTimestamp}`);
-            }
-            
-            console.log(`   Attachment name: ${attachments[key]?.fileName || attachments[key]?.name || 'Unknown'}`);
-            console.log('---');
-          });
-          console.log("🔍 === END DEBUG ===");
-          
-          // Process each attachment
-          Object.keys(attachments).forEach(key => {
-            const attachment = attachments[key];
-            
-            // Log the full key for debugging
-            console.log(`Processing attachment key: ${key}`);
-            
-            // Remove timestamp from the end if present
-            let keyWithoutTimestamp = key;
-            const lastUnderscoreIndex = key.lastIndexOf('_');
-            if (lastUnderscoreIndex > -1) {
-              const possibleTimestamp = key.substring(lastUnderscoreIndex + 1);
-              if (/^\d+$/.test(possibleTimestamp) && possibleTimestamp.length >= 10) {
-                keyWithoutTimestamp = key.substring(0, lastUnderscoreIndex);
-              }
-            }
-            
-            // This keyWithoutTimestamp should be our indicator identifier
-            const indicatorId = keyWithoutTimestamp;
-            
-            console.log(`  Mapped to indicatorId: ${indicatorId}`);
-            
-            if (!attachmentsByIndicator[indicatorId]) {
-              attachmentsByIndicator[indicatorId] = [];
-            }
-            
-            // Add the attachment to the indicator
-            attachmentsByIndicator[indicatorId].push({
-              key: key,
-              name: attachment.fileName || attachment.name || 'Attachment',
-              url: attachment.url || attachment.fileData,
-              fileData: attachment.fileData || attachment.url,
-              fileSize: attachment.fileSize,
-              uploadedAt: attachment.uploadedAt,
-              fileType: attachment.fileType
-            });
-          });
-          
-          lguData.attachmentsByIndicator = attachmentsByIndicator;
-          console.log("📎 Attachments mapped to indicators:", Object.keys(attachmentsByIndicator));
-          console.log("📎 Indicator IDs available for lookup:");
-          Object.keys(attachmentsByIndicator).forEach(id => {
-            console.log(`  - ${id}: ${attachmentsByIndicator[id].length} attachment(s)`);
-          });
-          
-        } else {
-          console.log("📎 No attachments found for this assessment");
+
+      // ===== LOAD ATTACHMENTS - SIMPLIFIED (MATCHING PO VIEW) =====
+try {
+  const attachmentsRef = ref(db, `attachments/${selectedYear}/LGU/${cleanName}`);
+  const attachmentsSnapshot = await get(attachmentsRef);
+  
+  if (attachmentsSnapshot.exists()) {
+    const attachments = attachmentsSnapshot.val();
+    const attachmentsByIndicator = {};
+    
+    console.log("📎 Attachments found:", Object.keys(attachments).length);
+    
+    Object.keys(attachments).forEach(key => {
+      const attachment = attachments[key];
+      
+      // Remove timestamp from the end of the key (same as PO view)
+      let keyWithoutTimestamp = key;
+      const lastUnderscoreIndex = key.lastIndexOf('_');
+      if (lastUnderscoreIndex > -1) {
+        const possibleTimestamp = key.substring(lastUnderscoreIndex + 1);
+        if (/^\d+$/.test(possibleTimestamp) && possibleTimestamp.length >= 10) {
+          keyWithoutTimestamp = key.substring(0, lastUnderscoreIndex);
         }
-        
+      }
+      
+      const indicatorId = keyWithoutTimestamp;
+      
+      if (!attachmentsByIndicator[indicatorId]) {
+        attachmentsByIndicator[indicatorId] = [];
+      }
+      
+      attachmentsByIndicator[indicatorId].push({
+        key: key,
+        name: attachment.fileName || attachment.name || 'Attachment',
+        url: attachment.url || attachment.fileData,
+        fileData: attachment.fileData || attachment.url,
+        fileSize: attachment.fileSize,
+        uploadedAt: attachment.uploadedAt,
+        fileType: attachment.fileType
+      });
+    });
+    
+    lguData.attachmentsByIndicator = attachmentsByIndicator;
+    console.log("📎 Attachments mapped to indicators:", Object.keys(attachmentsByIndicator).length);
+  } else {
+    console.log("📎 No attachments found for this assessment");
+    lguData.attachmentsByIndicator = {};
+  }
+} catch (error) {
+  console.error("Error loading attachments:", error);
+  lguData.attachmentsByIndicator = {};
+}
       } else {
         console.log("No answers found for this assessment");
         setLguAnswers([]);
@@ -2814,20 +2710,33 @@ const baseKeySanitized = getAnswerKey(record, index, main.title);
 const baseKeyOriginal = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_${index}_${main.title}`;
 const answer = lgu.data?.[radioKeySanitized] ?? lgu.data?.[radioKeyOriginal] ?? lgu.data?.[baseKeySanitized] ?? lgu.data?.[baseKeyOriginal];
     
-// Get attachments using the improved helper function
+// Try multiple patterns to find attachments (matching PO View)
 const attachmentsByIndicator = lgu.attachmentsByIndicator || {};
-// In the main indicators section, update how you build the indicatorPath:
-const sanitizedTitle = main.title.replace(/[.#$\[\]/]/g, '_');
 
-// Also try without lowercase for flexibility
-const indicatorPath1 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_${index}_${sanitizedTitle}`;
-const indicatorPath2 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_${index}_${main.title.replace(/[:;,\-()\s]/g, '_')}`;
+// Pattern 1: Original format (without assessment ID)
+const pattern1 = `${record.firebaseKey}_${index}_${main.title}`;
+// Pattern 2: With underscores instead of spaces
+const pattern2 = `${record.firebaseKey}_${index}_${main.title.replace(/\s+/g, '_')}`;
+// Pattern 3: With assessment ID and tab ID
+const pattern3 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_${index}_${main.title}`;
+// Pattern 4: With assessment ID, tab ID, and underscores
+const pattern4 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_${index}_${main.title.replace(/\s+/g, '_')}`;
 
-// Try both paths
-let indicatorAttachments = getAttachmentsForIndicator(indicatorPath1, attachmentsByIndicator);
+let indicatorAttachments = attachmentsByIndicator[pattern1] || 
+                          attachmentsByIndicator[pattern2] || 
+                          attachmentsByIndicator[pattern3] || 
+                          attachmentsByIndicator[pattern4] || [];
+
+// If still not found, search through all keys
 if (indicatorAttachments.length === 0) {
-  indicatorAttachments = getAttachmentsForIndicator(indicatorPath2, attachmentsByIndicator);
+  Object.keys(attachmentsByIndicator).forEach(key => {
+    if (key.includes(`${record.firebaseKey}_${index}_`)) {
+      indicatorAttachments = [...indicatorAttachments, ...attachmentsByIndicator[key]];
+    }
+  });
 }
+
+console.log(`Main indicator "${main.title}" - Found ${indicatorAttachments.length} attachments`);
     
     return (
       <div key={index} className="reference-wrapper">
@@ -3070,11 +2979,33 @@ if (indicatorAttachments.length === 0) {
     const baseKey = getAnswerKey(record, index, sub.title, true);
     const answer = lgu.data?.[radioKey] ?? lgu.data?.[baseKey];
     
-// Get attachments using the improved helper function
+  // Try multiple patterns to find attachments for sub indicators (matching PO View)
 const attachmentsByIndicator = lgu.attachmentsByIndicator || {};
-const sanitizedSubTitle = sub.title.replace(/[:;,\-()]/g, '_').replace(/\s+/g, '_');
-const subPath = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_${sanitizedSubTitle}`;
-const subIndicatorAttachments = getAttachmentsForIndicator(subPath, attachmentsByIndicator);
+
+// Pattern 1: Original format
+const subPattern1 = `${record.firebaseKey}_sub_${index}_${sub.title}`;
+// Pattern 2: With underscores
+const subPattern2 = `${record.firebaseKey}_sub_${index}_${sub.title.replace(/\s+/g, '_')}`;
+// Pattern 3: With assessment ID and tab ID
+const subPattern3 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_${sub.title}`;
+// Pattern 4: With assessment ID, tab ID, and underscores
+const subPattern4 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_${sub.title.replace(/\s+/g, '_')}`;
+
+let subIndicatorAttachments = attachmentsByIndicator[subPattern1] || 
+                             attachmentsByIndicator[subPattern2] || 
+                             attachmentsByIndicator[subPattern3] || 
+                             attachmentsByIndicator[subPattern4] || [];
+
+// If not found, search through keys containing the sub pattern
+if (subIndicatorAttachments.length === 0) {
+  Object.keys(attachmentsByIndicator).forEach(key => {
+    if (key.includes(`${record.firebaseKey}_sub_${index}_`) && !key.includes('_nested_')) {
+      subIndicatorAttachments = [...subIndicatorAttachments, ...attachmentsByIndicator[key]];
+    }
+  });
+}
+
+console.log(`Sub indicator "${sub.title}" - Found ${subIndicatorAttachments.length} attachments`);
     
     return (
       <div key={index} className="reference-wrapper">
@@ -3295,11 +3226,34 @@ const subIndicatorAttachments = getAttachmentsForIndicator(subPath, attachmentsB
         const baseNestedKey = getAnswerKey(record, index, nested.title, true, nestedIndex);
         const nestedAnswer = lgu.data?.[nestedRadioKey] ?? lgu.data?.[baseNestedKey];
         
-// Get attachments using the improved helper function
+        // Try multiple patterns to find attachments for nested indicators (matching PO View)
 const attachmentsByIndicator = lgu.attachmentsByIndicator || {};
-const sanitizedNestedTitle = nested.title.replace(/[:;,\-()]/g, '_').replace(/\s+/g, '_');
-const nestedPath = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${sanitizedNestedTitle}`;
-const nestedAttachments = getAttachmentsForIndicator(nestedPath, attachmentsByIndicator);
+
+// Pattern 1: Original format
+const nestedPattern1 = `${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title}`;
+// Pattern 2: With underscores
+const nestedPattern2 = `${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title.replace(/\s+/g, '_')}`;
+// Pattern 3: With assessment ID and tab ID
+const nestedPattern3 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title}`;
+// Pattern 4: With assessment ID, tab ID, and underscores
+const nestedPattern4 = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title.replace(/\s+/g, '_')}`;
+
+let nestedAttachments = attachmentsByIndicator[nestedPattern1] || 
+                       attachmentsByIndicator[nestedPattern2] || 
+                       attachmentsByIndicator[nestedPattern3] || 
+                       attachmentsByIndicator[nestedPattern4] || [];
+
+// If not found, search through keys containing the nested pattern
+if (nestedAttachments.length === 0) {
+  const searchPattern = `${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_`;
+  Object.keys(attachmentsByIndicator).forEach(key => {
+    if (key.includes(searchPattern)) {
+      nestedAttachments = [...nestedAttachments, ...attachmentsByIndicator[key]];
+    }
+  });
+}
+
+console.log(`Nested indicator "${nested.title}" - Found ${nestedAttachments.length} attachments`);
         
         return (
                 <div key={nested.id || nestedIndex} className="nested-reference-item">

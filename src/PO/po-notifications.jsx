@@ -20,7 +20,8 @@ export default function PONotification() {
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState("");
   const [adminUid, setAdminUid] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [activeMenu, setActiveMenu] = useState("notifications");
+ // const [loading, setLoading] = useState(true); // REMOVED - no loading screen
   const user = auth.currentUser;
   const displayName = user?.email || "User";
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -298,6 +299,17 @@ const formatDate = (timestamp) => {
   return `${month}-${day}-${year}`;
 };
 
+const formatTime = (timestamp) => {
+  if (!timestamp) return "";
+  const date = new Date(timestamp);
+  let hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12; // convert 0 to 12
+  return `${hours}:${minutes} ${ampm}`;
+};
+
 // Notification pagination
 const notificationAllItems = notifications;
 const notificationTotalPages = Math.ceil(notificationAllItems.length / notificationItemsPerPage);
@@ -455,7 +467,7 @@ useEffect(() => {
     } catch (error) {
       console.error("Error fetching admin UID:", error);
     } finally {
-      setLoading(false);
+      // setLoading(false); // REMOVED - no loading screen
     }
   };
 
@@ -513,12 +525,6 @@ const handleSignOut = () => {
 };
 
   return (
-    <>
-    {loading ? (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
-        Loading...
-      </div>
-    ) : (
     <div className={style.dashboardScale}>
       <div className={style.dashboard}>
         {/* Sidebar */}
@@ -536,20 +542,26 @@ const handleSignOut = () => {
           </div>
 
 
-          {sidebarOpen && (
-            <>
+        {sidebarOpen && (
+  <>
 
  <button
-  className={style.sidebarMenuItem}
-  onClick={() => navigate("/dashboard")}
+  className={`${style.sidebarMenuItem} ${activeMenu === "dashboard" ? style.active : ""}`}
+  onClick={() => {
+    setActiveMenu("dashboard");
+    navigate("/dashboard");
+  }}
   style={{ marginTop: "-10%" }}
 >
   <span style={{ marginRight: "8px", fontSize: "18px" }}>🏠︎</span>
   Dashboard
 </button>
 <button
-  className={style.sidebarMenuItem}
-  onClick={() => navigate("/po-notifications")}
+  className={`${style.sidebarMenuItem} ${activeMenu === "notifications" ? style.active : ""}`}
+  onClick={() => {
+    setActiveMenu("notifications");
+    navigate("/po-notifications");
+  }}
 >
   <FiBell style={{ marginRight: "8px", fontSize: "18px" }} />
   Notifications
@@ -759,11 +771,9 @@ const handleSignOut = () => {
     marginBottom: "10px",
     padding: "5px 0"
   }}>
-    <span style={{ fontSize: "13px", color: "#666" }}>
-      {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''} • 
-      Showing {notificationIndexOfFirstItem + 1}-{Math.min(notificationIndexOfLastItem, notificationAllItems.length)} of {notificationAllItems.length}
-    </span>
-    
+<span style={{ fontSize: "13px", color: "#666" }}>
+  {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}
+</span>
     {/* ADD THIS BUTTON */}
     {unreadCount > 0 && (
       <button
@@ -841,7 +851,7 @@ const handleSignOut = () => {
                         </td>
                       </tr>
                     ) : notificationAllItems.length > 0 ? (
-                      notificationCurrentItems.map((item, index) => (
+                 notificationAllItems.map((item, index) => (
                         <tr 
                           key={item.id || index}
                           style={{
@@ -873,14 +883,19 @@ const handleSignOut = () => {
                             </div>
                           </td>
 
-                          <td style={{ 
-                            padding: "10px 12px",
-                            fontSize: "12px",
-                            color: "#666",
-                            borderRight: "1px solid #eee"
-                          }}>
-                            {formatDate(item.timestamp)}
-                          </td>
+                   <td style={{ 
+  padding: "10px 12px",
+  fontSize: "12px",
+  color: "#666",
+  borderRight: "1px solid #eee",
+  textAlign: "left"
+}}>
+  {formatDate(item.timestamp)}
+  <br />
+  <span style={{ fontSize: "10px", color: "#999" }}>
+    {formatTime(item.timestamp)}
+  </span>
+</td>
                           
 <td style={{ 
   padding: "10px 12px", 
@@ -947,60 +962,10 @@ const handleSignOut = () => {
                   </tbody>
                 </table>
                 
-                {/* Pagination */}
-                {notificationTotalPages > 1 && (
-                  <div style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    gap: "10px",
-                    marginTop: "20px",
-                    padding: "10px"
-                  }}>
-                    <button
-                      onClick={notificationPrevPage}
-                      disabled={notificationCurrentPage === 1}
-                      style={{
-                        padding: "5px 10px",
-                        backgroundColor: notificationCurrentPage === 1 ? "#ccc" : "#0c1a4b",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: notificationCurrentPage === 1 ? "not-allowed" : "pointer",
-                        fontSize: "12px"
-                      }}
-                    >
-                      Previous
-                    </button>
-                    
-                    <span style={{ fontSize: "13px", color: "#666" }}>
-                      Page {notificationCurrentPage} of {notificationTotalPages}
-                    </span>
-                    
-                    <button
-                      onClick={notificationNextPage}
-                      disabled={notificationCurrentPage === notificationTotalPages}
-                      style={{
-                        padding: "5px 10px",
-                        backgroundColor: notificationCurrentPage === notificationTotalPages ? "#ccc" : "#0c1a4b",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: notificationCurrentPage === notificationTotalPages ? "not-allowed" : "pointer",
-                        fontSize: "12px"
-                      }}
-                    >
-                      Next
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           </div>
         </div>
       </div>
     </div>
-    )
-  }
-  </>
-)};
+  )}

@@ -12,12 +12,9 @@ import 'jspdf-autotable';
 
 export default function LGUNotification() {
   const navigate = useNavigate();
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(20);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [profileData, setProfileData] = useState({ name: "", email: "", image: "" });
   const [notifications, setNotifications] = useState([]);
-  const [remarks, setRemarks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
@@ -31,7 +28,7 @@ export default function LGUNotification() {
     if (!auth.currentUser) return;
   
     const profileRef = ref(db, `profiles/${auth.currentUser.uid}`);
-    onValue(profileRef, (snapshot) => {
+    const unsubscribe = onValue(profileRef, (snapshot) => {
       if (snapshot.exists()) {
         const profile = snapshot.val();
         setProfileData(profile);
@@ -39,10 +36,10 @@ export default function LGUNotification() {
         setUserMunicipality(profile.municipality || ""); // ADDED: Store user's municipality
       }
     });
+    
+    return () => unsubscribe();
   }, []);
 
-
-  
   useEffect(() => {
     if (!auth.currentUser || !userMunicipality) return; // Wait for municipality
   
@@ -107,47 +104,6 @@ export default function LGUNotification() {
       loadAllNotifications();
     }
   }, [profileData.name, userMunicipality]);
-
-
-// Load remarks using UID
-const loadRemarks = async (userUid) => {
-  try {
-    const remarksRootRef = ref(db, `remarks`);
-    const rootSnapshot = await get(remarksRootRef);
-    
-    let allRemarks = [];
-    
-    if (rootSnapshot.exists()) {
-      const yearsData = rootSnapshot.val();
-      
-      // Loop through each year
-      Object.keys(yearsData).forEach(year => {
-        const yearData = yearsData[year];
-        
-        // Check if this year has LGU remarks for this user UID
-        if (yearData.LGU && yearData.LGU[userUid]) {
-          const yearRemarks = yearData.LGU[userUid];
-          
-          Object.keys(yearRemarks).forEach(key => {
-            const remark = yearRemarks[key];
-            allRemarks.push({
-              id: key,
-              year: year,
-              ...remark,
-              type: 'remark'
-            });
-          });
-        }
-      });
-    }
-    
-    allRemarks.sort((a, b) => (b.returnedAt || b.timestamp || 0) - (a.returnedAt || a.timestamp || 0));
-    setRemarks(allRemarks);
-    
-  } catch (error) {
-    console.error("Error loading remarks:", error);
-  }
-};
 
 // Mark notification as read
 const markAsRead = async (notificationId, year) => {
@@ -229,26 +185,6 @@ const deleteNotification = async (notificationId, year) => {
   }
 };
 
-// Delete remark
-const deleteRemark = async (remarkId, year) => {
-  if (!auth.currentUser) return;
-  
-  if (!window.confirm("Delete this remark?")) return;
-  
-  try {
-    const userUid = auth.currentUser.uid;
-    
-    const remarkRef = ref(db, `remarks/${year}/LGU/${userUid}/${remarkId}`);
-    await set(remarkRef, null);
-    
-    // Update local state
-    setRemarks(prev => prev.filter(r => r.id !== remarkId));
-  } catch (error) {
-    console.error("Error deleting remark:", error);
-    alert("Failed to delete remark");
-  }
-};
-
 
   // Format date (MM-DD-YYYY)
   const formatDate = (timestamp) => {
@@ -259,6 +195,18 @@ const deleteRemark = async (remarkId, year) => {
     const year = date.getFullYear();
     return `${month}-${day}-${year}`;
   };
+
+  // Format time (HH:MM AM/PM)
+const formatTime = (timestamp) => {
+  if (!timestamp) return "";
+  const date = new Date(timestamp);
+  let hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  return `${hours}:${minutes} ${ampm}`;
+};
 
   // Get indicator title from key (if available)
   const getIndicatorTitle = (indicatorKey) => {
@@ -306,21 +254,10 @@ const deleteRemark = async (remarkId, year) => {
     reader.readAsDataURL(file);
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-// Pagination logic - ADD THIS
-const allItems = [...notifications, ...remarks].sort((a, b) => 
-  (b.timestamp || b.returnedAt || 0) - (a.timestamp || a.returnedAt || 0)
+const unreadCount = notifications.filter(n => !n.read).length;
+const allItems = [...notifications].sort((a, b) => 
+  (b.timestamp || 0) - (a.timestamp || 0)
 );
-
-const totalPages = Math.ceil(allItems.length / itemsPerPage);
-const indexOfLastItem = currentPage * itemsPerPage;
-const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-const currentItems = allItems.slice(indexOfFirstItem, indexOfLastItem);
-
-// Change page - ADD THIS
-const paginate = (pageNumber) => setCurrentPage(pageNumber);
-const nextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages));
-const prevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
 
   return (
     <div className="dashboard-scale">
@@ -433,7 +370,7 @@ const prevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
               <div className="scrollable-content" style={{ maxHeight: sidebarOpen ? 'calc(100vh - 175px)' : 'calc(100vh - 200px)', overflowY: "auto" }}>
                 
                 {/* Header with actions */}
-                {(notifications.length > 0 || remarks.length > 0) && (
+               {notifications.length > 0 && (
                   <div style={{
                     display: "flex",
                     justifyContent: "space-between",
@@ -441,10 +378,9 @@ const prevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
                     marginBottom: "10px",
                     padding: "5px 0"
                   }}>
-                    <span style={{ fontSize: "13px", color: "#666" }}>
-                        {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''} • 
-                        Showing {indexOfFirstItem + 1}-{Math.min(indexOfLastItem, allItems.length)} of {allItems.length}
-                    </span>
+               <span style={{ fontSize: "13px", color: "#666" }}>
+    {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}
+</span>
                     {unreadCount > 0 && (
                       <button
                         onClick={markAllAsRead}
@@ -520,7 +456,7 @@ const prevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
           </td>
         </tr>
       ) : allItems.length > 0 ? (
-        currentItems.map((item, index) => (
+       allItems.map((item, index) => (
           <tr 
             key={item.id || index}
             style={{
@@ -535,7 +471,7 @@ const prevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
               color: "#333",
               borderRight: "1px solid #eee"
             }}>
-              {indexOfFirstItem + index + 1}
+             {index + 1}
             </td>
 
             <td style={{ 
@@ -553,14 +489,20 @@ const prevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
               </div>
             </td>
 
-            <td style={{ 
-              padding: "10px 12px",
-              fontSize: "12px",
-              color: "#666",
-              borderRight: "1px solid #eee"
-            }}>
-              {formatDate(item.timestamp || item.returnedAt)}
-            </td>
+        <td style={{ 
+  padding: "10px 12px",
+  fontSize: "12px",
+  color: "#666",
+  borderRight: "1px solid #eee"
+  
+  
+}}>
+  {formatDate(item.timestamp || item.returnedAt)}
+  <br />
+  <span style={{ fontSize: "10px", color: "#999" }}>
+    {formatTime(item.timestamp || item.returnedAt)}
+  </span>
+</td>
             
       <td style={{ 
   padding: "10px 12px", 
@@ -568,7 +510,7 @@ const prevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
 }}>
   <div style={{ display: "flex", gap: "5px", justifyContent: "center" }}>
     {/* Mark as Read button - only show for notifications (not remarks) and if not read */}
-    {item.type !== 'remark' && !item.read && (
+    {!item.read && (
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -592,30 +534,26 @@ const prevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
     )}
     
     {/* Delete button */}
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        if (item.type === 'remark') {
-          deleteRemark(item.id, item.year);
-        } else {
-          deleteNotification(item.id, item.year);
-        }
-      }}
-      style={{
-        background: "none",
-        border: "none",
-        color: "#dc3545",
-        cursor: "pointer",
-        fontSize: "16px",
-        padding: "5px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center"
-      }}
-      title="Delete"
-    >
-      <FiTrash2 />
-    </button>
+<button
+  onClick={(e) => {
+    e.stopPropagation();
+    deleteNotification(item.id, item.year);
+  }}
+  style={{
+    background: "none",
+    border: "none",
+    color: "#dc3545",
+    cursor: "pointer",
+    fontSize: "16px",
+    padding: "5px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center"
+  }}
+  title="Delete"
+>
+  <FiTrash2 />
+</button>
   </div>
 </td>
           </tr>
@@ -624,60 +562,13 @@ const prevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
         <tr>
           <td colSpan="4" style={{ padding: "40px", textAlign: "center", color: "#999" }}>
             <div style={{ fontSize: "40px", marginBottom: "10px", color: "#ccc" }}>📭</div>
-            <div style={{ fontSize: "14px" }}>No notifications or remarks yet</div>
+            <div style={{ fontSize: "14px" }}>No notifications yet</div>
           </td>
         </tr>
       )}
     </tbody>
   </table>
   
-  {/* Pagination Controls */}
-  {totalPages > 1 && (
-    <div style={{
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      gap: "10px",
-      marginTop: "20px",
-      padding: "10px"
-    }}>
-      <button
-        onClick={prevPage}
-        disabled={currentPage === 1}
-        style={{
-          padding: "5px 10px",
-          backgroundColor: currentPage === 1 ? "#ccc" : "#0c1a4b",
-          color: "white",
-          border: "none",
-          borderRadius: "4px",
-          cursor: currentPage === 1 ? "not-allowed" : "pointer",
-          fontSize: "12px"
-        }}
-      >
-        Previous
-      </button>
-      
-      <span style={{ fontSize: "13px", color: "#666" }}>
-        Page {currentPage} of {totalPages}
-      </span>
-      
-      <button
-        onClick={nextPage}
-        disabled={currentPage === totalPages}
-        style={{
-          padding: "5px 10px",
-          backgroundColor: currentPage === totalPages ? "#ccc" : "#0c1a4b",
-          color: "white",
-          border: "none",
-          borderRadius: "4px",
-          cursor: currentPage === totalPages ? "not-allowed" : "pointer",
-          fontSize: "12px"
-        }}
-      >
-        Next
-      </button>
-    </div>
-  )}
 </div>
               </div>
             </div>

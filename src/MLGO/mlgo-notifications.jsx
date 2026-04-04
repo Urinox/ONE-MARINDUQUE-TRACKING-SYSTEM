@@ -5,7 +5,7 @@ import style from "src/MLGO-CSS/mlgo-notifications.module.css";
 import dilgLogo from "src/assets/dilg-po.png";
 import dilgSeal from "src/assets/dilg-ph.png";
 import { FiFilter, FiRotateCcw, FiSettings, FiLogOut, FiFileText, FiBell, FiArrowRight, FiEye, FiTrash2 } from "react-icons/fi";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { ref, push, onValue, set, get } from "firebase/database";
 
 export default function MLGONotification() {
@@ -13,13 +13,14 @@ export default function MLGONotification() {
   const [currentPage, setCurrentPage] = useState(1);
   const [lguAnswers, setLguAnswers] = useState([]);
   const [profileComplete, setProfileComplete] = useState(false);
+  const location = useLocation();
   const rowsPerPage = 10;
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [openDropdown, setOpenDropdown] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState("");
   const [adminUid, setAdminUid] = useState(null);
-  const [loading, setLoading] = useState(true);
+ // const [loading, setLoading] = useState(true); // REMOVED - no loading screen
   const user = auth.currentUser;
   const displayName = user?.email || "User";
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -317,6 +318,18 @@ const deleteNotification = async (notificationId, year) => {
     return `${month}-${day}-${year}`;
   };
 
+  // Format time (HH:MM AM/PM)
+const formatTime = (timestamp) => {
+  if (!timestamp) return "";
+  const date = new Date(timestamp);
+  let hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  return `${hours}:${minutes} ${ampm}`;
+};
+
   // Notification pagination
   const notificationAllItems = notifications;
   const notificationTotalPages = Math.ceil(notificationAllItems.length / notificationItemsPerPage);
@@ -328,17 +341,18 @@ const deleteNotification = async (notificationId, year) => {
   const notificationPrevPage = () => setNotificationCurrentPage(prev => Math.max(prev - 1, 1));
 
   const unreadCount = notifications.filter(n => !n.read).length;
-
-  // Mark notification as read
- const markAsRead = async (notificationId, year) => {
+// Mark notification as read
+const markAsRead = async (notificationId, year) => {
   if (!auth.currentUser) return;
   
   try {
     const notification = notifications.find(n => n.id === notificationId);
     if (!notification) return;
     
+    // Use sourceMlgoUid from the notification object
     const mlgoUid = notification.sourceMlgoUid;
     const notificationRef = ref(db, `notifications/${year}/MLGO/${mlgoUid}/${notificationId}`);
+    
     await set(notificationRef, {
       ...notification,
       read: true
@@ -354,38 +368,48 @@ const deleteNotification = async (notificationId, year) => {
     alert("Failed to mark as read");
   }
 };
-  // Mark all as read
-  const markAllAsRead = async () => {
-    if (!auth.currentUser || notifications.length === 0) return;
+
+// Mark all as read
+const markAllAsRead = async () => {
+  if (!auth.currentUser || notifications.length === 0) return;
+  
+  try {
+    // Group unread notifications by year and source MLGO UID
+    const unreadByYearAndUid = {};
     
-    try {
-      const userUid = auth.currentUser.uid;
-      
-      const unreadByYear = {};
-      notifications.forEach(n => {
-        if (!n.read) {
-          if (!unreadByYear[n.year]) unreadByYear[n.year] = [];
-          unreadByYear[n.year].push(n);
+    notifications.forEach(n => {
+      if (!n.read) {
+        const key = `${n.year}_${n.sourceMlgoUid}`;
+        if (!unreadByYearAndUid[key]) {
+          unreadByYearAndUid[key] = {
+            year: n.year,
+            mlgoUid: n.sourceMlgoUid,
+            notifications: []
+          };
         }
-      });
-      
-      for (const [year, yearNotifications] of Object.entries(unreadByYear)) {
-        for (const notification of yearNotifications) {
-          const notificationRef = ref(db, `notifications/${year}/MLGO/${userUid}/${notification.id}`);
-          await set(notificationRef, {
-            ...notification,
-            read: true
-          });
-        }
+        unreadByYearAndUid[key].notifications.push(n);
       }
-      
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-      alert("All notifications marked as read");
-    } catch (error) {
-      console.error("Error marking all as read:", error);
-      alert("Failed to mark all as read");
+    });
+    
+    // Mark each notification as read in Firebase
+    for (const [key, group] of Object.entries(unreadByYearAndUid)) {
+      for (const notification of group.notifications) {
+        const notificationRef = ref(db, `notifications/${group.year}/MLGO/${group.mlgoUid}/${notification.id}`);
+        await set(notificationRef, {
+          ...notification,
+          read: true
+        });
+      }
     }
-  };
+    
+    // Update local state
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    alert("All notifications marked as read");
+  } catch (error) {
+    console.error("Error marking all as read:", error);
+    alert("Failed to mark all as read");
+  }
+};
 
   const handleSaveProfile = async () => {
     if (!auth.currentUser) return;
@@ -476,9 +500,8 @@ const deleteNotification = async (notificationId, year) => {
         }
       } catch (error) {
         console.error("Error fetching admin UID:", error);
-      } finally {
-        setLoading(false);
       }
+      // REMOVED setLoading(false)
     };
 
     fetchAdminUid();
@@ -534,14 +557,7 @@ const deleteNotification = async (notificationId, year) => {
   };
 
   return (
-    <>
-    {loading ? (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
-        Loading...
-      </div>
-    ) : (
-    <div className={style.dashboardScale}
-    >
+    <div className={style.dashboardScale}>
       <div className={style.dashboard}>
         {/* Sidebar */}
         <div className={`sidebar ${sidebarOpen ? "" : "collapsed"}`}>
@@ -557,10 +573,10 @@ const deleteNotification = async (notificationId, year) => {
             )}
           </div>
 
-          {sidebarOpen && (
+                {sidebarOpen && (
             <>
               <button
-                className={style.sidebarMenuItem}
+                className={`${style.sidebarMenuItem} ${location.pathname === "/mlgo-dashboard" ? style.active : ""}`}
                 onClick={() => navigate("/mlgo-dashboard")}
                 style={{ marginTop: "-10%" }}
               >
@@ -568,7 +584,7 @@ const deleteNotification = async (notificationId, year) => {
                 Dashboard
               </button>
               <button
-                className={style.sidebarMenuItem}
+                className={`${style.sidebarMenuItem} ${location.pathname === "/mlgo-notification" ? style.active : ""}`}
                 onClick={() => navigate("/mlgo-notification")}
               >
                 <FiBell style={{ marginRight: "8px", fontSize: "18px" }} />
@@ -642,10 +658,9 @@ const deleteNotification = async (notificationId, year) => {
                   marginBottom: "10px",
                   padding: "5px 0"
                 }}>
-                  <span style={{ fontSize: "13px", color: "#666" }}>
-                    {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''} • 
-                    Showing {notificationIndexOfFirstItem + 1}-{Math.min(notificationIndexOfLastItem, notificationAllItems.length)} of {notificationAllItems.length}
-                  </span>
+              <span style={{ fontSize: "13px", color: "#666" }}>
+  {unreadCount} unread notification{unreadCount !== 1 ? 's' : ''}
+</span>
                   
                   {unreadCount > 0 && (
                     <button
@@ -723,7 +738,7 @@ const deleteNotification = async (notificationId, year) => {
                         </td>
                       </tr>
                     ) : notificationAllItems.length > 0 ? (
-                      notificationCurrentItems.map((item, index) => (
+                  notificationAllItems.map((item, index) => (
                         <tr 
                           key={item.id || index}
                           style={{
@@ -759,11 +774,16 @@ const deleteNotification = async (notificationId, year) => {
                             padding: "10px 12px",
                             fontSize: "12px",
                             color: "#666",
-                            borderRight: "1px solid #eee"
+                            borderRight: "1px solid #eee",
+                            textAlign: "left"
                           }}>
                             {formatDate(item.timestamp)}
+                            <br />
+                            <span style={{ fontSize: "10px", color: "#999" }}>
+                              {formatTime(item.timestamp)}
+                            </span>
                           </td>
-                          
+
                           <td style={{ 
                             padding: "10px 12px", 
                             textAlign: "center"
@@ -826,54 +846,6 @@ const deleteNotification = async (notificationId, year) => {
                     )}
                   </tbody>
                 </table>
-                
-                {/* Pagination */}
-                {notificationTotalPages > 1 && (
-                  <div style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    gap: "10px",
-                    marginTop: "20px",
-                    padding: "10px"
-                  }}>
-                    <button
-                      onClick={notificationPrevPage}
-                      disabled={notificationCurrentPage === 1}
-                      style={{
-                        padding: "5px 10px",
-                        backgroundColor: notificationCurrentPage === 1 ? "#ccc" : "#0c1a4b",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: notificationCurrentPage === 1 ? "not-allowed" : "pointer",
-                        fontSize: "12px"
-                      }}
-                    >
-                      Previous
-                    </button>
-                    
-                    <span style={{ fontSize: "13px", color: "#666" }}>
-                      Page {notificationCurrentPage} of {notificationTotalPages}
-                    </span>
-                    
-                    <button
-                      onClick={notificationNextPage}
-                      disabled={notificationCurrentPage === notificationTotalPages}
-                      style={{
-                        padding: "5px 10px",
-                        backgroundColor: notificationCurrentPage === notificationTotalPages ? "#ccc" : "#0c1a4b",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: notificationCurrentPage === notificationTotalPages ? "not-allowed" : "pointer",
-                        fontSize: "12px"
-                      }}
-                    >
-                      Next
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -1029,8 +1001,5 @@ const deleteNotification = async (notificationId, year) => {
         )}
       </div>
     </div>
-    )
-  }
-  </>
-);
+  )
 }

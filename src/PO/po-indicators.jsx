@@ -11,6 +11,7 @@ import { ref, push, onValue, set, remove } from "firebase/database";
 export default function POIndicators() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [hasMainUnsavedChanges, setHasMainUnsavedChanges] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
   const [submissionDeadline, setSubmissionDeadline] = useState("");
@@ -22,7 +23,12 @@ export default function POIndicators() {
   const displayName = user?.email || "User";
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
-  const [savingProfile, setSavingProfile] = useState(false);
+    const [savingProfile, setSavingProfile] = useState(false);
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  
+  // Store data for ALL tabs, not just current tab
+  const [allTabsData, setAllTabsData] = useState({});
   
   // Get selected data from location state
   const selectedYear = location.state?.year;
@@ -105,6 +111,15 @@ const [editingTabName, setEditingTabName] = useState("");
   const [data, setData] = useState([]);
   const [editRecordKey, setEditRecordKey] = useState(null);
   const [isNavigating, setIsNavigating] = useState(false);
+
+  // Track unsaved changes in the main page
+useEffect(() => {
+  // Check if any tab has data
+  const hasAnyData = Object.keys(allTabsData).some(tabId => 
+    allTabsData[tabId] && allTabsData[tabId].length > 0
+  );
+  setHasMainUnsavedChanges(hasAnyData);
+}, [allTabsData]);
 
   // ===== LOAD ASSESSMENT TABS FROM DATABASE =====
   useEffect(() => {
@@ -589,6 +604,7 @@ const handleEditRecord = (record) => {
 };
 
   const handleDeleteRecord = async (firebaseKey) => {
+   setHasMainUnsavedChanges(true);
     if (!auth.currentUser || !currentTab) return;
     const confirmDelete = window.confirm("Are you sure you want to delete this indicator?");
     if (!confirmDelete) return;
@@ -599,7 +615,15 @@ const handleEditRecord = (record) => {
         `assessment-data/${auth.currentUser.uid}/${selectedYear}/${selectedAssessmentId}/${currentTab.tabPath}/assessment/${firebaseKey}`
       );
       await set(recordRef, null);
-      setData((prev) => prev.filter((item) => item.firebaseKey !== firebaseKey));
+      
+      const newData = data.filter((item) => item.firebaseKey !== firebaseKey);
+      setData(newData);
+      
+      // Also update global state for current tab
+      setAllTabsData(prevAll => ({
+        ...prevAll,
+        [currentTab.id]: newData
+      }));
     } catch (error) {
       console.error("Error deleting record:", error);
       alert("Failed to delete record");
@@ -607,6 +631,7 @@ const handleEditRecord = (record) => {
   };
 
   const handleAddIndicator = () => {
+   setHasMainUnsavedChanges(true);
     if (!isIndicatorValid()) return;
   
     // Clean the data before creating the record
@@ -643,20 +668,40 @@ const handleEditRecord = (record) => {
       createdAt: Date.now(),
     };
   
+    let updatedData;
     setData((prev) => {
       if (editRecordKey) {
-        return prev.map((item) =>
+        updatedData = prev.map((item) =>
           item.firebaseKey === editRecordKey ? newRecord : item
         );
       } else {
-        return [...prev, newRecord];
+        updatedData = [...prev, newRecord];
       }
+      return updatedData;
+    });
+    
+    // Also update global state for current tab
+    setAllTabsData(prevAll => {
+      const currentTabData = prevAll[currentTab.id] || [];
+      let newTabData;
+      if (editRecordKey) {
+        newTabData = currentTabData.map((item) =>
+          item.firebaseKey === editRecordKey ? newRecord : item
+        );
+      } else {
+        newTabData = [...currentTabData, newRecord];
+      }
+      return {
+        ...prevAll,
+        [currentTab.id]: newTabData
+      };
     });
   
-    setMainIndicators(initialMainIndicators);
-    setSubIndicators(initialSubIndicators);
-    setShowModal(false);
-    setEditRecordKey(null);
+   setMainIndicators(initialMainIndicators);
+setSubIndicators(initialSubIndicators);
+setShowModal(false);
+setEditRecordKey(null);
+setHasUnsavedChanges(false);
   };
 
   // Update Main Indicator
@@ -706,12 +751,19 @@ const handleEditRecord = (record) => {
     );
   };
 
-  // Back button handler
-  const handleBackToDashboard = () => {
-    if (isNavigating) return;
-    setIsNavigating(true);
-    navigate("/dashboard");
-  };
+ // Back button handler
+const handleBackToDashboard = () => {
+  if (isNavigating) return;
+  
+  // Check if there are unsaved changes
+  if (hasMainUnsavedChanges) {
+    const confirmLeave = window.confirm("You have unsaved changes. Are you sure you want to leave? All unsaved changes will be lost.");
+    if (!confirmLeave) return;
+  }
+  
+  setIsNavigating(true);
+  navigate("/dashboard");
+};
 
   // Load profile
   useEffect(() => {
@@ -732,63 +784,103 @@ const handleEditRecord = (record) => {
     });
   }, []);
 
-// Load data for current tab
+// Track unsaved changes
 useEffect(() => {
-  if (!auth.currentUser || !selectedYear || !selectedAssessmentId || !currentTab) return;
+  if (showModal) {
+    // Check if any indicator has content
+    const hasMainContent = mainIndicators.some(main => 
+      main.title.trim() !== "" || 
+      main.fieldType !== "" || 
+      (main.choices && main.choices.length > 0) ||
+      (main.verification && main.verification.length > 0)
+    );
+    
+    const hasSubContent = subIndicators.some(sub => 
+      sub.title.trim() !== "" || 
+      sub.fieldType !== "" || 
+      (sub.choices && sub.choices.length > 0) ||
+      (sub.verification && sub.verification.length > 0) ||
+      (sub.nestedSubIndicators && sub.nestedSubIndicators.length > 0)
+    );
+    
+    setHasUnsavedChanges(hasMainContent || hasSubContent);
+  }
+}, [mainIndicators, subIndicators, showModal]);
+// Load data for ALL tabs when component mounts and when tabs change
+useEffect(() => {
+  if (!auth.currentUser || !selectedYear || !selectedAssessmentId || tabs.length === 0) return;
 
-  console.log("Loading data for tab:", currentTab.name, "ID:", currentTab.id);
-
-  const dataRef = ref(
-    db,
-    `assessment-data/${auth.currentUser.uid}/${selectedYear}/${selectedAssessmentId}/${currentTab.tabPath}/assessment`
-  );
-
-  onValue(dataRef, (snapshot) => {
-    const records = [];
-    let counter = 1;
-
-    if (snapshot.exists()) {
-      snapshot.forEach((childSnapshot) => {
-        const record = childSnapshot.val();
-        
-        // Convert string verification to array for backward compatibility
-        const convertedRecord = {
-          ...record,
-          mainIndicators: (record.mainIndicators || []).map(main => ({
-            ...main,
-            // Convert verification to array if it's a string
-            verification: main.verification 
-              ? (Array.isArray(main.verification) ? main.verification : [main.verification])
-              : []
-          })),
-          subIndicators: (record.subIndicators || []).map(sub => ({
-            ...sub,
-            // Convert verification to array if it's a string
-            verification: sub.verification 
-              ? (Array.isArray(sub.verification) ? sub.verification : [sub.verification])
-              : [],
-            nestedSubIndicators: (sub.nestedSubIndicators || []).map(nested => ({
-              ...nested,
-              // Convert verification to array if it's a string
-              verification: nested.verification 
-                ? (Array.isArray(nested.verification) ? nested.verification : [nested.verification])
+  const loadAllTabsData = async () => {
+    const newAllTabsData = {};
+    
+    for (const tab of tabs) {
+      const dataRef = ref(
+        db,
+        `assessment-data/${auth.currentUser.uid}/${selectedYear}/${selectedAssessmentId}/${tab.tabPath}/assessment`
+      );
+      
+      const snapshot = await get(dataRef);
+      const records = [];
+      let counter = 1;
+      
+      if (snapshot.exists()) {
+        snapshot.forEach((childSnapshot) => {
+          const record = childSnapshot.val();
+          
+          const convertedRecord = {
+            ...record,
+            mainIndicators: (record.mainIndicators || []).map(main => ({
+              ...main,
+              verification: main.verification 
+                ? (Array.isArray(main.verification) ? main.verification : [main.verification])
                 : []
+            })),
+            subIndicators: (record.subIndicators || []).map(sub => ({
+              ...sub,
+              verification: sub.verification 
+                ? (Array.isArray(sub.verification) ? sub.verification : [sub.verification])
+                : [],
+              nestedSubIndicators: (sub.nestedSubIndicators || []).map(nested => ({
+                ...nested,
+                verification: nested.verification 
+                  ? (Array.isArray(nested.verification) ? nested.verification : [nested.verification])
+                  : []
+              }))
             }))
-          }))
-        };
-        
-        records.push({
-          ...convertedRecord,
-          id: counter++,
-          firebaseKey: childSnapshot.key,
+          };
+          
+          records.push({
+            ...convertedRecord,
+            id: counter++,
+            firebaseKey: childSnapshot.key,
+          });
         });
-      });
+      }
+      
+      newAllTabsData[tab.id] = records;
+      console.log(`📊 Loaded ${records.length} indicators for ${tab.name}`);
     }
+    
+   setAllTabsData(prev => {
+  // Only set if empty, otherwise merge to preserve unsaved changes
+  if (Object.keys(prev).length === 0) {
+    return newAllTabsData;
+  }
+  return prev;
+});
+  };
+  
+  loadAllTabsData();
+}, [tabs, selectedYear, selectedAssessmentId, auth.currentUser]);
 
-    setData(records);
-    console.log(`📊 Loaded ${records.length} indicators for ${currentTab.name}`);
-  });
-}, [selectedYear, selectedAssessmentId, currentTab, auth.currentUser]);
+// When tab changes, just set data from the global state (no reload)
+useEffect(() => {
+  if (currentTab && allTabsData[currentTab.id]) {
+    setData(allTabsData[currentTab.id]);
+  } else if (currentTab) {
+    setData([]);
+  }
+}, [currentTab, allTabsData]);
 
   // Load submission deadline for the selected year and assessment
 
@@ -819,84 +911,78 @@ useEffect(() => {
 }, [selectedYear, selectedAssessmentId, auth.currentUser?.uid]);
 
 const handleSaveChanges = async () => {
-  if (!auth.currentUser || isSavingIndicator || !selectedYear || !selectedAssessmentId || !currentTab) return;
+  if (!auth.currentUser || isSavingIndicator || !selectedYear || !selectedAssessmentId) return;
 
   try {
     setIsSavingIndicator(true);
 
-    const tabRef = ref(
-      db,
-      `assessment-data/${auth.currentUser.uid}/${selectedYear}/${selectedAssessmentId}/${currentTab.tabPath}/assessment`
-    );
-
-    const updatedData = {};
-    data.forEach((item) => {
-      // Clean the data before saving to remove any undefined values
-      const cleanMainIndicators = (item.mainIndicators || []).map(main => ({
-        id: main.id || 0,
-        title: main.title || "",
-        fieldType: main.fieldType || "",
-        choices: (main.choices || []).filter(choice => choice !== undefined).map(choice => choice || ""),
-        verification: (main.verification || []).filter(v => v !== undefined).map(v => v || ""),
-        // Only include value if it exists
-        ...(main.value !== undefined && { value: main.value })
-      }));
-
-      const cleanSubIndicators = (item.subIndicators || []).map(sub => ({
-        id: sub.id || 0,
-        title: sub.title || "",
-        fieldType: sub.fieldType || "",
-        choices: (sub.choices || []).filter(choice => choice !== undefined).map(choice => choice || ""),
-        verification: (sub.verification || []).filter(v => v !== undefined).map(v => v || ""),
-        // Clean nested sub-indicators
-        nestedSubIndicators: (sub.nestedSubIndicators || []).map(nested => ({
-          id: nested.id || 0,
-          title: nested.title || "",
-          fieldType: nested.fieldType || "",
-          choices: (nested.choices || []).filter(choice => choice !== undefined).map(choice => choice || ""),
-          verification: (nested.verification || []).filter(v => v !== undefined).map(v => v || ""),
-          ...(nested.value !== undefined && { value: nested.value })
-        })),
-        ...(sub.value !== undefined && { value: sub.value })
-      }));
-
-      updatedData[item.firebaseKey] = {
-        mainIndicators: cleanMainIndicators,
-        subIndicators: cleanSubIndicators,
-        createdAt: item.createdAt || Date.now(),
-      };
-    });
-
-    if (Object.keys(updatedData).length === 0) {
-      alert("No indicators to save.");
-      return;
-    }
-
-    // Remove any undefined values recursively
-    const removeUndefined = (obj) => {
-      if (obj === null || typeof obj !== 'object') return obj;
+    // Save data for ALL tabs
+    for (const tab of tabs) {
+      const tabData = allTabsData[tab.id] || [];
       
-      if (Array.isArray(obj)) {
-        return obj.map(item => removeUndefined(item)).filter(item => item !== undefined);
-      }
-      
-      return Object.fromEntries(
-        Object.entries(obj)
-          .filter(([_, value]) => value !== undefined)
-          .map(([key, value]) => [key, removeUndefined(value)])
+      const tabRef = ref(
+        db,
+        `assessment-data/${auth.currentUser.uid}/${selectedYear}/${selectedAssessmentId}/${tab.tabPath}/assessment`
       );
-    };
 
-    const cleanData = removeUndefined(updatedData);
-    
-    await set(tabRef, cleanData);
+      const updatedData = {};
+      tabData.forEach((item) => {
+        const cleanMainIndicators = (item.mainIndicators || []).map(main => ({
+          id: main.id || 0,
+          title: main.title || "",
+          fieldType: main.fieldType || "",
+          choices: (main.choices || []).filter(choice => choice !== undefined).map(choice => choice || ""),
+          verification: (main.verification || []).filter(v => v !== undefined).map(v => v || ""),
+          ...(main.value !== undefined && { value: main.value })
+        }));
+
+        const cleanSubIndicators = (item.subIndicators || []).map(sub => ({
+          id: sub.id || 0,
+          title: sub.title || "",
+          fieldType: sub.fieldType || "",
+          choices: (sub.choices || []).filter(choice => choice !== undefined).map(choice => choice || ""),
+          verification: (sub.verification || []).filter(v => v !== undefined).map(v => v || ""),
+          nestedSubIndicators: (sub.nestedSubIndicators || []).map(nested => ({
+            id: nested.id || 0,
+            title: nested.title || "",
+            fieldType: nested.fieldType || "",
+            choices: (nested.choices || []).filter(choice => choice !== undefined).map(choice => choice || ""),
+            verification: (nested.verification || []).filter(v => v !== undefined).map(v => v || ""),
+            ...(nested.value !== undefined && { value: nested.value })
+          })),
+          ...(sub.value !== undefined && { value: sub.value })
+        }));
+
+        updatedData[item.firebaseKey] = {
+          mainIndicators: cleanMainIndicators,
+          subIndicators: cleanSubIndicators,
+          createdAt: item.createdAt || Date.now(),
+        };
+      });
+
+      const removeUndefined = (obj) => {
+        if (obj === null || typeof obj !== 'object') return obj;
+        if (Array.isArray(obj)) {
+          return obj.map(item => removeUndefined(item)).filter(item => item !== undefined);
+        }
+        return Object.fromEntries(
+          Object.entries(obj)
+            .filter(([_, value]) => value !== undefined)
+            .map(([key, value]) => [key, removeUndefined(value)])
+        );
+      };
+
+      const cleanData = removeUndefined(updatedData);
+      await set(tabRef, cleanData);
+    }
     
     if (submissionDeadline) {
       await saveSubmissionDeadline();
     }
 
-    setShowSaveConfirm(false);
-    alert(`Changes saved for ${currentTab.name} (${selectedYear})`);
+  setShowSaveConfirm(false);
+setHasMainUnsavedChanges(false);
+alert(`Changes saved for all ${tabs.length} area(s) (${selectedYear})`);
   } catch (error) {
     console.error("Error saving changes:", error);
     alert("Failed to save changes: " + error.message);
@@ -1097,29 +1183,30 @@ const handleSaveChanges = async () => {
         position: "relative"
       }}
     >
-      {editingTabId === tab.id ? (
-        <input
-          type="text"
-          value={editingTabName}
-          onChange={(e) => setEditingTabName(e.target.value)}
-          onBlur={() => handleUpdateTabName(tab.id, editingTabName)}
-          onKeyPress={(e) => {
-            if (e.key === 'Enter') {
-              handleUpdateTabName(tab.id, editingTabName);
-            }
-          }}
-          autoFocus
-          style={{
-            flex: 1,
-            padding: "4px 8px",
-            borderRadius: "4px",
-            border: "1px solid #0c1a4b",
-            backgroundColor: "white",
-            color: "#333",
-            fontSize: "14px",
-            marginRight: "5px"
-          }}
-        />
+                             {editingTabId === tab.id ? (
+                        <input
+                          type="text"
+                          value={editingTabName}
+                          onChange={(e) => setEditingTabName(e.target.value)}
+                          onBlur={() => handleUpdateTabName(tab.id, editingTabName)}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              handleUpdateTabName(tab.id, editingTabName);
+                            }
+                          }}
+                          autoFocus
+                          style={{
+                            flex: 1,
+                            padding: "4px 8px",
+                            borderRadius: "4px",
+                            border: "1px solid rgba(255, 255, 255, 0.2)",
+                            backgroundColor: "rgba(255, 255, 255, 0.15)",
+                            color: "white",
+                            fontSize: "14px",
+                            marginRight: "5px",
+                            outline: "none"
+                          }}
+                        />
       ) : (
         <span 
           style={{ 
@@ -1141,41 +1228,41 @@ const handleSaveChanges = async () => {
         </span>
       )}
       
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          handleDeleteTab(tab.id, tab.name);
-        }}
-        style={{
-          background: "none",
-          border: "none",
-          color: "#ff6b6b",
-          cursor: "pointer",
-          fontSize: "18px",
-          fontWeight: "bold",
-          padding: "0 5px",
-          position: "absolute",
-          right: "5px",
-          top: "50%",
-          transform: "translateY(-50%)",
-          borderRadius: "50%",
-          width: "24px",
-          height: "24px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          transition: "all 0.2s ease"
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = "rgba(255, 107, 107, 0.1)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = "transparent";
-        }}
-        title="Delete tab"
-      >
-        ×
-      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteTab(tab.id, tab.name);
+                        }}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#ffffff",
+                          cursor: "pointer",
+                          fontSize: "18px",
+                          fontWeight: "bold",
+                          padding: "0 5px",
+                          position: "absolute",
+                          right: "5px",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          borderRadius: "50%",
+                          width: "24px",
+                          height: "24px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          transition: "all 0.2s ease"
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = "transparent";
+                        }}
+                        title="Delete tab"
+                      >
+                        ×
+                      </button>
     </div>
   ))
 ) : (
@@ -1357,25 +1444,28 @@ const handleSaveChanges = async () => {
                                 </div>
                               ))}
 
-                            {main.fieldType === "short" && (
-                              <span style={{ fontStyle: "italic", color: "gray" }}>Empty Field</span>
-                            )}
+     {main.fieldType === "short" && (
+  <span style={{ fontStyle: "italic", color: "gray" }}>Short Answer</span>
+)}
 
-                            {main.fieldType === "integer" && (
-                              <span style={{ fontStyle: "italic", color: "gray" }}>Empty Field</span>
-                            )}
+{main.fieldType === "integer" && (
+  <span style={{ fontStyle: "italic", color: "gray" }}>Integer/Value</span>
+)}
+{main.fieldType === "date" && (
+  <span style={{ fontStyle: "italic", color: "gray" }}>
+    {main.value
+      ? new Date(main.value).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      : "Date"}
+  </span>
+)}
 
-                            {main.fieldType === "date" && (
-                              <span style={{ fontStyle: "italic", color: "gray" }}>
-                                {main.value
-                                  ? new Date(main.value).toLocaleDateString("en-US", {
-                                      year: "numeric",
-                                      month: "long",
-                                      day: "numeric",
-                                    })
-                                  : "Empty Field"}
-                              </span>
-                            )}
+{main.fieldType === "no-input" && (
+  <span style={{ fontStyle: "italic", color: "gray" }}>No Input Field</span>
+)}
                           </div>
 
                           <div className="record-actions inside-field">
@@ -1449,25 +1539,29 @@ const handleSaveChanges = async () => {
                               </div>
                             ))}
 
-                          {sub.fieldType === "short" && (
-                            <span style={{ fontStyle: "italic", color: "gray" }}>Empty Field</span>
-                          )}
+       {sub.fieldType === "short" && (
+  <span style={{ fontStyle: "italic", color: "gray" }}>Short Answer</span>
+)}
 
-                          {sub.fieldType === "integer" && (
-                            <span style={{ fontStyle: "italic", color: "gray" }}>Empty Field</span>
-                          )}
+{sub.fieldType === "integer" && (
+  <span style={{ fontStyle: "italic", color: "gray" }}>Integer/Value</span>
+)}
 
-                          {sub.fieldType === "date" && (
-                            <span style={{ fontStyle: "italic", color: "gray" }}>
-                              {sub.value
-                                ? new Date(sub.value).toLocaleDateString("en-US", {
-                                    year: "numeric",
-                                    month: "long",
-                                    day: "numeric",
-                                  })
-                                : "Empty Field"}
-                            </span>
-                          )}
+{sub.fieldType === "date" && (
+  <span style={{ fontStyle: "italic", color: "gray" }}>
+    {sub.value
+      ? new Date(sub.value).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      : "Date"}
+  </span>
+)}
+
+{sub.fieldType === "no-input" && (
+  <span style={{ fontStyle: "italic", color: "gray" }}>No Input Field</span>
+)}
                         </div>
                       </div>
 
@@ -1521,25 +1615,29 @@ const handleSaveChanges = async () => {
                                     </div>
                                   ))}
 
-                                  {nested.fieldType === "short" && (
-                                    <span style={{ fontStyle: "italic", color: "gray" }}>Empty Field</span>
-                                  )}
+       {nested.fieldType === "short" && (
+  <span style={{ fontStyle: "italic", color: "gray" }}>Short Answer</span>
+)}
 
-                                  {nested.fieldType === "integer" && (
-                                    <span style={{ fontStyle: "italic", color: "gray" }}>Empty Field</span>
-                                  )}
+{nested.fieldType === "integer" && (
+  <span style={{ fontStyle: "italic", color: "gray" }}>Integer/Value</span>
+)}
 
-                                  {nested.fieldType === "date" && (
-                                    <span style={{ fontStyle: "italic", color: "gray" }}>
-                                      {nested.value
-                                        ? new Date(nested.value).toLocaleDateString("en-US", {
-                                            year: "numeric",
-                                            month: "long",
-                                            day: "numeric",
-                                          })
-                                        : "Empty Field"}
-                                    </span>
-                                  )}
+{nested.fieldType === "date" && (
+  <span style={{ fontStyle: "italic", color: "gray" }}>
+    {nested.value
+      ? new Date(nested.value).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      : "Date"}
+  </span>
+)}
+
+{nested.fieldType === "no-input" && (
+  <span style={{ fontStyle: "italic", color: "gray" }}>No Input Field</span>
+)}
 
                                   {!nested.fieldType && (
                                     <span style={{ fontStyle: "italic", color: "gray" }}>No field type selected</span>
@@ -1643,15 +1741,15 @@ const handleSaveChanges = async () => {
             <div className="add-record-modal profile-modal">
               <div className="modal-header">
                 <h3>Edit Profile</h3>
-                <span
-                  className="close-x"
-                  onClick={() => {
-                    setEditProfileData(profileData);
-                    setShowEditProfileModal(false);
-                  }}
-                >
-                  ✕
-                </span>
+      <span
+  className="close-x"
+  onClick={() => {
+    setEditProfileData(profileData);
+    setShowEditProfileModal(false);
+  }}
+>
+  ✕
+</span>
               </div>
               <div className="modal-body">
                 <div className="modal-field">
@@ -1722,6 +1820,11 @@ const handleSaveChanges = async () => {
                     onChange={(e) => setNewTabName(e.target.value)}
                     placeholder="Enter area name"
                     autoFocus
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter' && newTabName.trim() && !isAddingTab) {
+                        handleAddTab();
+                      }
+                    }}
                   />
                 </div>
                 <div className="modal-footer">
@@ -1730,7 +1833,7 @@ const handleSaveChanges = async () => {
                     onClick={handleAddTab}
                     disabled={isAddingTab || !newTabName.trim()}
                   >
-                    {isAddingTab ? "Adding..." : "Add Area"}
+                    {isAddingTab ? "Adding..." : "ADD"}
                   </button>
                 </div>
               </div>
@@ -1742,22 +1845,27 @@ const handleSaveChanges = async () => {
         {showModal && currentTab && (
           <div className="modal-overlay">
             <div className="indicator-modal">
-              <div className="indicator-header">
-                <div className="indicator-title">
-                  <span className="plus-icon">＋</span>
-                  <span>NEW INDICATOR - {currentTab.name}</span>
-                </div>
-                <span
-                  className="close-x"
-                  onClick={() => {
-                    setMainIndicators(initialMainIndicators);
-                    setSubIndicators(initialSubIndicators);
-                    setShowModal(false);
-                  }}
-                >
-                  ✕
-                </span>
-              </div>
+  <div className={`indicator-header ${editRecordKey ? "edit-mode" : "new-mode"}`}>
+  <div className="indicator-title">
+    <span className="plus-icon">＋</span>
+   <span>{editRecordKey ? "EDIT INDICATOR" : "NEW INDICATOR"} - {currentTab.name}</span>
+  </div>
+<span
+  className="close-x"
+  onClick={() => {
+    if (hasUnsavedChanges) {
+      setShowCancelConfirm(true);
+    } else {
+      setMainIndicators(initialMainIndicators);
+      setSubIndicators(initialSubIndicators);
+      setEditRecordKey(null);
+      setShowModal(false);
+    }
+  }}
+>
+  ✕
+</span>
+</div>
               
               <div className="indicator-body">
                 {/* INDICATOR SECTION */}
@@ -1776,100 +1884,76 @@ const handleSaveChanges = async () => {
                             }
                           />
 
-                          {main.fieldType === "date" && (
-                            <input
-                              type="date"
-                              className="date-field"
-                              onChange={(e) =>
-                                updateMainIndicator(main.id, "value", e.target.value)
-                              }
-                            />
-                          )}
+                                                            {/* For field types that LGU will fill - show nothing */}
+                                        {(main.fieldType === "no-input" || main.fieldType === "date" || main.fieldType === "short" || main.fieldType === "integer") && (
+                                          <div style={{ display: "none" }}></div>
+                                        )}
 
-                          {main.fieldType === "multiple" && (
-                            <div className="multiple-wrapper">
-                              {main.choices.map((choice, index) => (
-                                <div key={index} className="choice-row">
-                                  <input type="radio" disabled />
-                                  <input
-                                    type="text"
-                                    placeholder="Enter choice"
-                                    value={choice}
-                                    onChange={(e) =>
-                                      updateMainChoice(main.id, index, e.target.value)
-                                    }
-                                  />
-                                  <button
-                                    type="button"
-                                    className="remove-choice-btn"
-                                    onClick={() => removeMainChoice(main.id, index)}
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              ))}
-                              <button
-                                type="button"
-                                className="add-choice-btn"
-                                onClick={() => addMainChoice(main.id)}
-                              >
-                                <input type="radio" disabled className="add-radio"/>
-                                <span>+ Add Option</span>
-                              </button>
-                            </div>
-                          )}
+                                        {main.fieldType === "multiple" && (
+                                          <div className="multiple-wrapper">
+                                            {main.choices.map((choice, index) => (
+                                              <div key={index} className="choice-row">
+                                                <input type="radio" disabled />
+                                                <input
+                                                  type="text"
+                                                  placeholder="Enter choice"
+                                                  value={choice}
+                                                  onChange={(e) =>
+                                                    updateMainChoice(main.id, index, e.target.value)
+                                                  }
+                                                />
+                                                <button
+                                                  type="button"
+                                                  className="remove-choice-btn"
+                                                  onClick={() => removeMainChoice(main.id, index)}
+                                                >
+                                                  ✕
+                                                </button>
+                                              </div>
+                                            ))}
+                                            <button
+                                              type="button"
+                                              className="add-choice-btn"
+                                              onClick={() => addMainChoice(main.id)}
+                                            >
+                                              <input type="radio" disabled className="add-radio" />
+                                              <span>+ Add Option</span>
+                                            </button>
+                                          </div>
+                                        )}
 
-                          {main.fieldType === "checkbox" && (
-                            <div className="multiple-wrapper">
-                              {main.choices.map((choice, index) => (
-                                <div key={index} className="choice-row">
-                                  <input type="checkbox" disabled />
-                                  <input
-                                    type="text"
-                                    placeholder="Enter choice"
-                                    value={choice}
-                                    onChange={(e) =>
-                                      updateMainChoice(main.id, index, e.target.value)
-                                    }
-                                  />
-                                  <button
-                                    type="button"
-                                    className="remove-choice-btn"
-                                    onClick={() => removeMainChoice(main.id, index)}
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              ))}
-                              <button
-                                type="button"
-                                className="add-choice-btn"
-                                onClick={() => addMainChoice(main.id)}
-                              >
-                                <input type="checkbox" disabled className="add-radio"/>
-                                <span>+ Add Option</span>
-                              </button>
-                            </div>
-                          )}
-
-                          {main.fieldType === "short" && (
-                            <div className="short-wrapper">
-                              <textarea
-                                className="short-field"
-                                placeholder="Empty Field"
-                              />
-                            </div>
-                          )}
-
-                          {main.fieldType === "integer" && (
-                            <div className="integer-wrapper">
-                              <input
-                                type="number"
-                                className="integer-field"
-                                placeholder="Empty Field"
-                              />
-                            </div>
-                          )}
+                                        {main.fieldType === "checkbox" && (
+                                          <div className="multiple-wrapper">
+                                            {main.choices.map((choice, index) => (
+                                              <div key={index} className="choice-row">
+                                                <input type="checkbox" disabled />
+                                                <input
+                                                  type="text"
+                                                  placeholder="Enter choice"
+                                                  value={choice}
+                                                  onChange={(e) =>
+                                                    updateMainChoice(main.id, index, e.target.value)
+                                                  }
+                                                />
+                                                <button
+                                                  type="button"
+                                                  className="remove-choice-btn"
+                                                  onClick={() => removeMainChoice(main.id, index)}
+                                                >
+                                                  ✕
+                                                </button>
+                                              </div>
+                                            ))}
+                                            <button
+                                              type="button"
+                                              className="add-choice-btn"
+                                              onClick={() => addMainChoice(main.id)}
+                                            >
+                                              <input type="checkbox" disabled className="add-radio" />
+                                              <span>+ Add Option</span>
+                                            </button>
+                                          </div>
+                                        )}
 
                           {/* Mode of Verification with styling copied from checkbox/multiple choice */}
                           <div className="mainverification-row">
@@ -1994,100 +2078,76 @@ const handleSaveChanges = async () => {
                             }}
                           />
 
-                          {sub.fieldType === "date" && (
-                            <input
-                              type="date"
-                              className="date-field"
-                              onChange={(e) =>
-                                updateSubIndicator(sub.id, "value", e.target.value)
-                              }
-                            />
-                          )}
+                                                                      {/* For field types that LGU will fill - show nothing */}
+                                          {(sub.fieldType === "no-input" || sub.fieldType === "date" || sub.fieldType === "short" || sub.fieldType === "integer") && (
+                                            <div style={{ display: "none" }}></div>
+                                          )}
 
-                          {sub.fieldType === "multiple" && (
-                            <div className="multiple-wrapper">
-                              {sub.choices.map((choice, index) => (
-                                <div key={index} className="choice-row">
-                                  <input type="radio" disabled />
-                                  <input
-                                    type="text"
-                                    placeholder="Enter choice"
-                                    value={choice}
-                                    onChange={(e) =>
-                                      updateChoice(sub.id, index, e.target.value)
-                                    }
-                                  />
-                                  <button
-                                    type="button"
-                                    className="remove-choice-btn"
-                                    onClick={() => removeChoice(sub.id, index)}
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              ))}
-                              <button
-                                type="button"
-                                className="add-choice-btn"
-                                onClick={() => addChoice(sub.id)}
-                              >
-                                <input type="radio" disabled className="add-radio" />
-                                <span>+ Add Option</span>
-                              </button>
-                            </div>
-                          )}
+                                          {sub.fieldType === "multiple" && (
+                                            <div className="multiple-wrapper">
+                                              {sub.choices.map((choice, index) => (
+                                                <div key={index} className="choice-row">
+                                                  <input type="radio" disabled />
+                                                  <input
+                                                    type="text"
+                                                    placeholder="Enter choice"
+                                                    value={choice}
+                                                    onChange={(e) =>
+                                                      updateChoice(sub.id, index, e.target.value)
+                                                    }
+                                                  />
+                                                  <button
+                                                    type="button"
+                                                    className="remove-choice-btn"
+                                                    onClick={() => removeChoice(sub.id, index)}
+                                                  >
+                                                    ✕
+                                                  </button>
+                                                </div>
+                                              ))}
+                                              <button
+                                                type="button"
+                                                className="add-choice-btn"
+                                                onClick={() => addChoice(sub.id)}
+                                              >
+                                                <input type="radio" disabled className="add-radio" />
+                                                <span>+ Add Option</span>
+                                              </button>
+                                            </div>
+                                          )}
 
-                          {sub.fieldType === "checkbox" && (
-                            <div className="multiple-wrapper">
-                              {sub.choices.map((choice, index) => (
-                                <div key={index} className="choice-row">
-                                  <input type="checkbox" disabled />
-                                  <input
-                                    type="text"
-                                    placeholder="Enter choice"
-                                    value={choice}
-                                    onChange={(e) =>
-                                      updateChoice(sub.id, index, e.target.value)
-                                    }
-                                  />
-                                  <button
-                                    type="button"
-                                    className="remove-choice-btn"
-                                    onClick={() => removeChoice(sub.id, index)}
-                                  >
-                                    ✕
-                                  </button>
-                                </div>
-                              ))}
-                              <button
-                                type="button"
-                                className="add-choice-btn"
-                                onClick={() => addChoice(sub.id)}
-                              >
-                                <input type="checkbox" disabled className="add-radio" />
-                                <span>+ Add Option</span>
-                              </button>
-                            </div>
-                          )}
-
-                          {sub.fieldType === "short" && (
-                            <div className="short-wrapper">
-                              <textarea
-                                className="short-field"
-                                placeholder="Empty Field"
-                              />
-                            </div>
-                          )}
-
-                          {sub.fieldType === "integer" && (
-                            <div className="integer-wrapper">
-                              <input
-                                type="number"
-                                className="integer-field"
-                                placeholder="Empty Field"
-                              />
-                            </div>
-                          )}
+                                          {sub.fieldType === "checkbox" && (
+                                            <div className="multiple-wrapper">
+                                              {sub.choices.map((choice, index) => (
+                                                <div key={index} className="choice-row">
+                                                  <input type="checkbox" disabled />
+                                                  <input
+                                                    type="text"
+                                                    placeholder="Enter choice"
+                                                    value={choice}
+                                                    onChange={(e) =>
+                                                      updateChoice(sub.id, index, e.target.value)
+                                                    }
+                                                  />
+                                                  <button
+                                                    type="button"
+                                                    className="remove-choice-btn"
+                                                    onClick={() => removeChoice(sub.id, index)}
+                                                  >
+                                                    ✕
+                                                  </button>
+                                                </div>
+                                              ))}
+                                              <button
+                                                type="button"
+                                                className="add-choice-btn"
+                                                onClick={() => addChoice(sub.id)}
+                                              >
+                                                <input type="checkbox" disabled className="add-radio" />
+                                                <span>+ Add Option</span>
+                                              </button>
+                                            </div>
+                                          )}
           {/* Mode of Verification for sub-indicator - matching main indicator style */}
           <div className="verification-row">
             <label className="verification-label">
@@ -2171,161 +2231,120 @@ const handleSaveChanges = async () => {
             maxWidth: "calc(100% - 80px)",
             width: "500px",
           }}>
-            <input
-              type="text"
-              className="nested-title-input"
-              placeholder="Third-Level indicator title . . . ."
-              value={nested.title}
-              onChange={(e) =>
-                updateNestedSubIndicator(sub.id, nested.id, "title", e.target.value)
-              }
-              style={{ 
-                width: "104%", 
-                maxWidth: "650px",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis"
-              }}
-            />
+   <input
+  type="text"
+  className="nested-title-input"
+  placeholder="Third-Level indicator title . . . ."
+  value={nested.title}
+  onChange={(e) =>
+    updateNestedSubIndicator(sub.id, nested.id, "title", e.target.value)
+  }
+  style={{ 
+    width: "104%", 
+    maxWidth: "650px",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    background: "#fff9c4"  /* Light yellow */
+  }}
+/>
 
-            {nested.fieldType === "date" && (
-              <input
-                type="date"
-                className="nested-date-field"
-                onChange={(e) =>
-                  updateNestedSubIndicator(sub.id, nested.id, "value", e.target.value)
-                }
-                style={{ width: "104%", maxWidth: "650px",marginTop:"-14px", background:"white" }}
-              />
-            )}
+                            {/* For field types that LGU will fill - show nothing */}
+                 {(nested.fieldType === "no-input" || nested.fieldType === "date" || nested.fieldType === "short" || nested.fieldType === "integer") && (
+                   <div style={{ display: "none" }}></div>
+                 )}
 
-            {nested.fieldType === "multiple" && (
-              <div className="nested-multiple-wrapper" style={{ 
-                width: "154%", 
-                maxWidth: "650px",
-                marginTop:"-13px"
-              }}>
-                {(nested.choices || []).map((choice, idx) => (
-                  <div key={idx} className="nested-choice-row">
-                    <input type="radio" disabled />
-                    <input
-                      type="text"
-                      placeholder="Enter choice"
-                      value={choice}
-                      onChange={(e) =>
-                        updateNestedChoice(sub.id, nested.id, idx, e.target.value)
-                      }
-                      style={{
-                        width: "100%",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        background: "white",
-                        border: "none"
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="nested-remove-choice-btn"
-                      onClick={() => removeNestedChoice(sub.id, nested.id, idx)}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                 {nested.fieldType === "multiple" && (
+                   <div className="nested-multiple-wrapper" style={{ 
+                     width: "154%", 
+                     maxWidth: "650px",
+                     marginTop:"-13px"
+                   }}>
+                     {(nested.choices || []).map((choice, idx) => (
+                       <div key={idx} className="nested-choice-row">
+                         <input type="radio" disabled />
+                         <input
+                           type="text"
+                           placeholder="Enter choice"
+                           value={choice}
+                           onChange={(e) =>
+                             updateNestedChoice(sub.id, nested.id, idx, e.target.value)
+                           }
+                           style={{
+                             width: "100%",
+                             whiteSpace: "nowrap",
+                             overflow: "hidden",
+                             textOverflow: "ellipsis",
+                             background: "white",
+                             border: "none"
+                           }}
+                         />
+                         <button
+                           type="button"
+                           className="nested-remove-choice-btn"
+                           onClick={() => removeNestedChoice(sub.id, nested.id, idx)}
+                         >
+                           ✕
+                         </button>
+                       </div>
+                     ))}
 
-                <button
-                  type="button"
-                  className="nested-add-choice-btn"
-                  onClick={() => addNestedChoice(sub.id, nested.id)}
-                >
-                  <input type="radio" disabled className="nested-add-radio" />
-                  <span>+ Add Option</span>
-                </button>
-              </div>
-            )}
+                     <button
+                       type="button"
+                       className="nested-add-choice-btn"
+                       onClick={() => addNestedChoice(sub.id, nested.id)}
+                     >
+                       <input type="radio" disabled className="nested-add-radio" />
+                       <span>+ Add Option</span>
+                     </button>
+                   </div>
+                 )}
 
-            {nested.fieldType === "checkbox" && (
-              <div className="nested-multiple-wrapper" style={{ 
-                width: "154%", 
-                maxWidth: "650px",
-                marginTop:"-13px"
-              }}>
-                {(nested.choices || []).map((choice, idx) => (
-                  <div key={idx} className="nested-choice-row">
-                    <input type="checkbox" disabled />
-                    <input
-                      type="text"
-                      placeholder="Enter choice"
-                      value={choice}
-                      onChange={(e) =>
-                        updateNestedChoice(sub.id, nested.id, idx, e.target.value)
-                      }
-                      style={{
-                        width: "100%",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        background: "white",
-                        border: "none"
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="nested-remove-choice-btn"
-                      onClick={() => removeNestedChoice(sub.id, nested.id, idx)}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                 {nested.fieldType === "checkbox" && (
+                   <div className="nested-multiple-wrapper" style={{ 
+                     width: "154%", 
+                     maxWidth: "650px",
+                     marginTop:"-13px"
+                   }}>
+                     {(nested.choices || []).map((choice, idx) => (
+                       <div key={idx} className="nested-choice-row">
+                         <input type="checkbox" disabled />
+                         <input
+                           type="text"
+                           placeholder="Enter choice"
+                           value={choice}
+                           onChange={(e) =>
+                             updateNestedChoice(sub.id, nested.id, idx, e.target.value)
+                           }
+                           style={{
+                             width: "100%",
+                             whiteSpace: "nowrap",
+                             overflow: "hidden",
+                             textOverflow: "ellipsis",
+                             background: "white",
+                             border: "none"
+                           }}
+                         />
+                         <button
+                           type="button"
+                           className="nested-remove-choice-btn"
+                           onClick={() => removeNestedChoice(sub.id, nested.id, idx)}
+                         >
+                           ✕
+                         </button>
+                       </div>
+                     ))}
 
-                <button
-                  type="button"
-                  className="nested-add-choice-btn"
-                  onClick={() => addNestedChoice(sub.id, nested.id)}
-                >
-                  <input type="checkbox" disabled className="nested-add-radio" />
-                  <span>+ Add Option</span>
-                </button>
-              </div>
-            )}
-
-            {nested.fieldType === "short" && (
-              <div className="nested-short-wrapper" style={{ 
-                width: "154%", 
-                maxWidth: "650px",
-                marginTop:"-13px"
-              }}>
-                <textarea
-                  className="nested-short-field"
-                  placeholder="Empty Field"
-                  style={{ 
-                    width: "100%",
-                    resize: "vertical",
-                    minHeight: "60px",
-                    wordWrap: "break-word",
-                    whiteSpace: "pre-wrap",
-                    border:"none"
-                  }}
-                />
-              </div>
-            )}
-
-            {nested.fieldType === "integer" && (
-              <div className="nested-integer-wrapper" style={{ 
-                width: "154%", 
-                maxWidth: "650px",
-                marginTop:"-13.5px"
-              }}>
-                <input
-                  type="number"
-                  className="nested-integer-field"
-                  placeholder="Empty Field"
-                  style={{ width: "100%",background:"white",border:"none" }}
-                />
-              </div>
-            )}
+                     <button
+                       type="button"
+                       className="nested-add-choice-btn"
+                       onClick={() => addNestedChoice(sub.id, nested.id)}
+                     >
+                       <input type="checkbox" disabled className="nested-add-radio" />
+                       <span>+ Add Option</span>
+                     </button>
+                   </div>
+                 )}
 
                       {/* Mode of Verification for nested sub-indicator - matching main indicator style */}
                       <div style={{ 
@@ -2503,24 +2522,24 @@ const handleSaveChanges = async () => {
                     <span className="subplus-icon">＋</span>
                     New Sub-Indicator
                   </button>
-                  <button 
-                    className="add-indicator-btn"
-                    onClick={handleAddIndicator}
-                    disabled={!isIndicatorValid()}
-                    style={{
-                      opacity: !isIndicatorValid() ? 0.5 : 1,
-                      cursor: !isIndicatorValid() ? "not-allowed" : "pointer"
-                    }}
-                  >
-                    ADD
-                  </button>
+           <button 
+  className="add-indicator-btn"
+  onClick={handleAddIndicator}
+  disabled={!isIndicatorValid()}
+  style={{
+    opacity: !isIndicatorValid() ? 0.5 : 1,
+    cursor: !isIndicatorValid() ? "not-allowed" : "pointer"
+  }}
+>
+  {editRecordKey ? "SAVE" : "ADD"}
+</button>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Save Confirm Modal */}
+             {/* Save Confirm Modal */}
         {showSaveConfirm && (
           <div className="modal-overlay">
             <div className="confirm-modal">
@@ -2529,6 +2548,7 @@ const handleSaveChanges = async () => {
                 <button
                   className="discard-btn"
                   onClick={() => setShowSaveConfirm(false)}
+                  style={{ minWidth: "80px" }}
                 >
                   Discard
                 </button>
@@ -2536,8 +2556,46 @@ const handleSaveChanges = async () => {
                   className="confirm-btn"
                   disabled={isSavingIndicator}
                   onClick={handleSaveChanges}
+                  style={{ minWidth: "80px" }}
                 >
                   {isSavingIndicator ? "Saving..." : "Yes"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Cancel Confirmation Modal */}
+        {showCancelConfirm && (
+          <div className="modal-overlay">
+            <div className="confirm-modal">
+              <h3>Discard changes?</h3>
+              <p style={{ marginBottom: "20px", fontSize: "14px" }}>
+                You have unsaved changes. Are you sure you want to discard them?
+              </p>
+              <div className="confirm-buttons">
+                <button
+                  className="discard-btn"
+                  onClick={() => {
+                    setShowCancelConfirm(false);
+                  }}
+                  style={{ minWidth: "80px" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="confirm-btn"
+                  onClick={() => {
+                    setMainIndicators(initialMainIndicators);
+                    setSubIndicators(initialSubIndicators);
+                    setEditRecordKey(null);
+                    setShowModal(false);
+                    setShowCancelConfirm(false);
+                    setHasUnsavedChanges(false);
+                  }}
+                  style={{ minWidth: "80px", background: "#990202", color: "white" }}
+                >
+                  Discard
                 </button>
               </div>
             </div>

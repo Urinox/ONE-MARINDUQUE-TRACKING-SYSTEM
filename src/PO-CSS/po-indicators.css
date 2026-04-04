@@ -278,24 +278,23 @@ body {
 }
 
 .btn-new {
-  background-color: #b00000;
+  background-color: #081a4b;  /* Same dark blue as modal header */
   color: white;
   border: none;
-  padding: 10px 15px;
-  font-size: 20px;
+  padding: 6px 12px;
+  font-size: 14px;
   font-weight: 600;
   border-radius: 5px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 20px;
-  width: 150px;  /* Fix the width of the button */
-  min-width: 150px;  /* Ensures it doesn't shrink */
-  margin-top: 10px;  /* Move the button 10px down */
+  gap: 6px;
+  width: fit-content;
+  margin-top: 10px;
 }
 
 .btn-new:hover {
-  background-color: #600202;
+  background-color: #0f2a6b;  /* Lighter version on hover */
 }
 
 
@@ -310,7 +309,8 @@ body {
   flex-direction: column;
   min-height: 60px;
   border-radius: 5px;
-  max-height: 75vh; /* Set the box height to a percentage of the viewport */
+  max-height: none;
+  overflow-y: visible;
 }
 
 .po-indicators-table-wrapper {
@@ -752,26 +752,6 @@ th, td {
 }
 
 
-.btn-new {
-  background-color: #b00000;
-  color: white;
-  border: none;
-  padding: 6px 15px;
-  font-size: 14px;
-  font-weight: 600;
-  border-radius: 5px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  float: left; 
-}
-
-.btn-new:hover {
-  background-color: #600202;
-}
-
-
 /* ============================= */
 /* NEW INDICATOR MODAL (EXACT UI) */
 /* ============================= */
@@ -788,12 +768,26 @@ th, td {
 
 /* HEADER */
 .indicator-header {
-  background: #081a4b;
   color: white;
   padding: 14px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+/* New mode (when creating a new indicator) - Blue */
+.indicator-header.new-mode {
+  background: #081a4b;  /* Dark blue for NEW INDICATOR */
+}
+
+/* Edit mode (when editing an existing indicator) - Red */
+.indicator-header.edit-mode {
+  background: #990202;  /* Red matching edit button */
+}
+
+.indicator-header .close-x:hover {
+  opacity: 0.8;
+  cursor: pointer;
 }
 
 .indicator-title {
@@ -915,24 +909,20 @@ th, td {
 }
 
 
-
-
-
-
 /* NEW SUB BUTTON */
 .new-sub-btn {
-  background: #b00000;
+  background: #4f4e4f;
   color: white;
   border: none;
   padding: 6px 12px;
   font-size: 14px;
   cursor: pointer;
   border-radius: 3px;
-  float: left;
   display: inline-flex;
   align-items: center;
   font-weight: 600;
-  margin-left: 3.5%;
+  margin-left: 12px;
+  margin-top: 10px;
 }
 
 /* BUTTON ROW (both buttons same line) */
@@ -1015,6 +1005,7 @@ th, td {
   align-items: center;
   gap: 6px;
   margin-left: 12px;
+  margin-bottom: 4px;
 }
 
 /* SMALLER RADIO CIRCLES */
@@ -1043,11 +1034,11 @@ th, td {
   font-weight: 600;
   cursor: pointer;
   font-size: 12px;
-  margin-top: -3px;
+  margin-top: 0px;
   display: flex;          /* ⭐ align items horizontally */
   align-items: center;    /* ⭐ vertical alignment */
   gap: 6px;               /* ⭐ space between radio & text */
-  padding: 0;
+  padding: 8px 0;
   margin-left: 12px;
 }
 
@@ -1384,23 +1375,56 @@ th, td {
 /* ===================================== */
 
 .scrollable-content {
-  overflow-y: auto;
-  max-height: 65vh;
+  overflow-y: visible;
+  max-height: none;
   padding: 0;                     /* remove extra padding */
   background: #ffffff;
+}
+
+/* Hide scrollbar track until needed - for WebKit browsers */
+.scrollable-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollable-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollable-content::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+
+/* Only show scrollbar thumb when content overflows and user hovers */
+.scrollable-content:hover::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+}
+
+.scrollable-content::-webkit-scrollbar-thumb:hover {
+  background: #888;
 }
 
 /* Wrapper */
 .reference-wrapper {
   margin: 0;
   padding: 0;
-  margin-bottom: -.5%;
+}
+
+/* Main indicator group wrapper - add spacing between different main indicators */
+.reference-wrapper > .reference-wrapper {
+  margin-bottom: 30px;
+}
+
+/* Individual indicator rows within the same group */
+.reference-wrapper .reference-wrapper {
+  margin-bottom: 0;
 }
 
 /* Each row */
 .reference-row {
   display: flex;
   border-top: none;
+  margin-bottom: 8px;
 }
 
 
@@ -1501,11 +1525,26 @@ width: 55%;
   margin-top: 6px;
 }
 
+/* Add spacing after verification section */
+.reference-verification-full {
+  margin-bottom: 8px;
+}
 
-/* Add space without breaking border */
+/* Nested indicator spacing */
+.nested-reference-wrapper {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+/* Last nested item in a group */
+.nested-reference-item:last-child {
+  margin-bottom: 0;
+}
+
+/* Sub indicator spacing */
 .sub-row .reference-label,
 .sub-row .reference-field, .sub-row .mainreference-field {
-  margin-top: 1%;
+  margin-top: 0;
 }
 
 
@@ -1552,14 +1591,12 @@ width: 55%;
   min-width: 0;
 }
 
-/* Update these classes in your CSS */
-
 .nested-title-input {
   width: 100%;
-  max-width: 650px; /* Changed from 600px to 650px */
+  max-width: 650px;
   height: 40px;
   border: 2px solid #00000062;
-  background: #ffffff;
+  background: #fff9c4;  /* Light yellow */
   padding: 8px 12px;
   font-size: 12px;
   outline: none;
@@ -1671,8 +1708,8 @@ width: 55%;
 
 /* Add Nested Sub-Indicator Button */
 .sub-left .add-nested-sub-btn {
-  background: #b00000;
-  color: white;
+  background: #f2c300;  /* Yellow like the topbar */
+  color: #000000;  /* Black text for contrast */
   border: none;
   padding: 4px 10px;
   font-size: 12px;
@@ -1681,12 +1718,16 @@ width: 55%;
   display: inline-flex;
   align-items: center;
   font-weight: 600;
-  margin-top: -2%;
-  margin-bottom: 8%;
-  margin-left: 0;
+  margin-top: 5px;
+  margin-bottom: 15px;
+  margin-left: 30px;
   width: fit-content;
   flex-shrink: 0;
-  
+}
+
+.sub-left .add-nested-sub-btn:hover {
+  background: #d4a800;  /* Darker yellow on hover */
+  color: #000000;
 }
 
 .add-nested-sub-btn .subplus-icon {
@@ -1706,11 +1747,11 @@ width: 55%;
   font-weight: 600;
   cursor: pointer;
   font-size: 12px;
-  margin-top: -3px;
+  margin-top: 0px;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0;
+  padding: 8px 0;
   margin-left: 12px;
   width: fit-content;
 }
@@ -1736,6 +1777,7 @@ width: 55%;
   align-items: center;
   gap: 6px;
   margin-left: 12px;
+  margin-bottom: 4px;
 }
 
 .nested-choice-row input[type="radio"],
@@ -1752,16 +1794,13 @@ width: 55%;
   flex-shrink: 0;
 }
 
-/* Nested Reference Styles for Display */
-/* Nested Reference Styles for Display */
 .nested-reference-wrapper {
   margin-left: 45px;
   margin-top: 8px;
   margin-bottom: 12px;
   padding-left: 15px;
-  border-left: 3px solid #ffaa00;
+  border-left: none;
 }
-
 .nested-reference-item {
   margin-bottom: 8px;
 }
@@ -1775,13 +1814,14 @@ width: 55%;
 
 .nested-reference-label {
   width: 45%;
-  background: #fff6f6;
+  background: #fff9c4;  /* Light yellow */
   padding: 8px 12px;
   font-size: 12px;
   font-weight: 500;
   color: #000;
   display: flex;
   align-items: center;
+  text-align: left;
   border-right: 1px solid #cfcfcf;
   box-sizing: border-box;
   white-space: normal !important;
@@ -1802,9 +1842,9 @@ width: 55%;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  text-align: left;
   box-sizing: border-box;
 }
-
 .nested-reference-field div {
   display: flex;
   align-items: center;

@@ -1372,22 +1372,30 @@ const verifiedRef = ref(db, `verified/${selectedYear}/LGU/${cleanLguName}`);
 await set(verifiedRef, verifiedData);
 console.log("✅ Saved to verified node with attachments:", lgu.attachmentsByIndicator);
     
-    // 3. Remove from forwarded node (since it's now verified)
-    const forwardedRef = ref(db, `forwarded/${auth.currentUser.uid}`);
-    const forwardedSnapshot = await get(forwardedRef);
-    
-    if (forwardedSnapshot.exists()) {
-      const forwardedData = forwardedSnapshot.val();
-      
-      // Find and delete the specific forwarded record
-      for (const [key, item] of Object.entries(forwardedData)) {
-        if (item.lguUid === mlgoUid && item.year === selectedYear && item.assessmentId === selectedAssessmentId) {
-          await set(ref(db, `forwarded/${auth.currentUser.uid}/${key}`), null);
-          console.log("✅ Removed from forwarded node");
-          break;
-        }
-      }
+// 3. Remove from forwarded node (since it's now verified)
+const forwardedRef = ref(db, `forwarded/${auth.currentUser.uid}`);
+const forwardedSnapshot = await get(forwardedRef);
+
+if (forwardedSnapshot.exists()) {
+  const forwardedData = forwardedSnapshot.val();
+  
+  // Find and delete the specific forwarded record
+  for (const [key, item] of Object.entries(forwardedData)) {
+    if (item.lguUid === mlgoUid && item.year === selectedYear && item.assessmentId === selectedAssessmentId) {
+      await set(ref(db, `forwarded/${auth.currentUser.uid}/${key}`), null);
+      console.log("✅ Removed from forwarded node");
+      break;
     }
+  }
+}
+
+// 3.5 ALSO REMOVE FROM RETURNED NODE (if it exists there)
+const returnedRef = ref(db, `returned/${selectedYear}/MLGO/${mlgoUid}/${selectedAssessmentId}`);
+const returnedSnapshot = await get(returnedRef);
+if (returnedSnapshot.exists()) {
+  await set(returnedRef, null);
+  console.log("✅ Removed from returned node");
+}
     
     // 4. Create a notification for the MLGO
     const notificationRef = ref(db, `notifications/${selectedYear}/MLGO/${mlgoUid}`);
@@ -1516,7 +1524,6 @@ console.log("✅ Saved to verified node with attachments:", lgu.attachmentsByInd
   };
 
 // In po-view.jsx, replace the attachments loading section in the useEffect that loads LGU answers:
-
 // ===== LOAD LGU ANSWERS =====
 useEffect(() => {
   if (!auth.currentUser || !selectedYear || !location.state?.lguUid || !selectedAssessmentId) {
@@ -1535,116 +1542,123 @@ useEffect(() => {
       
       console.log("Loading assessment for:", lguName);
       
-      // ===== STEP 1: LOAD ATTACHMENTS FROM FIREBASE =====
+      // ===== STEP 1: ALWAYS LOAD ATTACHMENTS FROM FIREBASE FIRST =====
       let attachmentsByIndicator = {};
-      const attachmentsRef = ref(db, `attachments/${selectedYear}/LGU/${cleanName}`);
-      const attachmentsSnapshot = await get(attachmentsRef);
-      
-      if (attachmentsSnapshot.exists()) {
-        const attachments = attachmentsSnapshot.val();
-        console.log("📎 Attachments found:", Object.keys(attachments).length);
+      try {
+        const attachmentsRef = ref(db, `attachments/${selectedYear}/LGU/${cleanName}`);
+        const attachmentsSnapshot = await get(attachmentsRef);
         
-        Object.keys(attachments).forEach(key => {
-          const attachment = attachments[key];
+        if (attachmentsSnapshot.exists()) {
+          const attachments = attachmentsSnapshot.val();
+          console.log("📎 Attachments found:", Object.keys(attachments).length);
           
-          // Remove timestamp from the end of the key
-          let keyWithoutTimestamp = key;
-          const lastUnderscoreIndex = key.lastIndexOf('_');
-          if (lastUnderscoreIndex > -1) {
-            const possibleTimestamp = key.substring(lastUnderscoreIndex + 1);
-            if (/^\d+$/.test(possibleTimestamp) && possibleTimestamp.length >= 10) {
-              keyWithoutTimestamp = key.substring(0, lastUnderscoreIndex);
+          Object.keys(attachments).forEach(key => {
+            const attachment = attachments[key];
+            
+            // Remove timestamp from the end of the key
+            let keyWithoutTimestamp = key;
+            const lastUnderscoreIndex = key.lastIndexOf('_');
+            if (lastUnderscoreIndex > -1) {
+              const possibleTimestamp = key.substring(lastUnderscoreIndex + 1);
+              if (/^\d+$/.test(possibleTimestamp) && possibleTimestamp.length >= 10) {
+                keyWithoutTimestamp = key.substring(0, lastUnderscoreIndex);
+              }
             }
-          }
-          
-          const indicatorId = keyWithoutTimestamp;
-          
-          if (!attachmentsByIndicator[indicatorId]) {
-            attachmentsByIndicator[indicatorId] = [];
-          }
-          
-          attachmentsByIndicator[indicatorId].push({
-            key: key,
-            name: attachment.fileName || attachment.name || 'Attachment',
-            url: attachment.url || attachment.fileData,
-            fileData: attachment.fileData || attachment.url,
-            fileSize: attachment.fileSize,
-            uploadedAt: attachment.uploadedAt,
-            fileType: attachment.fileType
+            
+            const indicatorId = keyWithoutTimestamp;
+            
+            if (!attachmentsByIndicator[indicatorId]) {
+              attachmentsByIndicator[indicatorId] = [];
+            }
+            
+            attachmentsByIndicator[indicatorId].push({
+              key: key,
+              name: attachment.fileName || attachment.name || 'Attachment',
+              url: attachment.url || attachment.fileData,
+              fileData: attachment.fileData || attachment.url,
+              fileSize: attachment.fileSize,
+              uploadedAt: attachment.uploadedAt,
+              fileType: attachment.fileType
+            });
           });
-        });
+          
+          console.log("📎 Attachments mapped to indicators:", Object.keys(attachmentsByIndicator).length);
+        } else {
+          console.log("📎 No attachments found for this assessment");
+        }
+      } catch (error) {
+        console.error("Error loading attachments:", error);
       }
       
       // ===== STEP 2: LOAD THE ASSESSMENT DATA =====
       let lguData = null;
       
-// First, check if this is a verified assessment (from state)
-if (location.state?.isVerified) {
-  console.log("Loading VERIFIED assessment from state");
-  
-  // Use attachments from state if available, otherwise use loaded attachments
-  const verifiedAttachments = location.state.attachmentsByIndicator || attachmentsByIndicator;
-  
-  lguData = {
-    id: 1,
-    lguName: lguName,
-    year: selectedYear,
-    assessmentId: selectedAssessmentId,
-    assessment: selectedAssessment,
-    status: "Verified",
-    submission: location.state.submission || new Date().toLocaleDateString(),
-    deadline: location.state.deadline || "Not set",
-    data: location.state.data || {},
-    municipality: municipality,
-    lguUid: location.state.lguUid,
-    isVerified: true,
-    verifiedBy: location.state.verifiedBy,
-    verifiedAt: location.state.verifiedAt,
-    attachmentsByIndicator: verifiedAttachments  // Use attachments from state
-  };
-  
-  console.log("Verified attachments loaded:", Object.keys(verifiedAttachments).length);
-  
-  setLguAnswers([lguData]);
-  setForwardedAssessment(lguData);
-  setIsVerified(true);
-  setIsReturned(false);
-  setLoading(false);
-  return;
-}
+      // First, check if this is a verified assessment (from state)
+      if (location.state?.isVerified) {
+        console.log("Loading VERIFIED assessment from state");
+        
+        // Use attachments from state if available, otherwise use loaded attachments
+        const verifiedAttachments = location.state.attachmentsByIndicator || attachmentsByIndicator;
+        
+        lguData = {
+          id: 1,
+          lguName: lguName,
+          year: selectedYear,
+          assessmentId: selectedAssessmentId,
+          assessment: selectedAssessment,
+          status: "Verified",
+          submission: location.state.submission || new Date().toLocaleDateString(),
+          deadline: location.state.deadline || "Not set",
+          data: location.state.data || {},
+          municipality: municipality,
+          lguUid: location.state.lguUid,
+          isVerified: true,
+          verifiedBy: location.state.verifiedBy,
+          verifiedAt: location.state.verifiedAt,
+          attachmentsByIndicator: verifiedAttachments
+        };
+        
+        console.log("Verified attachments loaded:", Object.keys(verifiedAttachments).length);
+        setLguAnswers([lguData]);
+        setForwardedAssessment(lguData);
+        setIsVerified(true);
+        setIsReturned(false);
+        setLoading(false);
+        return;
+      }
       
       // Check if this is a returned assessment (from state)
-if (location.state?.isReturned || location.state?.wasReturned) {
-  console.log("Loading RETURNED assessment from state");
-  
-  lguData = {
-    id: 1,
-    lguName: lguName,
-    year: selectedYear,
-    assessmentId: selectedAssessmentId,
-    assessment: selectedAssessment,
-    status: "Returned",
-    submission: location.state.submission || new Date().toLocaleDateString(),
-    deadline: location.state.deadline || "Not set",
-    data: location.state.data || {},
-    municipality: municipality,
-    lguUid: location.state.lguUid,
-    isReturned: true,
-    returnedBy: location.state.returnedBy,
-    returnedAt: location.state.returnedAt,
-    poRemarks: location.state.poRemarks,
-    attachmentsByIndicator: attachmentsByIndicator
-  };
-  
-  setLguAnswers([lguData]);
-  setForwardedAssessment(lguData);
-  setIsVerified(false);
-  setIsReturned(true);
-  setLoading(false);
-  return;
-}
-
-      // If not verified, load from forwarded node
+      if (location.state?.isReturned || location.state?.wasReturned) {
+        console.log("Loading RETURNED assessment from state");
+        
+        lguData = {
+          id: 1,
+          lguName: lguName,
+          year: selectedYear,
+          assessmentId: selectedAssessmentId,
+          assessment: selectedAssessment,
+          status: "Returned",
+          submission: location.state.submission || new Date().toLocaleDateString(),
+          deadline: location.state.deadline || "Not set",
+          data: location.state.data || {},
+          municipality: municipality,
+          lguUid: location.state.lguUid,
+          isReturned: true,
+          returnedBy: location.state.returnedBy,
+          returnedAt: location.state.returnedAt,
+          poRemarks: location.state.poRemarks,
+          attachmentsByIndicator: attachmentsByIndicator
+        };
+        
+        setLguAnswers([lguData]);
+        setForwardedAssessment(lguData);
+        setIsVerified(false);
+        setIsReturned(true);
+        setLoading(false);
+        return;
+      }
+      
+      // If not verified or returned, load from forwarded node
       console.log("Loading FORWARDED assessment from Firebase");
       const currentUserUid = auth.currentUser.uid;
       const forwardedRef = ref(db, `forwarded/${currentUserUid}`);
@@ -1679,9 +1693,10 @@ if (location.state?.isReturned || location.state?.wasReturned) {
             forwardedBy: foundAssessment.forwardedBy,
             forwardedAt: foundAssessment.forwardedAt,
             lguUid: foundAssessment.lguUid,
-            attachmentsByIndicator: attachmentsByIndicator
+            attachmentsByIndicator: attachmentsByIndicator  // <-- CRITICAL: Use the loaded attachments
           };
           
+          console.log("Forwarded assessment attachments loaded:", Object.keys(attachmentsByIndicator).length);
           setLguAnswers([lguData]);
           setForwardedAssessment(foundAssessment);
           setIsVerified(false);

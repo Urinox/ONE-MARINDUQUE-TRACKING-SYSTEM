@@ -1950,7 +1950,7 @@ export default function LGU() {
             }
           }
           
-      if (mlgoUid) {
+if (mlgoUid) {
   // Check if this is a first submission or a resubmission
   const isResubmission = existingSnapshot.exists() && 
                          (existingMetadata?.returned === true || 
@@ -1958,12 +1958,12 @@ export default function LGU() {
                           existingMetadata?.returnedAt !== null);
   
   const notificationTitle = isResubmission
-    ? `Assessment "${selectedAssessment}" (${selectedYearDisplay}) has been resubmitted by ${profileData.name || auth.currentUser.email}`
-    : `Assessment "${selectedAssessment}" (${selectedYearDisplay}) has been submitted by ${profileData.name || auth.currentUser.email}`;
+    ? `Assessment "${selectedAssessment}" (${selectedYearDisplay}) has been resubmitted by ${profileData.name || auth.currentUser.email} (${profileData.municipality})`
+    : `Assessment "${selectedAssessment}" (${selectedYearDisplay}) has been submitted by ${profileData.name || auth.currentUser.email} (${profileData.municipality})`;
   
   const notificationMessage = isResubmission
-    ? `Assessment has been resubmitted after revision.`
-    : `Assessment has been submitted for validation.`;
+    ? `The assessment has been resubmitted after revision. Please review and forward to PO if complete.`
+    : `The assessment has been submitted for validation. Please review and forward to PO if complete.`;
   
   const notificationData = {
     id: Date.now().toString(),
@@ -1972,18 +1972,23 @@ export default function LGU() {
     message: notificationMessage,
     from: auth.currentUser?.email,
     fromName: profileData.name || auth.currentUser?.email,
-    fromMunicipality: userMunicipality,
+    fromMunicipality: profileData.municipality || userMunicipality,
     timestamp: Date.now(),
     read: false,
     year: selectedYearDisplay,
     assessmentId: selectedAssessmentId,
     assessment: selectedAssessment,
-    municipality: userMunicipality,
+    municipality: profileData.municipality,
+    lguName: profileData.name || auth.currentUser?.email,
     action: "view_assessment"
   };
   
-  await set(ref(db, `notifications/${selectedYearDisplay}/MLGO/${mlgoUid}/${notificationData.id}`), notificationData);
-  console.log(`✅ Notification sent to MLGO: ${mlgoUid} - Type: ${isResubmission ? "RESUBMITTED" : "SUBMITTED"}`);
+  // Save to the correct path
+  const notificationRef = ref(db, `notifications/${selectedYearDisplay}/MLGO/${mlgoUid}/${notificationData.id}`);
+  await set(notificationRef, notificationData);
+  console.log(`✅ Notification sent to MLGO: ${mlgoUid}`);
+  console.log(`✅ Notification path: notifications/${selectedYearDisplay}/MLGO/${mlgoUid}/${notificationData.id}`);
+  console.log(`✅ Notification data:`, notificationData);
 }
           
           setHasSubmitted(true);
@@ -2079,69 +2084,88 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
   };
 
   // Draft functions
-  const handleSaveDraft = async () => {
-    if (!auth.currentUser || !selectedYearDisplay || !selectedAssessmentId) return;
-    
-    setSavingAnswers(true);
-    
-    try {
-      const userName = profileData.name || auth.currentUser.email || "Anonymous";
-      const cleanName = `${userName.replace(/[.#$\[\]]/g, '_')}_${selectedAssessmentId}`;
-      
-      const draftRef = ref(
-        db,
-        `drafts/${selectedYearDisplay}/LGU/${cleanName}`
-      );
-      
-      const draftData = {
-        answers: userAnswers,
-        attachments: attachments,
-        year: selectedYearDisplay,
-        assessmentId: selectedAssessmentId,
-        assessment: selectedAssessment,
-        userId: auth.currentUser.uid,
-        userName: userName,
-        lastUpdated: Date.now(),
-        isDraft: true
-      };
-      
-      await set(draftRef, draftData);
-      
-      setLastSavedDraft(new Date().toLocaleTimeString());
-      alert("Draft saved to database successfully!");
-    } catch (error) {
-      console.error("Error saving draft:", error);
-      alert("Failed to save draft: " + error.message);
-    } finally {
-      setSavingAnswers(false);
-    }
-  };
+ const handleSaveDraft = async () => {
+  if (!auth.currentUser || !selectedYearDisplay || !selectedAssessmentId) return;
   
-  const loadDraft = async () => {
-    if (!auth.currentUser || !selectedYearDisplay || !selectedAssessmentId) return;
+  setSavingAnswers(true);
+  
+  try {
+    const userName = profileData.name || auth.currentUser.email || "Anonymous";
+    const cleanName = `${userName.replace(/[.#$\[\]]/g, '_')}_${selectedAssessmentId}`;
     
-    try {
-      const userName = profileData.name || auth.currentUser.email || "Anonymous";
-      const cleanName = `${userName.replace(/[.#$\[\]]/g, '_')}_${selectedAssessmentId}`;
-      
-      const draftRef = ref(
-        db,
-        `drafts/${selectedYearDisplay}/LGU/${cleanName}`
-      );
-      const snapshot = await get(draftRef);
-      
-      if (snapshot.exists()) {
-        const draftData = snapshot.val();
-        setUserAnswers(draftData.answers || {});
-        if (draftData.attachments) {
-          setAttachments(draftData.attachments);
-        }
-        setLastSavedDraft(new Date(draftData.lastUpdated).toLocaleTimeString());
+    const draftRef = ref(
+      db,
+      `drafts/${selectedYearDisplay}/LGU/${cleanName}`
+    );
+    
+    const draftData = {
+      answers: userAnswers,
+      attachments: attachments,
+      year: selectedYearDisplay,
+      assessmentId: selectedAssessmentId,
+      assessment: selectedAssessment,
+      userId: auth.currentUser.uid,
+      userName: userName,
+      lastUpdated: Date.now(),
+      isDraft: true
+    };
+    
+    await set(draftRef, draftData);
+    
+    // Display full date and time
+    const now = new Date();
+    const formattedDateTime = now.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+    
+    setLastSavedDraft(formattedDateTime);
+    alert("Draft saved successfully!");
+  } catch (error) {
+    console.error("Error saving draft:", error);
+    alert("Failed to save draft: " + error.message);
+  } finally {
+    setSavingAnswers(false);
+  }
+};
+ const loadDraft = async () => {
+  if (!auth.currentUser || !selectedYearDisplay || !selectedAssessmentId) return;
+  
+  try {
+    const userName = profileData.name || auth.currentUser.email || "Anonymous";
+    const cleanName = `${userName.replace(/[.#$\[\]]/g, '_')}_${selectedAssessmentId}`;
+    
+    const draftRef = ref(
+      db,
+      `drafts/${selectedYearDisplay}/LGU/${cleanName}`
+    );
+    const snapshot = await get(draftRef);
+    
+    if (snapshot.exists()) {
+      const draftData = snapshot.val();
+      setUserAnswers(draftData.answers || {});
+      if (draftData.attachments) {
+        setAttachments(draftData.attachments);
       }
-    } catch (error) {
-      console.error("Error loading draft:", error);
+      // Display full date and time
+      const formattedDateTime = new Date(draftData.lastUpdated).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+      setLastSavedDraft(formattedDateTime);
     }
-  };
+  } catch (error) {
+    console.error("Error loading draft:", error);
+  }
+};
   
   const clearDraft = async () => {
     if (!auth.currentUser || !selectedYearDisplay || !selectedAssessmentId) return;
@@ -2423,22 +2447,22 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
 
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <div>
-                  {hasSubmitted ? (
-                    <div style={{
-                      backgroundColor: metadata?.forwardedToPO ? "#6c757d" : "#4CAF50",
-                      color: "white",
-                      padding: "8px 20px",
-                      borderRadius: "5px",
-                      fontSize: "14px",
-                      fontWeight: "600",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      whiteSpace: "nowrap"
-                    }}>
-                      ✓ {metadata?.forwardedToPO ? "Forwarded to PO (Locked)" : "All Sections Submitted"}
-                    </div>
-                  ) : (
+{hasSubmitted ? (
+  <div style={{
+    backgroundColor: metadata?.forwardedToPO ? "#00470c" : (metadata?.verified ? "#28a745" : "#4CAF50"),
+    color: "white",
+    padding: "8px 20px",
+    borderRadius: "5px",
+    fontSize: "14px",
+    fontWeight: "600",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    whiteSpace: "nowrap"
+  }}>
+    ✓ {metadata?.forwardedToPO ? "Forwarded to PO" : (metadata?.verified ? "Assessment Verified" : "All Sections Submitted")}
+  </div>
+) : (
                     <button
                       onClick={handleSaveAnswers}
                       disabled={savingAnswers || !selectedYearDisplay || !selectedAssessmentId}
@@ -2598,8 +2622,16 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
                   </p>
                 ) : (
                   <>
-                    {currentIndicators.map((record) => (
-                      <div key={record.firebaseKey} className="reference-wrapper">
+                               {currentIndicators.map((record, recordIndex) => (
+                      <div 
+                        key={record.firebaseKey} 
+                        className="reference-wrapper"
+                        style={{ 
+                          marginBottom: recordIndex !== currentIndicators.length - 1 ? "40px" : "0",
+                          borderBottom: recordIndex !== currentIndicators.length - 1 ? "2px solid #ccc" : "none",
+                          paddingBottom: recordIndex !== currentIndicators.length - 1 ? "20px" : "0"
+                        }}
+                      >
                         
                         {/* Main Indicators */}
                         {record.mainIndicators?.map((main, index) => {
@@ -2608,9 +2640,9 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
                           const answer = userAnswers[radioAnswerKey] ?? userAnswers[legacyAnswerKey];
                           
                           return (
-                            <div key={index} className="reference-wrapper"
+                                                  <div key={index} className="reference-wrapper"
                             style={{
-                              marginBottom: "-10px"
+                              marginBottom: "15px"
                             }}>
                               {/* Indicator Row */}
                               <div className="reference-row" style={{
@@ -2922,7 +2954,7 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
                                                   style={{
                                                     background: "none",
                                                     border: "none",
-                                                    color: "#d32f2f",
+                                                    color: "#000000",
                                                     cursor: "pointer",
                                                     fontSize: "14px",
                                                     fontWeight: "bold",
@@ -2953,9 +2985,9 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
                           const answer = userAnswers[radioAnswerKey] ?? userAnswers[legacyAnswerKey];
                           
                           return (
-                            <div key={index} className="reference-wrapper"
+                                                   <div key={index} className="reference-wrapper"
                             style={{
-                              marginBottom: "-10px"
+                              marginBottom: "20px"
                             }}>
                             
                               {/* Sub Indicator Row */}
@@ -3267,7 +3299,7 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
                                                   style={{
                                                     background: "none",
                                                     border: "none",
-                                                    color: "#d32f2f",
+                                                    color: "#000000",
                                                     cursor: "pointer",
                                                     fontSize: "14px",
                                                     fontWeight: "bold",
@@ -3291,7 +3323,7 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
 
                               {/* Nested Sub-Indicators */}
                               {sub.nestedSubIndicators && sub.nestedSubIndicators.length > 0 && (
-                                <div className="nested-reference-wrapper" style={{ marginLeft: "30px", marginTop: "10px",marginBottom: "20px"}}>
+                                <div className="nested-reference-wrapper" style={{ marginLeft: "30px", marginTop: "10px", marginBottom: "25px"}}>
                                   {sub.nestedSubIndicators.map((nested, nestedIndex) => {
                                     const legacyNestedAnswerKey = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${nested.title}`;
                                     const nestedRadioAnswerKey = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_radio_${nested.title}`;
@@ -3300,16 +3332,16 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
                                     return (
                                       <div key={nested.id || nestedIndex} className="nested-reference-item" style={{ marginBottom: "5px" }}>
                                         <div className="nested-reference-row" style={{ display: "flex", border: "1px solid #cfcfcf" }}>
-                                          <div className="nested-reference-label" style={{ 
-                                            width: "45%", 
-                                            background: "#f0f0f0",
-                                            padding: "8px 12px",
-                                            fontWeight: 500,
-                                            borderRight: "1px solid #cfcfcf",
-                                            
-                                          }}>
-                                            {nested.title || 'Untitled'}
-                                          </div>
+                                        <div className="nested-reference-label" style={{ 
+  width: "45%", 
+  background: "#fff9c4",
+  padding: "8px 12px",
+  fontWeight: 500,
+  borderRight: "1px solid #cfcfcf",
+  
+}}>
+  {nested.title || 'Untitled'}
+</div>
                                           <div className="nested-reference-field" style={{ 
                                             width: "55%", 
                                             padding: "8px 12px",
@@ -3610,7 +3642,7 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
                                                             style={{
                                                               background: "none",
                                                               border: "none",
-                                                              color: "#d32f2f",
+                                                              color: "#000000",
                                                               cursor: "pointer",
                                                               fontSize: "14px",
                                                               fontWeight: "bold",
@@ -3697,20 +3729,7 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
                             )}
                           </>
                         )}
-                        
-                        {hasSubmitted && (
-                          <span style={{ 
-                            backgroundColor: "#d4edda", 
-                            color: "#155724",
-                            padding: "4px 12px",
-                            borderRadius: "20px",
-                            fontSize: "12px",
-                            fontWeight: "600",
-                            border: "1px solid #c3e6cb"
-                          }}>
-                            ✓ ASSESSMENT SUBMITTED
-                          </span>
-                        )}
+{/* Removed - status is now shown in the button above */}
                       </div>
                     </div>
                   </>

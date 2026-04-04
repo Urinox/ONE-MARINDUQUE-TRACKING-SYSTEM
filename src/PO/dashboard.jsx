@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { ref, push, onValue, set, get } from "firebase/database";
 
 export default function Dashboard() {
+  const [activeMenu, setActiveMenu] = useState("dashboard");
   const [forwardedData, setForwardedData] = useState([]);
   const [verifiedData, setVerifiedData] = useState([]);
   const [loadingVerified, setLoadingVerified] = useState(true);
@@ -838,6 +839,8 @@ const statuses = ["Verified", "Pending", "Returned"];
   };
 
 // ===== UPDATE THIS useMemo IN YOUR DASHBOARD =====
+
+
 const allData = useMemo(() => {
   console.log("Forwarded data:", forwardedData);
   console.log("Verified data:", verifiedData);
@@ -851,7 +854,7 @@ const allData = useMemo(() => {
     assessment: item.assessment || "General Assessment",
     assessmentId: item.assessmentId || "unknown",
     year: item.year || "Unknown",
-    status: item.status || "Pending"
+    status: "Pending"
   }));
   
   // Map verified items
@@ -865,7 +868,7 @@ const allData = useMemo(() => {
     status: "Verified"
   }));
   
-  // Map returned items - CRITICAL: Make sure these are included
+  // Map returned items - INCLUDE them!
   const mappedReturned = returnedData.map(item => ({
     ...item,
     type: 'returned',
@@ -873,7 +876,7 @@ const allData = useMemo(() => {
     assessment: item.assessment || "General Assessment",
     assessmentId: item.assessmentId || "unknown",
     year: item.year || "Unknown",
-    status: "Returned"  // This is important for the status badge
+    status: "Returned"
   }));
   
   console.log("Mapped returned items count:", mappedReturned.length);
@@ -894,34 +897,86 @@ const allData = useMemo(() => {
   });
 }, [forwardedData, verifiedData, returnedData]);
 
-
 const displayedData = useMemo(() => {
-  // Map forwarded items (Pending) - ONLY show these
+  console.log("=== BUILDING DISPLAYED DATA ===");
+  console.log("Forwarded items:", forwardedData.length);
+  console.log("Verified items:", verifiedData.length);
+  console.log("Returned items:", returnedData.length);
+  
+  // Map forwarded items (Pending)
   const mappedForwarded = forwardedData.map(item => ({
     ...item,
     type: 'forwarded',
-    status: "Pending"
+    status: "Pending",
+    uniqueKey: `${item.year}_${item.assessmentId}_${item.municipality}`
   }));
   
   // Map verified items
   const mappedVerified = verifiedData.map(item => ({
     ...item,
     type: 'verified',
-    status: "Verified"
+    status: "Verified",
+    uniqueKey: `${item.year}_${item.assessmentId}_${item.municipality}`
   }));
   
-  // DO NOT show returned items at all - EXCLUDE them completely
-  // const mappedReturned = returnedData.map(item => ({...})); // DELETE THIS LINE
+  // Map returned items
+  const mappedReturned = returnedData.map(item => ({
+    ...item,
+    type: 'returned',
+    status: "Returned",
+    uniqueKey: `${item.year}_${item.assessmentId}_${item.municipality}`
+  }));
   
-  // Combine only forwarded and verified - NO RETURNED ITEMS
-  const combined = [...mappedForwarded, ...mappedVerified];
+  // Create a Map to store the latest status for each unique assessment
+  const latestStatusMap = new Map();
   
-  return combined.sort((a, b) => {
+  // Process all items - FORWARDED and RETURNED have priority over VERIFIED for display
+  // because when resubmitted, we want to show the current status
+  
+  // First, add returned items (they represent the most recent action when returned)
+  mappedReturned.forEach(item => {
+    const existing = latestStatusMap.get(item.uniqueKey);
+    if (!existing || new Date(item.returnedAt || item.submission) > new Date(existing.returnedAt || existing.submission)) {
+      latestStatusMap.set(item.uniqueKey, item);
+    }
+  });
+  
+  // Then, add forwarded items (they represent resubmission after return)
+  mappedForwarded.forEach(item => {
+    const existing = latestStatusMap.get(item.uniqueKey);
+    // Forwarded items should OVERRIDE returned items because they are more recent
+    if (!existing || existing.status === "Returned") {
+      latestStatusMap.set(item.uniqueKey, item);
+    } else if (!existing || new Date(item.submission) > new Date(existing.submission)) {
+      latestStatusMap.set(item.uniqueKey, item);
+    }
+  });
+  
+  // Finally, add verified items (only if no forwarded or returned exists)
+  mappedVerified.forEach(item => {
+    const existing = latestStatusMap.get(item.uniqueKey);
+    if (!existing) {
+      latestStatusMap.set(item.uniqueKey, item);
+    }
+  });
+  
+  // Convert Map back to array
+  const deduplicatedData = Array.from(latestStatusMap.values());
+  
+  console.log("After deduplication:", deduplicatedData.length);
+  console.log("Status breakdown:", {
+    Pending: deduplicatedData.filter(d => d.status === "Pending").length,
+    Returned: deduplicatedData.filter(d => d.status === "Returned").length,
+    Verified: deduplicatedData.filter(d => d.status === "Verified").length
+  });
+  
+  // Sort by date (most recent first)
+  return deduplicatedData.sort((a, b) => {
     const dateA = a.submission ? new Date(a.submission) : new Date(0);
     const dateB = b.submission ? new Date(b.submission) : new Date(0);
     return dateB - dateA;
   });
-}, [forwardedData, verifiedData]); // Remove returnedData from dependencies
+}, [forwardedData, verifiedData, returnedData]);
 
 
 
@@ -1082,131 +1137,44 @@ useEffect(() => {
             )}
           </div>
 
-
-{sidebarOpen && (
+      {sidebarOpen && (
   <>
-    <p className="filter-title">
-      <FiFilter style={{ marginRight: "10px", verticalAlign: "middle" }} />
-      FILTER
-      <button className="clear-icon-btn" onClick={clearFilters} aria-label="Clear Filters">
-        <FiRotateCcw />
-      </button>
-    </p>
+    <button
+      className={`sidebar-menu-item ${activeMenu === "dashboard" ? "active" : ""}`}
+      onClick={() => {
+        setActiveMenu("dashboard");
+        navigate("/dashboard");
+      }}
+      style={{ marginTop: "-10%" }}
+    >
+      <span style={{ marginRight: "8px", fontSize: "18px" }}>🏠︎</span>
+      Dashboard
+    </button>
 
-    {/* Dropdown Overlay */}
-    {openDropdown && (
-      <div
-        className="dropdown-overlay"
-        onClick={() => setOpenDropdown(null)}
-      ></div>
-    )}
-
-    <div className="filter-item">
-      <div
-        className="filter-btn"
-        onClick={() =>
-          setOpenDropdown(openDropdown === "municipality" ? null : "municipality")
-        }
-      >
-        Municipality {filters.municipality && `: ${filters.municipality}`}
-        <span className="arrow" style={{ pointerEvents: "none" }}>
-          {openDropdown === "municipality" ? "▲" : "▼"}
+    <button
+      className={`sidebar-menu-item ${activeMenu === "notifications" ? "active" : ""}`}
+      onClick={() => {
+        setActiveMenu("notifications");
+        navigate("/po-notifications");
+      }}
+    >
+      <FiBell style={{ marginRight: "8px", fontSize: "18px" }} />
+      Notifications
+      {unreadCount > 0 && (
+        <span style={{
+          backgroundColor: "#dc3545",
+          color: "white",
+          borderRadius: "12px",
+          padding: "2px 8px",
+          fontSize: "11px",
+          marginLeft: "8px",
+          fontWeight: "bold"
+        }}>
+          {unreadCount}
         </span>
-      </div>
-      {openDropdown === "municipality" && renderDropdown("municipality", municipalities)}
-    </div>
-
-    <div className="filter-item">
-      <div
-        className="filter-btn"
-        onClick={() => setOpenDropdown(openDropdown === "year" ? null : "year")}
-      >
-        Year {filters.year && `: ${filters.year}`}
-        <span className="arrow" style={{ pointerEvents: "none" }}>
-          {openDropdown === "year" ? "▲" : "▼"}
-        </span>
-      </div>
-      {openDropdown === "year" && renderDropdown("year", years)}
-    </div>
-
-    <div className="filter-item">
-      <div
-        className="filter-btn"
-        onClick={() => setOpenDropdown(openDropdown === "status" ? null : "status")}
-      >
-        Status {filters.status && `: ${filters.status}`}
-        <span className="arrow" style={{ pointerEvents: "none" }}>
-          {openDropdown === "status" ? "▲" : "▼"}
-        </span>
-      </div>
-      {openDropdown === "status" && renderDropdown("status", statuses)}
-    </div>
-
-    {/* Assessment Filter - depends on selected year */}
-    <div className="filter-item">
-      <div
-        className="filter-btn"
-        onClick={() => setOpenDropdown(openDropdown === "assessment" ? null : "assessment")}
-      >
-        Assessment {filters.assessment && `: ${filters.assessment}`}
-        <span className="arrow" style={{ pointerEvents: "none" }}>
-          {openDropdown === "assessment" ? "▲" : "▼"}
-        </span>
-      </div>
-      {openDropdown === "assessment" && (
-        <>
-          {!filters.year ? (
-            <div className="dropdown-item" style={{ color: '#999', cursor: 'default' }}>
-              Please pick a year.
-            </div>
-          ) : (
-            renderDropdown("assessment", assessmentFilterOptions)
-          )}
-        </>
       )}
-    </div>
-    
-{/* Fixed Notification Button */}
-<button
-  className="sidebar-menu-item"
-  onClick={() => navigate("/po-notifications")}
-  style={{
-    display: "flex",
-    alignItems: "center",
-    width: "100%",
-    padding: "10px",
-    background: "none",
-    border: "none",
-    color: "white",
-    cursor: "pointer",
-    transition: "background-color 0.2s ease",
-    position: "relative"
-  }}
-  onMouseEnter={(e) => {
-    e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.28)";
-    e.currentTarget.style.borderRadius = "4px";
-  }}
-  onMouseLeave={(e) => {
-    e.currentTarget.style.backgroundColor = "transparent";
-  }}
->
-  <FiBell style={{ marginRight: "8px", fontSize: "18px" }} />
-  Notifications
-  {unreadCount > 0 && (
-    <span style={{
-      backgroundColor: "#dc3545",
-      color: "white",
-      borderRadius: "12px",
-      padding: "2px 8px",
-      fontSize: "11px",
-      marginLeft: "8px",
-      fontWeight: "bold"
-    }}>
-      {unreadCount}
-    </span>
-  )}
-</button>
-    
+    </button>
+
     <div className="sidebar-bottom">
       <button className="sidebar-btn signout-btn" onClick={handleSignOut}>
         <FiLogOut style={{ marginRight: "8px", fontSize: "18px" }} />
@@ -1404,7 +1372,6 @@ useEffect(() => {
             </div>
           </div>
 
-
 <div className="action-bar">
   <button className="po-indicators-btn" onClick={() => setShowModal(true)}>
     <svg
@@ -1421,6 +1388,23 @@ useEffect(() => {
     </svg>
     Create
   </button>
+</div>
+
+{/* Search Bar */}
+<div style={{ padding: "10px 20px" }}>
+  <input
+    type="text"
+    placeholder="Search by municipality, year, assessment, or status..."
+    value={search}
+    onChange={(e) => setSearch(e.target.value)}
+    style={{
+      width: "100%",
+      padding: "10px",
+      borderRadius: "4px",
+      border: "1px solid #ccc",
+      fontSize: "14px",
+    }}
+  />
 </div>
 
 {/* Modal - ADD NEW RECORD */}

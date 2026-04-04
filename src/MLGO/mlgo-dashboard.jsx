@@ -10,7 +10,7 @@ import { ref, onValue, set, get } from "firebase/database";
 export default function MLGO() {
   const [currentPage, setCurrentPage] = useState(1);
   const [submissions, setSubmissions] = useState([]);
-  const [loading, setLoading] = useState(true);
+ // const [loading, setLoading] = useState(true); // REMOVED - no loading screen
   const navigate = useNavigate();
   const location = useLocation();
   const [unreadCount, setUnreadCount] = useState(0);
@@ -154,8 +154,8 @@ useEffect(() => {
         }
       } catch (error) {
         console.error("Error fetching admin UID:", error);
-      } finally {
-        setLoading(false);
+         } finally {
+        // setLoading(false); // REMOVED - no loading screen
       }
     };
 
@@ -331,6 +331,8 @@ useEffect(() => {
     fetchVerifiedSubmissions();
   }, [currentUserMunicipality, refreshTrigger]); // Add refreshTrigger
 // Fetch pending/returned submissions (answers)
+
+
 useEffect(() => {
   if (!auth.currentUser || !currentUserMunicipality) return;
 
@@ -358,39 +360,59 @@ useEffect(() => {
                   municipality = municipalityMap[userUid];
                 }
 
-                if (municipality === currentUserMunicipality) {
-                  // DECLARE status FIRST
-                  let status = "Draft";
-                  
-                  // Check if forwarded - DON'T SKIP, just mark status
-                  const isForwarded = lguData._metadata.forwarded === true || 
-                                     lguData._metadata.forwardedToPO === true ||
-                                     lguData._metadata.status === "Forwarded";
-                  
-                  // If forwarded, set status to "Forwarded" but DON'T skip
-                  if (isForwarded) {
-                    status = "Forwarded";
-                    console.log("Found forwarded item, keeping in table:", {
-                      year,
-                      assessment: lguData._metadata.assessment,
-                      municipality,
-                      status: "Forwarded"
-                    });
-                  } 
-                  // SECOND: Check if returned from PO
-                  else if (lguData._metadata.returnedToMLGO === true) {
-                    status = "Returned";
-                  } 
-                  // THIRD: Check status field
-                  else if (lguData._metadata.status) {
-                    status = lguData._metadata.status;
-                  } 
-                  // FOURTH: Check if submitted
-                  else if (lguData._metadata.submitted === true) {
-                    status = "Pending";
-                  }
-                  
-                  submissionsList.push({
+if (municipality === currentUserMunicipality) {
+// Handle verified assessments - keep them, just mark status as Verified
+if (lguData._metadata.verified === true || lguData._metadata.status === "Verified") {
+  submissionsList.push({
+    id: counter++,
+    year: year,
+    assessmentId: lguData._metadata.assessmentId || "unknown",
+    assessment: lguData._metadata.assessment || lguData._metadata.assessmentName || "General Assessment",
+    status: "Verified",
+    submission: lguData._metadata.lastSaved 
+      ? new Date(lguData._metadata.lastSaved).toLocaleDateString('en-US', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric'
+        })
+      : "N/A",
+    deadline: lguData._metadata.deadline 
+      ? new Date(lguData._metadata.deadline).toLocaleDateString('en-US', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric'
+        })
+      : "Not set",
+    lguName: lguData._metadata.name || lguData._metadata.email || "Unknown",
+    data: lguData,
+    municipality: municipality,
+    userUid: userUid,
+    isVerified: true,
+    displayName: lguData._metadata.displayName || `${municipality} - ${lguData._metadata.assessment || "General"}`
+  });
+  return; // Skip the rest of the status logic for verified items
+}
+  
+  // DECLARE status FIRST
+  let status = "Pending";  // Default for submitted assessments
+  
+  // Check if forwarded
+  const isForwarded = lguData._metadata.forwarded === true || 
+                     lguData._metadata.forwardedToPO === true ||
+                     lguData._metadata.status === "Forwarded";
+  
+  if (isForwarded) {
+    status = "Forwarded";
+  } 
+  else if (lguData._metadata.returnedToMLGO === true) {
+    status = "Returned";
+  }
+  else if (lguData._metadata.returnedToLGU === true) {
+    status = "Returned";
+  }
+  
+  // ALWAYS add to list - don't filter out any status
+  submissionsList.push({
                     id: counter++,
                     year: year,
                     assessmentId: lguData._metadata.assessmentId || "unknown",
@@ -438,7 +460,6 @@ useEffect(() => {
 
   fetchSubmissions();
 }, [currentUserMunicipality, municipalityMap, refreshTrigger]);
-
 useEffect(() => {
   if (!auth.currentUser || !currentUserMunicipality) return;
 
@@ -448,9 +469,8 @@ useEffect(() => {
     onValue(returnedRef, (snapshot) => {
       if (snapshot.exists()) {
         const allReturned = snapshot.val();
-        const returnedList = [];
-        let counter = 1;
-
+        const returnedMap = new Map(); // Use Map to deduplicate by unique key
+        
         Object.keys(allReturned).forEach(year => {
           if (allReturned[year]?.MLGO) {
             // Look for the current user's UID in the MLGO node
@@ -463,29 +483,33 @@ useEffect(() => {
                   
                   // Check if this returned assessment belongs to current user's municipality
                   if (returnData.municipality === currentUserMunicipality) {
-                    // Only add if not forwarded
+                    // Create unique key for this assessment
+                    const uniqueKey = `${year}_${returnData.assessmentId}_${returnData.municipality}`;
+                    
+                    // Only add if not forwarded AND not already in map
                     if (returnData.status !== "Forwarded") {
-// In the fetchReturnedSubmissions function, when pushing to returnedList:
-
-returnedList.push({
-  id: counter++,
-  year: year,
-  assessmentId: returnData.assessmentId,
-  assessment: returnData.assessment || "General Assessment",
-  status: "Returned", // Make sure status is set to Returned
-  submission: returnData.submission || "N/A",
-  deadline: returnData.deadline || "Not set",
-  lguName: returnData.originalLguName || returnData.lguName,
-  data: returnData.originalData || {},
-  municipality: returnData.municipality,
-  userUid: returnData.lguUid,
-  isVerified: false,
-  isReturned: true,
-  returnedBy: returnData.returnedBy,
-  returnedAt: returnData.returnedAt,
-  poRemarks: returnData.poRemarks,
-  displayName: `${returnData.municipality} - ${returnData.assessment || "General"}`
-});
+                      // Check if we already have a newer version of this assessment
+                      const existing = returnedMap.get(uniqueKey);
+                      if (!existing || (returnData.returnedAt && existing.returnedAt && returnData.returnedAt > existing.returnedAt)) {
+                        returnedMap.set(uniqueKey, {
+                          year: year,
+                          assessmentId: returnData.assessmentId,
+                          assessment: returnData.assessment || "General Assessment",
+                          status: "Returned",
+                          submission: returnData.submission || "N/A",
+                          deadline: returnData.deadline || "Not set",
+                          lguName: returnData.originalLguName || returnData.lguName,
+                          data: returnData.originalData || {},
+                          municipality: returnData.municipality,
+                          userUid: returnData.lguUid,
+                          isVerified: false,
+                          isReturned: true,
+                          returnedBy: returnData.returnedBy,
+                          returnedAt: returnData.returnedAt,
+                          poRemarks: returnData.poRemarks,
+                          displayName: `${returnData.municipality} - ${returnData.assessment || "General"}`
+                        });
+                      }
                     }
                   }
                 });
@@ -494,7 +518,13 @@ returnedList.push({
           }
         });
 
-        console.log("Fetched returned submissions:", returnedList.length);
+        // Convert Map to array and add sequential IDs
+        const returnedList = Array.from(returnedMap.values()).map((item, index) => ({
+          ...item,
+          id: index + 1
+        }));
+
+        console.log("Fetched returned submissions (deduplicated):", returnedList.length);
         setReturnedSubmissions(returnedList);
       } else {
         setReturnedSubmissions([]);
@@ -525,38 +555,47 @@ const allSubmissions = useMemo(() => {
   // Just log them for debugging
   const forwardedItems = submissions.filter(s => isForwarded(s));
   console.log("Forwarded items kept in table:", forwardedItems.length);
+  // Don't include verifiedSubmissions since verified items are now in submissions
+const allSubmissionsData = [...submissions, ...returnedSubmissions];
   
-  // Use all submissions without filtering out forwarded items
-  const allSubmissionsData = [...submissions, ...verifiedSubmissions, ...returnedSubmissions];
+
   
   // Create a Set of verified item keys to avoid duplicates
-  const verifiedKeys = new Set(
-    verifiedSubmissions
-      .filter(v => v.assessment && v.assessment !== "General Assessment")
-      .map(v => `${v.year}-${v.assessmentId}-${v.municipality}`)
-  );
+const verifiedKeys = new Set(
+  verifiedSubmissions
+    .filter(v => v.assessment && v.assessment !== "General Assessment")
+    .map(v => `${v.year}-${v.assessmentId}-${v.municipality}`)
+);
+
+// Create a Set of returned item keys - INCLUDING returned from PO
+const returnedKeys = new Set(
+  returnedSubmissions
+    .filter(r => r.assessment && r.assessment !== "General Assessment")
+    .map(r => `${r.year}-${r.assessmentId}-${r.municipality}`)
+);
+
+// Create a Set of forwarded item keys (from PO)
+const forwardedKeys = new Set(
+  submissions
+    .filter(s => s.status === "Forwarded")
+    .map(s => `${s.year}-${s.assessmentId}-${s.municipality}`)
+);
   
-  // Create a Set of returned item keys
-  const returnedKeys = new Set(
-    returnedSubmissions
-      .filter(r => r.assessment && r.assessment !== "General Assessment")
-      .map(r => `${r.year}-${r.assessmentId}-${r.municipality}`)
-  );
+// Keep ALL items - don't filter out returned ones
+// Just deduplicate by keeping the most recent version of each assessment
+const latestMap = new Map();
+
+[...submissions, ...verifiedSubmissions, ...returnedSubmissions].forEach(item => {
+  const key = `${item.year}-${item.assessmentId}-${item.municipality}`;
+  const existing = latestMap.get(key);
   
-  // Create a Set of forwarded item keys (to avoid duplicates)
-  const forwardedKeys = new Set(
-    submissions
-      .filter(s => s.status === "Forwarded")
-      .map(s => `${s.year}-${s.assessmentId}-${s.municipality}`)
-  );
-  
-  // Filter out duplicate pending items that have been verified, returned, or forwarded
-  const uniqueSubmissions = submissions.filter(s => {
-    const key = `${s.year}-${s.assessmentId}-${s.municipality}`;
-    // Keep if not verified, not returned, and not forwarded (or if it's forwarded we want to keep it with its status)
-    if (s.status === "Forwarded") return true; // Keep forwarded items
-    return !verifiedKeys.has(key) && !returnedKeys.has(key);
-  });
+  // Keep the item with the most recent timestamp
+  if (!existing || (item.returnedAt > existing.returnedAt) || (item.submission > existing.submission)) {
+    latestMap.set(key, item);
+  }
+});
+
+const uniqueSubmissions = Array.from(latestMap.values());
   
   // Filter out any items with "General Assessment"
   const validSubmissions = uniqueSubmissions.filter(s => 
@@ -571,8 +610,8 @@ const allSubmissions = useMemo(() => {
     r.assessment && r.assessment !== "General Assessment"
   );
   
-  // Combine all - KEEP forwarded items
-  const combined = [...validSubmissions, ...validVerified, ...validReturned];
+ // Don't include validVerified since verified items are already in validSubmissions
+const combined = [...validSubmissions, ...validReturned];
   
   // Remove the final filter that was removing forwarded items
   // Just log for debugging
@@ -784,369 +823,318 @@ const allSubmissions = useMemo(() => {
   };
 
   return (
-    <>
-    {loading ? (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
-        Loading...
-      </div>
-    ) : (
-      <div className={style.dashboardScale}>
-        <div className={style.dashboard}>
-          {/* Sidebar */}
-          <div className={`sidebar ${sidebarOpen ? "" : "collapsed"}`}>
-            <div className="sidebar-header">
-              {sidebarOpen && (
-                <>
-                  <img src={dilgSeal} alt="DILG Seal" style={{ height: "50px", width: "auto" }} />
-                  <img src={dilgLogo} alt="DILG Logo" style={{ height: "50px", width: "auto" }} />
-                  <h3 style={{textAlign: "center", lineHeight: "1.1", marginLeft: "-20%",}}>STRATEGIC UNIT FOR <br />KEY{" "} <span className="yellow">ASS</span><span className="cyan">ESS</span>
-                  <span className="red">MENT</span>  <span className="white">AND</span> TRACKING</h3>
-                  <div className="sidebar-divider"></div>
-                </>
-              )}
-            </div>
-
+    <div className={style.dashboardScale}>
+      <div className={style.dashboard}>
+        {/* Sidebar */}
+        <div className={`sidebar ${sidebarOpen ? "" : "collapsed"}`}>
+          <div className="sidebar-header">
             {sidebarOpen && (
               <>
-                <p className="filter-title">
-                  <FiFilter style={{ marginRight: "10px", verticalAlign: "middle" }} />
-                  FILTER
-                  <button className="clear-icon-btn" onClick={clearFilters} aria-label="Clear Filters">
-                    <FiRotateCcw />
-                  </button>
-                </p>
-
-                {openDropdown && (
-                  <div className="dropdown-overlay" onClick={() => setOpenDropdown(null)}></div>
-                )}
-
-                <div className="filter-item">
-                  <div className="filter-btn" onClick={() => setOpenDropdown(openDropdown === "year" ? null : "year")}>
-                    Year {filters.year && `: ${filters.year}`}
-                    <span className="arrow" style={{ pointerEvents: "none" }}>
-                      {openDropdown === "year" ? "▲" : "▼"}
-                    </span>
-                  </div>
-                  {openDropdown === "year" && renderDropdown("year", years)}
-                </div>
-
-                <div className="filter-item">
-                  <div className="filter-btn" onClick={() => setOpenDropdown(openDropdown === "status" ? null : "status")}>
-                    Status {filters.status && `: ${filters.status}`}
-                    <span className="arrow" style={{ pointerEvents: "none" }}>
-                      {openDropdown === "status" ? "▲" : "▼"}
-                    </span>
-                  </div>
-                  {openDropdown === "status" && renderDropdown("status", statuses)}
-                </div>
-
-                {/* Assessment Filter - depends on selected year */}
-                <div className="filter-item">
-                  <div className="filter-btn" onClick={() => setOpenDropdown(openDropdown === "assessment" ? null : "assessment")}>
-                    Assessment {filters.assessment && `: ${filters.assessment}`}
-                    <span className="arrow" style={{ pointerEvents: "none" }}>
-                      {openDropdown === "assessment" ? "▲" : "▼"}
-                    </span>
-                  </div>
-                  {openDropdown === "assessment" && (
-                    <>
-                      {!filters.year ? (
-                        <div className="dropdown-item" style={{ color: '#999', cursor: 'default' }}>
-                          Please select a year first
-                        </div>
-                      ) : (
-                        renderDropdown("assessment", assessmentFilterOptions)
-                      )}
-                    </>
-                  )}
-                </div>
-
-                <button className={style.sidebarMenuItem} onClick={() => navigate("/mlgo-notification")}>
-                  <FiBell style={{ marginRight: "8px", fontSize: "18px" }} />
-                  Notifications
-                  {unreadCount > 0 && (
-                    <span style={{
-                      backgroundColor: "#dc3545",
-                      color: "white",
-                      borderRadius: "12px",
-                      padding: "2px 8px",
-                      fontSize: "11px",
-                      marginLeft: "8px",
-                      fontWeight: "bold"
-                    }}>
-                      {unreadCount}
-                    </span>
-                  )}
-                </button>
-
-                <div className="sidebar-bottom">
-                  <button className="sidebar-btn signout-btn" onClick={handleSignOut}>
-                    <FiLogOut style={{ marginRight: "8px", fontSize: "18px" }} />
-                    Sign Out
-                  </button>
-                </div>
+                <img src={dilgSeal} alt="DILG Seal" style={{ height: "50px", width: "auto" }} />
+                <img src={dilgLogo} alt="DILG Logo" style={{ height: "50px", width: "auto" }} />
+                <h3 style={{textAlign: "center", lineHeight: "1.1", marginLeft: "-20%",}}>STRATEGIC UNIT FOR <br />KEY{" "} <span className="yellow">ASS</span><span className="cyan">ESS</span>
+                <span className="red">MENT</span>  <span className="white">AND</span> TRACKING</h3>
+                <div className="sidebar-divider"></div>
               </>
             )}
           </div>
 
-          {/* Main */}
-          <div className="main">
-            <div className="topbar">
-              <button className="toggle-btn" onClick={() => setSidebarOpen(!sidebarOpen)} style={{ cursor: "pointer" }}>
-                {sidebarOpen ? "☰" : "✖"}
+          {sidebarOpen && (
+            <>
+              <button
+                className={`${style.sidebarMenuItem} ${location.pathname === "/mlgo-dashboard" ? style.active : ""}`}
+                onClick={() => navigate("/mlgo-dashboard")}
+                style={{ marginTop: "-10%" }}
+              >
+                <span style={{ marginRight: "8px", fontSize: "18px" }}>🏠︎</span>
+                Dashboard
               </button>
-              <div className="topbar-left">
-                <h2>Provincial Assessment</h2>
-              </div>
 
-              <div className="top-right">
-                <div className="profile-container">
-                  <div className="profile" onClick={() => setShowProfileModal(true)} style={{ cursor: "pointer" }}>
-                    <div className="avatar">
-                      {profileData.image ? (
-                        <img src={profileData.image} alt="avatar" style={{
-                          width: "60px",
-                          height: "60px",
-                          borderRadius: "50%",
-                          objectFit: "cover",
-                          border: "7px solid #0c1a4b",
-                        }} />
-                      ) : (
-                        "👤"
-                      )}
-                    </div>
-                    <span>{profileData.name || displayName}</span>
+              <button
+                className={`${style.sidebarMenuItem} ${location.pathname === "/mlgo-notification" ? style.active : ""}`}
+                onClick={() => navigate("/mlgo-notification")}
+              >
+                <FiBell style={{ marginRight: "8px", fontSize: "18px" }} />
+                Notifications
+                {unreadCount > 0 && (
+                  <span style={{
+                    backgroundColor: "#dc3545",
+                    color: "white",
+                    borderRadius: "12px",
+                    padding: "2px 8px",
+                    fontSize: "11px",
+                    marginLeft: "8px",
+                    fontWeight: "bold"
+                  }}>
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              <div className="sidebar-bottom">
+                <button className={`sidebar-btn signout-btn`} onClick={handleSignOut}>
+                  <FiLogOut style={{ marginRight: "8px", fontSize: "18px" }} />
+                  Sign Out
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Main */}
+        <div className="main">
+          <div className="topbar">
+            <button className="toggle-btn" onClick={() => setSidebarOpen(!sidebarOpen)} style={{ cursor: "pointer" }}>
+              {sidebarOpen ? "☰" : "✖"}
+            </button>
+            <div className="topbar-left">
+              <h2>Provincial Assessment</h2>
+            </div>
+
+            <div className="top-right">
+              <div className="profile-container">
+                <div className="profile" onClick={() => setShowProfileModal(true)} style={{ cursor: "pointer" }}>
+                  <div className="avatar">
+                    {profileData.image ? (
+                      <img src={profileData.image} alt="avatar" style={{
+                        width: "60px",
+                        height: "60px",
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                        border: "7px solid #0c1a4b",
+                      }} />
+                    ) : (
+                      "👤"
+                    )}
                   </div>
+                  <span>{profileData.name || displayName}</span>
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Search Bar */}
-            <div style={{ padding: "10px 20px" }}>
-              <input
-                type="text"
-                placeholder="Search by year, assessment, or status..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "10px",
-                  borderRadius: "4px",
-                  border: "1px solid #ccc",
-                  fontSize: "14px",
-                }}
-              />
-            </div>
+          {/* Search Bar */}
+          <div style={{ padding: "10px 20px" }}>
+            <input
+              type="text"
+              placeholder="Search by year, assessment, or status..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "10px",
+                borderRadius: "4px",
+                border: "1px solid #ccc",
+                fontSize: "14px",
+              }}
+            />
+          </div>
 
-            {/* Table */}
-            <div className={style.tableBox}
-             style={{ marginTop:"-.1%"}}>
-              <div className={style.tableWrapper}
-              style={{ maxHeight: sidebarOpen ? 'calc(100vh - 160px)' : 'calc(100vh - 200px)', overflowY: "auto" }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th>YEAR</th>
-                      <th>ASSESSMENT</th>
-                      <th>STATUS</th>
-                      <th>Submission Date</th>
-                      <th>Submission Deadline</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {currentRows.length > 0 ? (
-                      currentRows.map((item) => (
-                        <tr key={item.id}>
-                          <td>{item.id}</td>
-                          <td>{item.year}</td>
-                          <td>{item.assessment || "General Assessment"}</td>
-                          <td>
-                            <span className={`${style.status} ${item.isVerified ? style.verifieD : style[item.status?.toLowerCase()]}`}>
-                              {item.status}
-                            </span>
-                          </td>
-                          <td>{item.submission}</td>
-                          <td>{item.deadline || "Not set"}</td>
-                          <td className="actions">
-                            <button
+          {/* Table */}
+          <div className={style.tableBox} style={{ marginTop:"-.1%"}}>
+            <div className={style.tableWrapper} style={{ maxHeight: sidebarOpen ? 'calc(100vh - 160px)' : 'calc(100vh - 200px)', overflowY: "auto" }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>YEAR</th>
+                    <th>ASSESSMENT</th>
+                    <th>STATUS</th>
+                    <th>Submission Date</th>
+                    <th>Submission Deadline</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentRows.length > 0 ? (
+                    currentRows.map((item) => (
+                      <tr key={item.id}>
+                        <td>{item.id}</td>
+                        <td>{item.year}</td>
+                        <td>{item.assessment || "General Assessment"}</td>
+                        <td>
+                          <span className={`${style.status} ${item.isVerified ? style.verifieD : style[item.status?.toLowerCase()]}`}>
+                            {item.status}
+                          </span>
+                        </td>
+                        <td>{item.submission}</td>
+                        <td>{item.deadline || "Not set"}</td>
+                        <td className="actions">
+                          <button
                             onClick={() => handleView(item)}
                             style={{
-                                backgroundColor: "#0c1a4b",
-                                color: "white",
-                                border: "none",
-                                padding: "6px 15px",
-                                borderRadius: "4px",
-                                fontSize: "13px",
-                                cursor: "pointer",
-                                fontWeight: "500",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "5px",
-                                transition: "background-color 0.2s"
-                              }}
-                              >
-                              View 👁
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan="7" style={{ textAlign: "center", padding: "20px" }}>
-                          {currentUserMunicipality 
-                            ? `No submissions found for ${currentUserMunicipality} municipality`
-                            : "Please complete your profile to view submissions"}
+                              backgroundColor: "#0c1a4b",
+                              color: "white",
+                              border: "none",
+                              padding: "6px 15px",
+                              borderRadius: "4px",
+                              fontSize: "13px",
+                              cursor: "pointer",
+                              fontWeight: "500",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "5px",
+                              transition: "background-color 0.2s"
+                            }}
+                          >
+                            View 👁
+                          </button>
                         </td>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="7" style={{ textAlign: "center", padding: "20px" }}>
+                        {currentUserMunicipality 
+                          ? `No submissions found for ${currentUserMunicipality} municipality`
+                          : "Please complete your profile to view submissions"}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-              {/* Pagination */}
-              <div className={style.tableFooter}>
-                {filteredData.length === 0 ? (
-                  "Showing 0–0 of 0 items"
-                ) : (
-                  <>
-                    Showing {indexOfFirstRow + 1}–{Math.min(indexOfLastRow, filteredData.length)} of {filteredData.length} items
-                  </>
-                )}
-                <div className={style.pageButtons}>
-                  <button disabled={filteredData.length === 0 || currentPage === 1} onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}>
-                    ◀
-                  </button>
+            {/* Pagination */}
+            <div className={style.tableFooter}>
+              {filteredData.length === 0 ? (
+                "Showing 0–0 of 0 items"
+              ) : (
+                <>
+                  Showing {indexOfFirstRow + 1}–{Math.min(indexOfLastRow, filteredData.length)} of {filteredData.length} items
+                </>
+              )}
+              <div className={style.pageButtons}>
+                <button disabled={filteredData.length === 0 || currentPage === 1} onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}>
+                  ◀
+                </button>
 
-                  <input
-                    max={totalPages || 1}
-                    value={filteredData.length === 0 ? 0 : currentPage}
-                    disabled={filteredData.length === 0}
-                    onChange={(e) => {
-                      if (filteredData.length === 0) return;
-                      let value = Number(e.target.value);
-                      if (value < 1) value = 1;
-                      if (value > totalPages) value = totalPages;
-                      setCurrentPage(value);
-                    }}
-                    className={style.pageInput}
-                  />
+                <input
+                  max={totalPages || 1}
+                  value={filteredData.length === 0 ? 0 : currentPage}
+                  disabled={filteredData.length === 0}
+                  onChange={(e) => {
+                    if (filteredData.length === 0) return;
+                    let value = Number(e.target.value);
+                    if (value < 1) value = 1;
+                    if (value > totalPages) value = totalPages;
+                    setCurrentPage(value);
+                  }}
+                  className={style.pageInput}
+                />
 
-                  <span>of {totalPages}</span>
+                <span>of {totalPages}</span>
 
-                  <button disabled={filteredData.length === 0 || currentPage === totalPages} onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}>
-                    ▶
-                  </button>
-                </div>
+                <button disabled={filteredData.length === 0 || currentPage === totalPages} onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}>
+                  ▶
+                </button>
               </div>
             </div>
           </div>
         </div>
-
-        {/* Profile Modals */}
-        {showProfileModal && (
-          <div className="modal-overlay">
-            <div className="profile-view-modal">
-              <div className="profile-view-header">
-                <span className="back-btn" onClick={() => setShowProfileModal(false)}>←</span>
-                <h3>Profile</h3>
-              </div>
-              <div className="profile-view-body">
-                <div className="profile-view-avatar">
-                  {profileData.image ? (
-                    <img src={profileData.image} alt="Profile" />
-                  ) : (
-                    <div className="avatar-placeholder">👤</div>
-                  )}
-                </div>
-                <h2>{profileData.name || "No Name"}</h2>
-                <p className="profile-email">{profileData.email}</p>
-                <p style={{
-                  color: "#666",
-                  marginBottom: "20px",
-                  marginTop: "-15px",
-                  fontWeight: "600"
-                }}>
-                  {profileData.municipality}
-                </p>
-                <div className="profile-action-buttons">
-                  <button className="profile-btn" onClick={() => {
-                    setShowProfileModal(false);
-                    setShowEditProfileModal(true);
-                  }}>
-                    Edit Profile
-                  </button>
-                  <button className="profile-btn signout" onClick={handleSignOut}>
-                    Sign Out
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showEditProfileModal && (
-          <div className="modal-overlay">
-            <div className="add-record-modal profile-modal">
-              <div className="modal-header">
-                <h3>Edit Profile</h3>
-                <span className="close-x" onClick={profileComplete ? () => {
-                  setEditProfileData(profileData);
-                  setShowEditProfileModal(false);
-                } : undefined} style={{
-                  cursor: profileComplete ? "pointer" : "not-allowed",
-                  opacity: profileComplete ? 1 : 0.5,
-                  pointerEvents: profileComplete ? "auto" : "none"
-                }} title={!profileComplete ? "Please complete your profile first" : "Close"}>
-                  ✕
-                </span>
-              </div>
-              <div className="modal-body">
-                <div className="modal-field">
-                  <label>Profile Image:</label>
-                  <input type="file" accept="image/*" onChange={handleImageUpload} />
-                </div>
-                {editProfileData.image && (
-                  <div className="profile-preview">
-                    <img src={editProfileData.image} alt="Preview" />
-                    <button type="button" className="remove-photo-btn" onClick={() => setEditProfileData({ ...editProfileData, image: "" })}>
-                      Remove
-                    </button>
-                  </div>
-                )}
-                <div className="modal-field">
-                  <label>Name:</label>
-                  <input type="text" value={editProfileData.name} onChange={(e) => setEditProfileData({ ...editProfileData, name: e.target.value })} />
-                </div>
-                <div className="modal-field">
-                  <label>Municipality:</label>
-                  <select value={editProfileData.municipality} onChange={(e) => setEditProfileData({ ...editProfileData, municipality: e.target.value })} disabled={profileComplete} style={{ 
-                    width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #ccc",
-                    backgroundColor: profileComplete ? "#f5f5f5" : "white",
-                    cursor: profileComplete ? "not-allowed" : "pointer", opacity: profileComplete ? 0.7 : 1
-                  }} title={profileComplete ? "Municipality cannot be changed after initial setup" : "Select your municipality"}>
-                    <option value="">Select Municipality</option>
-                    {municipalities.map((municipality) => (
-                      <option key={municipality} value={municipality}>{municipality}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="modal-field">
-                  <label>Email:</label>
-                  <input type="text" value={auth.currentUser?.email || ""} disabled style={{ background: "#f1f1f1", cursor: "not-allowed" }} />
-                </div>
-                <div className="modal-footer">
-                  <button className="save-profile-btn" onClick={handleSaveProfile} disabled={savingProfile || !editProfileData.name.trim() || !editProfileData.municipality.trim()}>
-                    {savingProfile ? "Saving..." : "Save Changes"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
-    )}
-    </>
-  );
+
+      {/* Profile Modals */}
+      {showProfileModal && (
+        <div className="modal-overlay">
+          <div className="profile-view-modal">
+            <div className="profile-view-header">
+              <span className="back-btn" onClick={() => setShowProfileModal(false)}>←</span>
+              <h3>Profile</h3>
+            </div>
+            <div className="profile-view-body">
+              <div className="profile-view-avatar">
+                {profileData.image ? (
+                  <img src={profileData.image} alt="Profile" />
+                ) : (
+                  <div className="avatar-placeholder">👤</div>
+                )}
+              </div>
+              <h2>{profileData.name || "No Name"}</h2>
+              <p className="profile-email">{profileData.email}</p>
+              <p style={{
+                color: "#666",
+                marginBottom: "20px",
+                marginTop: "-15px",
+                fontWeight: "600"
+              }}>
+                {profileData.municipality}
+              </p>
+              <div className="profile-action-buttons">
+                <button className="profile-btn" onClick={() => {
+                  setShowProfileModal(false);
+                  setShowEditProfileModal(true);
+                }}>
+                  Edit Profile
+                </button>
+                <button className="profile-btn signout" onClick={handleSignOut}>
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditProfileModal && (
+        <div className="modal-overlay">
+          <div className="add-record-modal profile-modal">
+            <div className="modal-header">
+              <h3>Edit Profile</h3>
+              <span className="close-x" onClick={profileComplete ? () => {
+                setEditProfileData(profileData);
+                setShowEditProfileModal(false);
+              } : undefined} style={{
+                cursor: profileComplete ? "pointer" : "not-allowed",
+                opacity: profileComplete ? 1 : 0.5,
+                pointerEvents: profileComplete ? "auto" : "none"
+              }} title={!profileComplete ? "Please complete your profile first" : "Close"}>
+                ✕
+              </span>
+            </div>
+            <div className="modal-body">
+              <div className="modal-field">
+                <label>Profile Image:</label>
+                <input type="file" accept="image/*" onChange={handleImageUpload} />
+              </div>
+              {editProfileData.image && (
+                <div className="profile-preview">
+                  <img src={editProfileData.image} alt="Preview" />
+                  <button type="button" className="remove-photo-btn" onClick={() => setEditProfileData({ ...editProfileData, image: "" })}>
+                    Remove
+                  </button>
+                </div>
+              )}
+              <div className="modal-field">
+                <label>Name:</label>
+                <input type="text" value={editProfileData.name} onChange={(e) => setEditProfileData({ ...editProfileData, name: e.target.value })} />
+              </div>
+              <div className="modal-field">
+                <label>Municipality:</label>
+                <select value={editProfileData.municipality} onChange={(e) => setEditProfileData({ ...editProfileData, municipality: e.target.value })} disabled={profileComplete} style={{ 
+                  width: "100%", padding: "8px", borderRadius: "4px", border: "1px solid #ccc",
+                  backgroundColor: profileComplete ? "#f5f5f5" : "white",
+                  cursor: profileComplete ? "not-allowed" : "pointer", opacity: profileComplete ? 0.7 : 1
+                }} title={profileComplete ? "Municipality cannot be changed after initial setup" : "Select your municipality"}>
+                  <option value="">Select Municipality</option>
+                  {municipalities.map((municipality) => (
+                    <option key={municipality} value={municipality}>{municipality}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="modal-field">
+                <label>Email:</label>
+                <input type="text" value={auth.currentUser?.email || ""} disabled style={{ background: "#f1f1f1", cursor: "not-allowed" }} />
+              </div>
+              <div className="modal-footer">
+                <button className="save-profile-btn" onClick={handleSaveProfile} disabled={savingProfile || !editProfileData.name.trim() || !editProfileData.municipality.trim()}>
+                  {savingProfile ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
