@@ -368,7 +368,6 @@ const markAsRead = async (notificationId, year) => {
     alert("Failed to mark as read");
   }
 };
-
 // Mark all as read
 const markAllAsRead = async () => {
   if (!auth.currentUser || notifications.length === 0) return;
@@ -404,7 +403,7 @@ const markAllAsRead = async () => {
     
     // Update local state
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    alert("All notifications marked as read");
+    // REMOVED: alert("All notifications marked as read");
   } catch (error) {
     console.error("Error marking all as read:", error);
     alert("Failed to mark all as read");

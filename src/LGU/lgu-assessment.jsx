@@ -1874,41 +1874,43 @@ export default function LGU() {
           const existingData = existingSnapshot.exists() ? existingSnapshot.val() : {};
           const existingMetadata = existingData._metadata || {};
 
-          const newMetadata = {
-            ...existingMetadata,
-            
-            // Override with current user info and assessment data
-            uid: auth.currentUser.uid,
-            email: auth.currentUser.email,
-            name: profileData.name || auth.currentUser.email,
-            municipality: profileData.municipality,
-            assessmentId: selectedAssessmentId,
-            assessment: selectedAssessment,
-            assessmentName: selectedAssessment,
-            lastSaved: Date.now(),
-            submitted: true,
-            year: selectedYearDisplay,
-            displayName: `${profileData.name || auth.currentUser.email} - ${selectedAssessment}`,
-            deadline: submissionDeadline,
-            
-            // CRITICAL: Clear ALL return flags when resubmitting
-            returned: false,
-            returnedToLGU: false,
-            returnedToMLGO: false,
-            returnedAt: null,
-            returnedBy: null,
-            returnedByName: null,
-            mlgoRemarks: null,
-            poRemarks: null,
-            remarks: null,
-            
-            // Keep forwarding flags as false
-            forwarded: false,
-            forwardedToPO: false,
-            forwardedAt: null,
-            forwardedBy: null,
-            forwardedTo: null
-          };
+       const newMetadata = {
+  ...existingMetadata,
+  
+  // Override with current user info and assessment data
+  uid: auth.currentUser.uid,
+  email: auth.currentUser.email,
+  name: profileData.name || auth.currentUser.email,
+  municipality: profileData.municipality,
+  assessmentId: selectedAssessmentId,
+  assessment: selectedAssessment,
+  assessmentName: selectedAssessment,
+  lastSaved: Date.now(),
+  submitted: true,
+  year: selectedYearDisplay,
+  displayName: `${profileData.name || auth.currentUser.email} - ${selectedAssessment}`,
+  deadline: submissionDeadline,
+  
+  // Clear return flags
+  returned: false,
+  returnedToLGU: false,
+  returnedToMLGO: false,
+  returnedAt: null,
+  returnedBy: null,
+  returnedByName: null,
+  
+  // PRESERVE remarks (don't delete them)
+  mlgoRemarks: existingMetadata?.mlgoRemarks || null,
+  poRemarks: existingMetadata?.poRemarks || null,
+  remarks: existingMetadata?.remarks || null,
+  
+  // Clear forwarding flags
+  forwarded: false,
+  forwardedToPO: false,
+  forwardedAt: null,
+  forwardedBy: null,
+  forwardedTo: null
+};
 
           const answerData = {
             ...userAnswers,
@@ -2562,57 +2564,42 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
                 }}
               >
                 
-                {/* MLGO Remarks Section */}
-                {hasSubmitted === false && (metadata?.returned || Object.keys(mlgoRemarks).length > 0) && (
-                  <div style={{
-                    backgroundColor: "#fff3cd",
-                    border: "1px solid #ffeeba",
-                    borderRadius: "8px",
-                    padding: "20px",
-                    marginBottom: "25px",
-                    color: "#856404",
-                    width: "100%"
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "15px" }}>
-                      <span style={{ fontSize: "20px" }}>📝</span>
-                      <strong style={{ fontSize: "16px" }}>Remarks from MLGO:</strong>
-                    </div>
-                    
-                    <div style={{
-                      backgroundColor: "white",
-                      border: "1px solid #ffeeba",
-                      borderRadius: "8px",
-                      padding: "15px",
-                      marginBottom: "15px"
-                    }}>
-                      <div style={{ fontWeight: "600", marginBottom: "8px", color: "#856404" }}>
-                        For {getTabNameFromActive()}:
-                      </div>
-                      <div style={{ 
-                        fontSize: "14px",
-                        lineHeight: "1.5",
-                        whiteSpace: "pre-wrap",
-                        wordBreak: "break-word"
-                      }}>
-                        {mlgoRemarks && typeof mlgoRemarks === 'object' && activeTab ? (
-                          mlgoRemarks[activeTab] ? (
-                            mlgoRemarks[activeTab]
-                          ) : (
-                            <span style={{ fontStyle: "italic", color: "#999" }}>
-                              No specific remark for this tab
-                            </span>
-                          )
-                        ) : mlgoRemarks && typeof mlgoRemarks === 'string' ? (
-                          mlgoRemarks
-                        ) : (
-                          <span style={{ fontStyle: "italic", color: "#999" }}>
-                            No specific remark for this tab
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
+       {/* MLGO Remarks Section - Compact */}
+{hasSubmitted === false && (metadata?.returned || Object.keys(mlgoRemarks).length > 0) && (
+  <div style={{
+    backgroundColor: "#e9e9e9",
+    borderRadius: "6px",
+    padding: "8px 12px",
+    marginBottom: "15px",
+    color: "#000000",
+    width: "100%",
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "10px"
+  }}>
+    <span style={{ fontSize: "16px", flexShrink: 0 }}>📝</span>
+    <div style={{ flex: 1 }}>
+      <strong style={{ fontSize: "13px" }}>Remarks from MLGO:</strong>
+      <div style={{ 
+        fontSize: "12px",
+        marginTop: "2px",
+        wordBreak: "break-word"
+      }}>
+        {mlgoRemarks && typeof mlgoRemarks === 'object' && activeTab ? (
+          mlgoRemarks[activeTab] ? (
+            mlgoRemarks[activeTab]
+          ) : (
+            <span style={{ fontStyle: "italic", color: "#999" }}>No specific remark for this tab</span>
+          )
+        ) : mlgoRemarks && typeof mlgoRemarks === 'string' ? (
+          mlgoRemarks
+        ) : (
+          <span style={{ fontStyle: "italic", color: "#999" }}>No specific remark for this tab</span>
+        )}
+      </div>
+    </div>
+  </div>
+)}
 
                 {currentIndicators.length === 0 ? (
                   <p style={{ textAlign: "center", marginTop: "20px" }}>
@@ -2645,26 +2632,27 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
                               marginBottom: "15px"
                             }}>
                               {/* Indicator Row */}
-                              <div className="reference-row" style={{
-                                display: "flex",
-                                border: "1px solid #cfcfcf",
-                              }}>
-                                <div className="reference-label" style={{
-                                  width: "45%",
-                                  background: "#e6f0fa",
-                                  padding: "12px 12px",
-                                  fontWeight: 500,
-                                  borderRight: "1px solid #cfcfcf",
-                                  color: "#0c1a4b"
-                                }}>
-                                  {main.title}
-                                </div>
+                        <div className="reference-row" style={{
+  display: "flex",
+  border: "1px solid #cfcfcf",
+}}>
+  <div className="reference-label" style={{
+    width: "45%",
+    background: "#e6f0fa",
+    padding: "6px 10px",
+    fontWeight: 500,
+    borderRight: "1px solid #cfcfcf",
+    color: "#0c1a4b",
+    fontSize: "13px"
+  }}>
+    {main.title}
+  </div>
 
-                                <div className="mainreference-field" style={{
-                                  width: "55%",
-                                  padding: "8px 12px",
-                                  background: "#ffffff"
-                                }}>
+  <div className="mainreference-field" style={{
+    width: "55%",
+    padding: "4px 10px",
+    background: "#ffffff"
+  }}>
                                   <div className="field-content">
                                   {main.fieldType === "multiple" &&
   main.choices.map((choice, i) => {
@@ -2991,26 +2979,27 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
                             }}>
                             
                               {/* Sub Indicator Row */}
-                              <div className="reference-row sub-row" style={{
-                                display: "flex",
-                                marginTop: "5px",
+                         <div className="reference-row sub-row" style={{
+  display: "flex",
+  marginTop: "3px",
 
-                              }}>
-                                <div className="reference-label" style={{
-                                  width: "45%",
-                                  background: "#fff6f6",
-                                  padding: "12px 11px",
-                                  fontWeight: 500,
-                                  borderRight: "1px solid #cfcfcf",
-                                }}>
-                                  {sub.title}
-                                </div>
+}}>
+  <div className="reference-label" style={{
+    width: "45%",
+    background: "#fff6f6",
+    padding: "6px 10px",
+    fontWeight: 500,
+    borderRight: "1px solid #cfcfcf",
+    fontSize: "12px"
+  }}>
+    {sub.title}
+  </div>
 
-                                <div className="reference-field" style={{
-                                  width: "55%",
-                                  padding: "8px 12px",
-                                  background: "#ffffff"
-                                }}>
+  <div className="reference-field" style={{
+    width: "55%",
+    padding: "4px 10px",
+    background: "#ffffff"
+  }}>
                              {sub.fieldType === "multiple" &&
   sub.choices.map((choice, i) => {
     const choiceLabel =
@@ -3332,21 +3321,21 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
                                     return (
                                       <div key={nested.id || nestedIndex} className="nested-reference-item" style={{ marginBottom: "5px" }}>
                                         <div className="nested-reference-row" style={{ display: "flex", border: "1px solid #cfcfcf" }}>
-                                        <div className="nested-reference-label" style={{ 
+                                  <div className="nested-reference-label" style={{ 
   width: "45%", 
   background: "#fff9c4",
-  padding: "8px 12px",
+  padding: "5px 10px",
   fontWeight: 500,
   borderRight: "1px solid #cfcfcf",
-  
+  fontSize: "12px"
 }}>
   {nested.title || 'Untitled'}
 </div>
-                                          <div className="nested-reference-field" style={{ 
-                                            width: "55%", 
-                                            padding: "8px 12px",
-                                            background: "#ffffff"
-                                          }}>
+<div className="nested-reference-field" style={{ 
+  width: "55%", 
+  padding: "4px 10px",
+  background: "#ffffff"
+}}>
                                             {/* Nested Multiple Choice */}
                                             {nested.fieldType === "multiple" && nested.choices?.map((choice, i) => {
   const choiceLabel =
@@ -3504,163 +3493,163 @@ const handleFileUpload = async (indicatorKey, mainIndex, field, file) => {
                                         
                                         {/* Mode of Verification for nested indicators */}
                                         {nested.verification && getVerificationArray(nested.verification).length > 0 && (
-                                          <div className="reference-verification-full" style={{ width: "98.57%" }}>
-                                            <div className="reference-row" style={{ display: "flex", border: "none" }}>
-                                              <div className="reference-label" style={{
-                                                width: "45%",
-                                                background: "transparent",
-                                                borderRight: "1px solid rgba(8, 26, 75, 0.25)",
-                                                padding: "6px 12px",
-                                                border: "none",
-                                                display: "flex",
-                                                flexDirection: "column",
-                                                gap: "4px",
-                                                textAlign: "left",
-                                              }}>
-                                                <span style={{ display: "inline-block", flexShrink: 0, fontWeight: 700, color: "#081a4b" }}>
-                                                  Mode of Verification
-                                                </span>
-                                                <div style={{ 
-                                                  display: "flex", 
-                                                  flexDirection: "column", 
-                                                  gap: "4px",
-                                                  width: "100%"
-                                                }}>
-                                                  {getVerificationArray(nested.verification).map((v, idx) => (
-                                                    <div key={idx} style={{ 
-                                                      display: "flex", 
-                                                      alignItems: "center", 
-                                                      gap: "8px",
-                                                      width: "100%"
-                                                    }}>
-                                                      <span style={{
-                                                        width: "6px",
-                                                        height: "6px",
-                                                        backgroundColor: "black",
-                                                        borderRadius: "50%",
-                                                        display: "inline-block",
-                                                        flexShrink: 0,
-                                                        marginLeft: "50px"
-                                                      }}></span>
-                                                      <span style={{ fontStyle: "italic", fontSize: "12px" }}>{v}</span>
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                              </div>
-                                              
-                                              <div className="reference-field" style={{
-                                                width: "55%",
-                                                padding: "6px 12px",
-                                                background: "#ffffff",
-                                                display: "flex",
-                                                flexDirection: "column",
-                                                alignItems: "flex-end",
-                                                border: "none",
-                                                gap: "8px"
-                                              }}>
-                                                <div style={{ display: "flex", gap: "8px" }}>
-                                                  {!hasSubmitted && (
-                                                    <button
-                                                      onClick={() => triggerFileUpload(record.firebaseKey, `sub_${index}_nested_${nestedIndex}`, nested.title)}
-                                                      disabled={uploadingFile}
-                                                      style={{
-                                                        backgroundColor: "#840000",
-                                                        color: "white",
-                                                        border: "none",
-                                                        padding: "4px 10px",
-                                                        borderRadius: "4px",
-                                                        fontSize: "11px",
-                                                        cursor: uploadingFile ? "not-allowed" : "pointer",
-                                                        fontWeight: "600",
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        gap: "4px",
-                                                        opacity: uploadingFile ? 0.6 : 1,
-                                                        whiteSpace: "nowrap"
-                                                      }}
-                                                    >
-                                                      {uploadingFile ? "⏳" : "+"} {uploadingFile ? "Uploading..." : "Add Attachment"}
-                                                    </button>
-                                                  )}
-                                                  
-                                                  {hasSubmitted && (
-                                                    <span style={{
-                                                      backgroundColor: "#4CAF50",
-                                                      color: "white",
-                                                      padding: "4px 10px",
-                                                      borderRadius: "4px",
-                                                      fontSize: "11px",
-                                                      fontWeight: "600",
-                                                      display: "flex",
-                                                      alignItems: "center",
-                                                      gap: "4px",
-                                                      whiteSpace: "nowrap"
-                                                    }}>
-                                                      ✓ Submitted
-                                                    </span>
-                                                  )}
-                                                </div>
+                                      <div className="reference-verification-full" style={{ width: "100%", marginLeft: "0" }}>
+  <div className="reference-row" style={{ display: "flex", border: "none", width: "100%" }}>
+    <div className="reference-label" style={{
+      width: "45%",
+      background: "transparent",
+      padding: "4px 10px",
+      border: "none",
+      borderRight: "1px solid rgba(8, 26, 75, 0.25)",
+      display: "flex",
+      flexDirection: "column",
+      gap: "2px",
+      textAlign: "left",
+    }}>
+      <span style={{ display: "inline-block", flexShrink: 0, fontWeight: 700, color: "#081a4b" }}>
+        Mode of Verification
+      </span>
+      <div style={{ 
+        display: "flex", 
+        flexDirection: "column", 
+        gap: "4px",
+        width: "100%"
+      }}>
+        {getVerificationArray(nested.verification).map((v, idx) => (
+          <div key={idx} style={{ 
+            display: "flex", 
+            alignItems: "center", 
+            gap: "8px",
+            width: "100%"
+          }}>
+            <span style={{
+              width: "6px",
+              height: "6px",
+              backgroundColor: "black",
+              borderRadius: "50%",
+              display: "inline-block",
+              flexShrink: 0,
+              marginLeft: "50px"
+            }}></span>
+            <span style={{ fontStyle: "italic", fontSize: "12px" }}>{v}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+    
+ <div className="reference-field" style={{
+  width: "55%",
+  padding: "6px 12px",
+  background: "#ffffff",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-end",
+  border: "none",
+  gap: "8px"
+}}>
+  <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", width: "100%" }}>
+    {!hasSubmitted && (
+      <button
+        onClick={() => triggerFileUpload(record.firebaseKey, `sub_${index}_nested_${nestedIndex}`, nested.title)}
+        disabled={uploadingFile}
+        style={{
+          backgroundColor: "#840000",
+          color: "white",
+          border: "none",
+          padding: "4px 10px",
+          borderRadius: "4px",
+          fontSize: "11px",
+          cursor: uploadingFile ? "not-allowed" : "pointer",
+          fontWeight: "600",
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          opacity: uploadingFile ? 0.6 : 1,
+          whiteSpace: "nowrap"
+        }}
+      >
+        {uploadingFile ? "⏳" : "+"} {uploadingFile ? "Uploading..." : "Add Attachment"}
+      </button>
+    )}
+    
+    {hasSubmitted && (
+      <span style={{
+        backgroundColor: "#4CAF50",
+        color: "white",
+        padding: "4px 10px",
+        borderRadius: "4px",
+        fontSize: "11px",
+        fontWeight: "600",
+        display: "flex",
+        alignItems: "center",
+        gap: "4px",
+        whiteSpace: "nowrap"
+      }}>
+        ✓ Submitted
+      </span>
+    )}
+  </div>
 
-                                                <div style={{
-                                                  display: "flex",
-                                                  flexDirection: "column",
-                                                  gap: "6px",
-                                                  width: "100%"
-                                                }}>
-                                                  {Object.entries(attachments)
-                                                    .filter(([key, value]) => {
-                                                      const sanitizedField = sanitizeKey(nested.title);
-                                                      const expectedPrefix = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${sanitizedField}`;
-                                                      return key.startsWith(expectedPrefix);
-                                                    })
-                                                    .map(([key, attachment]) => (
-                                                      <div key={key} style={{
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        justifyContent: "space-between",
-                                                        gap: "6px",
-                                                        backgroundColor: "#e8f5e9",
-                                                        padding: "6px 12px",
-                                                        borderRadius: "4px",
-                                                        fontSize: "11px",
-                                                        border: "1px solid #c8e6c9",
-                                                        width: "100%"
-                                                      }}>
-                                                        <div style={{ display: "flex", alignItems: "center", gap: "6px", overflow: "hidden" }}>
-                                                          <span style={{ fontSize: "12px", flexShrink: 0 }}>📎</span>
-                                                          <span style={{ 
-                                                            overflow: "hidden", 
-                                                            textOverflow: "ellipsis",
-                                                            whiteSpace: "nowrap"
-                                                          }}>
-                                                            {attachment.fileName}
-                                                          </span>
-                                                        </div>
-                                                        {!hasSubmitted && (
-                                                          <button
-                                                            onClick={() => removeAttachment(key)}
-                                                            style={{
-                                                              background: "none",
-                                                              border: "none",
-                                                              color: "#000000",
-                                                              cursor: "pointer",
-                                                              fontSize: "14px",
-                                                              fontWeight: "bold",
-                                                              padding: "0 4px",
-                                                              marginLeft: "4px",
-                                                              flexShrink: 0
-                                                            }}
-                                                            title="Remove attachment"
-                                                          >
-                                                            ✕
-                                                          </button>
-                                                        )}
-                                                      </div>
-                                                    ))}
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </div>
+  <div style={{
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    width: "100%"
+  }}>
+    {Object.entries(attachments)
+      .filter(([key, value]) => {
+        const sanitizedField = sanitizeKey(nested.title);
+        const expectedPrefix = `${selectedAssessmentId}_${activeTab}_${record.firebaseKey}_sub_${index}_nested_${nestedIndex}_${sanitizedField}`;
+        return key.startsWith(expectedPrefix);
+      })
+      .map(([key, attachment]) => (
+            <div key={key} style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "6px",
+              backgroundColor: "#e8f5e9",
+              padding: "6px 12px",
+              borderRadius: "4px",
+              fontSize: "11px",
+              border: "1px solid #c8e6c9",
+              width: "100%"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", overflow: "hidden" }}>
+                <span style={{ fontSize: "12px", flexShrink: 0 }}>📎</span>
+                <span style={{ 
+                  overflow: "hidden", 
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap"
+                }}>
+                  {attachment.fileName}
+                </span>
+              </div>
+              {!hasSubmitted && (
+                <button
+                  onClick={() => removeAttachment(key)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#000000",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    fontWeight: "bold",
+                    padding: "0 4px",
+                    marginLeft: "4px",
+                    flexShrink: 0
+                  }}
+                  title="Remove attachment"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+      </div>
+    </div>
+  </div>
+</div>
                                         )}
                                       </div>
                                     );

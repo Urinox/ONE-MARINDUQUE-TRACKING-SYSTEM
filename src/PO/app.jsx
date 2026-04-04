@@ -354,7 +354,7 @@ export default function App() {
   
       if (!userData) {
         console.log("No user found with email:", email);
-        setLoginError("No account found with this email.");
+        setLoginError("No account found with this email.zz");
         alert("No account found with this email.");
         return;
       }

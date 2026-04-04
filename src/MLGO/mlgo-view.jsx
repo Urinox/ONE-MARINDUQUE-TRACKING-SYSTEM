@@ -332,35 +332,42 @@ useEffect(() => {
         const isForwarded = _metadata?.forwarded || _metadata?.forwardedToPO || false;
         const isReturnedToLGU = _metadata?.returnedToLGU || location.state?.isReturnedToLGU || false;
         
-        // Create LGU answers object
-        const lguData = {
-          id: 1,
-          lguName: lguName,
-          year: selectedYear,
-          assessment: selectedAssessment,
-          assessmentId: selectedAssessmentId,
-          status: isReturnedFromPO ? "Returned from PO" : 
-                  isForwarded ? "Forwarded" : 
-                  _metadata?.submitted ? "Submitted" : "Draft",
-          submission: _metadata?.lastSaved 
-            ? new Date(_metadata.lastSaved).toLocaleDateString('en-US', {
-                day: '2-digit',
-                month: 'long',
-                year: 'numeric'
-              })
-            : "N/A",
-          deadline: submissionDeadline || "Not set",
-          data: answers,
-          municipality: _metadata?.municipality || location.state.municipality,
-          userUid: _metadata?.uid,
-          isVerified: location.state?.isVerified || false,
-          isReturnedFromPO: isReturnedFromPO,
-          isForwarded: isForwarded,
-          attachmentsByIndicator: {}
-        };
-        
-        setLguAnswers([lguData]);
-        
+   // Load saved MLGO remarks from metadata
+if (_metadata?.mlgoRemarks) {
+  setLguRemarks(_metadata.mlgoRemarks);
+  console.log("📝 Loaded saved MLGO remarks:", _metadata.mlgoRemarks);
+}
+
+// Create LGU answers object
+const lguData = {
+  id: 1,
+  lguName: lguName,
+  year: selectedYear,
+  assessment: selectedAssessment,
+  assessmentId: selectedAssessmentId,
+  status: isReturnedFromPO ? "Returned from PO" : 
+          isForwarded ? "Forwarded" : 
+          _metadata?.submitted ? "Submitted" : "Draft",
+  submission: _metadata?.lastSaved 
+    ? new Date(_metadata.lastSaved).toLocaleDateString('en-US', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      })
+    : "N/A",
+  deadline: submissionDeadline || "Not set",
+  data: answers,
+  municipality: _metadata?.municipality || location.state.municipality,
+  userUid: _metadata?.uid,
+  isVerified: location.state?.isVerified || false,
+  isReturnedFromPO: isReturnedFromPO,
+  isForwarded: isForwarded,
+  attachmentsByIndicator: {},
+  savedRemarks: _metadata?.mlgoRemarks || {}, // Store saved remarks for display
+  previousRemark: _metadata?.remarks || null // Store the previous single remark
+};
+
+setLguAnswers([lguData]);
         // Set flags based on persisted metadata
         setIsReturnedFromPO(isReturnedFromPO);
         setIsForwarded(isForwarded);
@@ -2504,22 +2511,23 @@ const getIndicatorAnswer = (indicator, path) => {
                     gap: "15px", 
                     flexWrap: "wrap" 
                   }}>
-                    <div style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "4px 12px",
-                      backgroundColor: location.state?.isVerified ? "#28a745" : (isReturnedFromPO ? "#ffb775" : "#ffb775"),
-                      borderRadius: "20px",
-                      fontSize: "14px",
-                      fontWeight: "600"
-                    }}>
-                      <span>{location.state?.isVerified ? "✓" : (isReturnedFromPO ? "↩" : "ⓘ")}</span>
-                      <span>
-                        {location.state?.isVerified ? "Assessment Verified" : 
-                         isReturnedFromPO ? "Returned from PO" : "Assessment Not Yet Verified"}
-                      </span>
-                    </div>
+    <div style={{
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  padding: "4px 12px",
+  backgroundColor: location.state?.isVerified ? "#28a745" : (isReturnedFromPO ? "#ffb775" : "#ffb775"),
+  borderRadius: "20px",
+  fontSize: "14px",
+  fontWeight: "600",
+  color: location.state?.isVerified ? "white" : "black"
+}}>
+  <span>{location.state?.isVerified ? "✓" : (isReturnedFromPO ? "↩" : "ⓘ")}</span>
+  <span>
+    {location.state?.isVerified ? "Assessment Verified" : 
+     isReturnedFromPO ? "Returned from PO" : "Assessment Not Yet Verified"}
+  </span>
+</div>
   
                     <div style={{
                       display: "flex",
@@ -2544,50 +2552,50 @@ const getIndicatorAnswer = (indicator, path) => {
                       </span>
                     </div>
                   </div>
-  
   {/* Right side - Action Buttons */}
-  <div style={{ 
-    display: "flex", 
-    alignItems: "center", 
-    gap: "10px"
-  }}>
-  
-{/* Return to LGU Button */}
+<div style={{ 
+  display: "flex", 
+  alignItems: "center", 
+  gap: "10px"
+}}>
+{/* Only show buttons if NOT verified */}
+{!location.state?.isVerified && (
+  <>
+   {/* Return to LGU Button */}
 <div style={{ position: "relative", display: "inline-block" }}>
   <button
     onClick={handleReturnToLGU}
-    disabled={loading || location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken}
+    disabled={loading || isReturnedToLGU || isForwarded || actionTaken}
     style={{
-      backgroundColor: (location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken) ? "#990202e6" : "#990202",
+      backgroundColor: (isReturnedToLGU || isForwarded || actionTaken) ? "#8b5a5a" : "#990202",
       color: "white",
       border: "none",
       padding: "8px 20px",
       borderRadius: "5px",
       fontSize: "14px",
-      cursor: (location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken) ? "not-allowed" : "pointer",
+      cursor: (isReturnedToLGU || isForwarded || actionTaken) ? "not-allowed" : "pointer",
       fontWeight: "600",
       display: "flex",
       alignItems: "center",
       gap: "8px",
       whiteSpace: "nowrap",
-      opacity: (location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken) ? 0.6 : 1
+      opacity: (isReturnedToLGU || isForwarded || actionTaken) ? 0.7 : 1
     }}
   >
     <span>↩</span>
-    {location.state?.isVerified ? "Verified (Cannot Return)" : 
-     isForwarded ? "Forwarded (Cannot Return)" :
+    {isForwarded ? "Forwarded (Cannot Return)" :
      isReturnedToLGU ? "Returned to LGU" : 
      actionTaken ? "Processing..." : "Return to LGU"}
   </button>
 </div>
-  
- {/* Forward to Provincial Office Button */}
+      
+  {/* Forward to Provincial Office Button */}
 <div style={{ position: "relative", display: "inline-block" }}>
   <button
     onClick={handleForwardToPO}
-    disabled={loading || location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken}
+    disabled={loading || isReturnedToLGU || isForwarded || actionTaken}
     onMouseEnter={(e) => {
-      if (!location.state?.isVerified && !isReturnedToLGU && !isForwarded && !actionTaken) {
+      if (!isReturnedToLGU && !isForwarded && !actionTaken) {
         const tooltip = e.currentTarget.parentElement.querySelector('.forward-tooltip');
         if (tooltip) tooltip.style.display = 'block';
       }
@@ -2597,65 +2605,64 @@ const getIndicatorAnswer = (indicator, path) => {
       if (tooltip) tooltip.style.display = 'none';
     }}
     style={{
-      backgroundColor: (location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken) ? "#006735e6" : "#006736",
+      backgroundColor: (isReturnedToLGU || isForwarded || actionTaken) ? "#5a7a5a" : "#006736",
       color: "white",
       border: "none",
       padding: "8px 20px",
       borderRadius: "5px",
       fontSize: "14px",
-      cursor: (location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken) ? "not-allowed" : "pointer",
+      cursor: (isReturnedToLGU || isForwarded || actionTaken) ? "not-allowed" : "pointer",
       fontWeight: "600",
       display: "flex",
       alignItems: "center",
       gap: "8px",
       whiteSpace: "nowrap",
-      opacity: (location.state?.isVerified || isReturnedToLGU || isForwarded || actionTaken) ? 0.6 : 1
+      opacity: (isReturnedToLGU || isForwarded || actionTaken) ? 0.7 : 1
     }}
   >
     <span>→</span>
-    {location.state?.isVerified ? "Verified (Cannot Forward)" : 
-     isForwarded ? "Forwarded to PO" :
+    {isForwarded ? "Forwarded to PO" :
      isReturnedToLGU ? "Returned to LGU" : 
      actionTaken ? "Processing..." : "Forward to Provincial Office"}
   </button>
-    
-    {!location.state?.isVerified && !isReturnedToLGU && !isForwarded && (
-      <div 
-        className="forward-tooltip"
-        style={{
-          position: "absolute",
-          bottom: "100%",
-          left: "0",
-          marginBottom: "5px",
-          backgroundColor: "#2d2d2d",
-          color: "#e0e0e0",
-          padding: "8px 12px",
-          borderRadius: "4px",
-          fontSize: "12px",
-          whiteSpace: "normal",
-          display: "none",
-          zIndex: 1000,
-          boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
-          pointerEvents: "none",
-          width: "280px",
-          fontFamily: "Arial, sans-serif",
-          border: "1px solid #444"
-        }}
-      >
-        <div style={{ 
-          display: "flex", 
-          flexDirection: "column", 
-          gap: "2px",
-          lineHeight: "1.4"
-        }}>
-          <span style={{ color: "#aaa", fontSize: "11px" }}>Submit assessment to the PO for final verification. Wait for a verification notification or for it to be returned with revision remarks.</span>
+      
+      {!isReturnedToLGU && !isForwarded && (
+        <div 
+          className="forward-tooltip"
+          style={{
+            position: "absolute",
+            bottom: "100%",
+            left: "0",
+            marginBottom: "5px",
+            backgroundColor: "#2d2d2d",
+            color: "#e0e0e0",
+            padding: "8px 12px",
+            borderRadius: "4px",
+            fontSize: "12px",
+            whiteSpace: "normal",
+            display: "none",
+            zIndex: 1000,
+            boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+            pointerEvents: "none",
+            width: "280px",
+            fontFamily: "Arial, sans-serif",
+            border: "1px solid #444"
+          }}
+        >
+          <div style={{ 
+            display: "flex", 
+            flexDirection: "column", 
+            gap: "2px",
+            lineHeight: "1.4"
+          }}>
+            <span style={{ color: "#aaa", fontSize: "11px" }}>Submit assessment to the PO for final verification. Wait for a verification notification or for it to be returned with revision remarks.</span>
+          </div>
         </div>
-      </div>
-    )}
-  </div>
-  
-  
-  </div>
+      )}
+    </div>
+  </>
+)}
+</div>
                 </div>
               </div>
   
@@ -2740,13 +2747,25 @@ console.log(`Main indicator "${main.title}" - Found ${indicatorAttachments.lengt
     
     return (
       <div key={index} className="reference-wrapper">
-        <div className="reference-row">
-          <div className="reference-label">
-            {main.title}
-          </div>
-  
-          <div className="mainreference-field">
-            <div className="field-content">
+   <div className="reference-row" style={{ border: "1px solid #cfcfcf" }}>
+  <div className="reference-label" style={{
+    width: "45%",
+    background: "#e6f0fa",
+    padding: "6px 10px",
+    fontWeight: 500,
+    borderRight: "1px solid #cfcfcf",
+    color: "#0c1a4b",
+    fontSize: "13px"
+  }}>
+    {main.title}
+  </div>
+
+  <div className="mainreference-field" style={{
+    width: "55%",
+    padding: "4px 10px",
+    background: "#ffffff"
+  }}>
+    <div className="field-content">
               
             {main.fieldType === "multiple" &&
   main.choices.map((choice, i) => {
@@ -2892,18 +2911,17 @@ console.log(`Main indicator "${main.title}" - Found ${indicatorAttachments.lengt
                       marginTop: "8px"
                     }}>
                       {indicatorAttachments.map((attachment, idx) => (
-                        <div key={idx} style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          backgroundColor: "#e8f5e9",
-                          padding: "6px 12px",
-                          borderRadius: "20px",
-                          fontSize: "12px",
-                          border: "1px solid #c8e6c9",
-                          maxWidth: "100%",
-                          flexWrap: "wrap"
-                        }}>
+                 <div key={idx} style={{
+  display: "flex",
+  alignItems: "center",
+  gap: "4px",
+  backgroundColor: "#e8f5e9",
+  padding: "4px 8px",
+  borderRadius: "16px",
+  fontSize: "11px",
+  border: "1px solid #c8e6c9",
+  maxWidth: "900px"
+}}>
                           <span style={{ fontSize: "14px" }}>📎</span>
                           <span style={{ 
                             overflow: "hidden", 
@@ -3009,13 +3027,27 @@ console.log(`Sub indicator "${sub.title}" - Found ${subIndicatorAttachments.leng
     
     return (
       <div key={index} className="reference-wrapper">
-        <div className="reference-row sub-row">
-          <div className="reference-label">
-            {sub.title}
-          </div>
-  
-          <div className="reference-field">
-            
+<div className="reference-row sub-row" style={{
+  display: "flex",
+  marginTop: "3px",
+  border: "1px solid #cfcfcf"
+}}>
+  <div className="reference-label" style={{
+    width: "45%",
+    background: "#fff6f6",
+    padding: "6px 10px",
+    fontWeight: 500,
+    borderRight: "1px solid #cfcfcf",
+    fontSize: "12px"
+  }}>
+    {sub.title}
+  </div>
+
+  <div className="reference-field" style={{
+    width: "55%",
+    padding: "4px 10px",
+    background: "#ffffff"
+  }}>
             {sub.fieldType === "multiple" &&
               sub.choices.map((choice, i) => (
                 <div key={i}>
@@ -3141,18 +3173,18 @@ console.log(`Sub indicator "${sub.title}" - Found ${subIndicatorAttachments.leng
                       marginTop: "8px"
                     }}>
                       {subIndicatorAttachments.map((attachment, idx) => (
-                        <div key={idx} style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          backgroundColor: "#e8f5e9",
-                          padding: "6px 12px",
-                          borderRadius: "20px",
-                          fontSize: "12px",
-                          border: "1px solid #c8e6c9",
-                          maxWidth: "100%",
-                          flexWrap: "wrap"
-                        }}>
+                    <div key={idx} style={{
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  backgroundColor: "#e8f5e9",
+  padding: "6px 12px",
+  borderRadius: "20px",
+  fontSize: "12px",
+  border: "1px solid #c8e6c9",
+  maxWidth: "100%",
+  flexWrap: "wrap"
+}}>
                           <span style={{ fontSize: "14px" }}>📎</span>
                           <span style={{ 
                             overflow: "hidden", 
@@ -3257,11 +3289,22 @@ console.log(`Nested indicator "${nested.title}" - Found ${nestedAttachments.leng
         
         return (
                 <div key={nested.id || nestedIndex} className="nested-reference-item">
-                  <div className="nested-reference-row">
-                    <div className="nested-reference-label">
-                      {nested.title || 'Untitled'}
-                    </div>
-                    <div className="nested-reference-field">
+                <div className="nested-reference-row" style={{ display: "flex", border: "1px solid #cfcfcf" }}>
+  <div className="nested-reference-label" style={{ 
+    width: "45%", 
+    background: "#fff9c4",
+    padding: "5px 10px",
+    fontWeight: 500,
+    borderRight: "1px solid #cfcfcf",
+    fontSize: "12px"
+  }}>
+    {nested.title || 'Untitled'}
+  </div>
+  <div className="nested-reference-field" style={{ 
+    width: "55%", 
+    padding: "4px 10px",
+    background: "#ffffff"
+  }}>
                       
                       {nested.fieldType === "multiple" && nested.choices?.map((choice, i) => (
                         <div key={i}>
@@ -3333,17 +3376,17 @@ console.log(`Nested indicator "${nested.title}" - Found ${nestedAttachments.leng
                   {nested.verification && getVerificationArray(nested.verification).length > 0 && (
                     <div className="reference-verification-full" style={{ width: "100%" }}>
                       <div className="reference-row" style={{ display: "flex", border: "none" }}>
-                        <div className="reference-label" style={{
-                          width: "45%",
-                          background: "transparent",
-                          borderRight: "1px solid #cfcfcf",
-                          padding: "6px 12px",
-                          border: "none",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "4px",
-                          textAlign: "left",
-                        }}>
+                       <div className="reference-label" style={{
+  width: "45%",
+  background: "transparent",
+  padding: "4px 10px",
+  border: "none",
+  borderRight: "1px solid rgba(8, 26, 75, 0.25)",
+  display: "flex",
+  flexDirection: "column",
+  gap: "2px",
+  textAlign: "left",
+}}>
                           <span style={{ display: "inline-block", flexShrink: 0, fontWeight: 700, color: "#081a4b"}}>Mode of Verification</span>
                           <div style={{ display: "flex", flexDirection: "column", gap: "4px", width: "100%" }}>
                             {getVerificationArray(nested.verification).map((v, idx) => (
@@ -3389,18 +3432,17 @@ console.log(`Nested indicator "${nested.title}" - Found ${nestedAttachments.leng
                                 marginTop: "8px"
                               }}>
                                 {nestedAttachments.map((attachment, idx) => (
-                                  <div key={idx} style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "6px",
-                                    backgroundColor: "#e8f5e9",
-                                    padding: "6px 12px",
-                                    borderRadius: "20px",
-                                    fontSize: "12px",
-                                    border: "1px solid #c8e6c9",
-                                    maxWidth: "100%",
-                                    flexWrap: "wrap"
-                                  }}>
+                             <div key={idx} style={{
+  display: "flex",
+  alignItems: "center",
+  gap: "4px",
+  backgroundColor: "#e8f5e9",
+  padding: "4px 8px",
+  borderRadius: "16px",
+  fontSize: "11px",
+  border: "1px solid #c8e6c9",
+  maxWidth: "900px"
+}}>
                                     <span style={{ fontSize: "14px" }}>📎</span>
                                     <span style={{ 
                                       overflow: "hidden", 
@@ -3492,149 +3534,129 @@ console.log(`Nested indicator "${nested.title}" - Found ${nestedAttachments.leng
                         </div>
                       )}
   
-                      {/* Remarks from PO Section */}
-                      <div style={{
-                        marginTop: "30px",
-                        padding: "20px",
-                        backgroundColor: "#f9f9f9",
-                        borderRadius: "8px",
-                        border: "1px solid #e0e0e0"
-                      }}>
-                        <div style={{ marginBottom: "20px" }}>
-                          <h4 style={{ 
-                            margin: "0 0 10px 0", 
-                            color: "#333", 
-                            fontSize: "16px",
-                            fontWeight: "600"
-                          }}>
-                            Remarks from PO for {activeTab ? tabs.find(t => t.id === activeTab)?.name || 'Current' : 'Current'}:
-                          </h4>
+                            {/* Remarks Section */}
+<div style={{
+  marginTop: "20px",
+  padding: "12px 15px",
+  backgroundColor: "#f9f9f9",
+  borderRadius: "6px",
+  border: "1px solid #e0e0e0"
+}}>
+  {/* PO Remarks - Formatted like previous remark (Yellow) */}
+  {remarks && (() => {
+    const poRemark = remarks && typeof remarks === 'object' && activeTab && remarks[activeTab] 
+      ? remarks[activeTab]
+      : remarks && typeof remarks === 'string' 
+        ? remarks 
+        : null;
+    
+    if (poRemark && poRemark.trim() !== "") {
+      return (
+        <div style={{
+          marginTop: "6px",
+          marginBottom: "10px",
+          padding: "6px 10px",
+          backgroundColor: "#ffffff",
+          borderRadius: "4px",
+          fontSize: "11px",
+          color: "#372a00",
+          borderLeft: "3px solid #ffc107"
+        }}>
+          <strong style={{ fontSize: "11px", color: "#856404" }}>Remarks from PO:</strong>{' '}
+          <span style={{ fontStyle: "italic" }}>{poRemark}</span>
+        </div>
+      );
+    }
+    return null;
+  })()}
+
+  {/* Add Remarks for LGU */}
+  {!location.state?.isVerified && (
+    <div style={{ marginBottom: "10px" }}>
+      <textarea
+        placeholder="Add remarks for LGU..."
+        rows="2"
+        value={lguRemarks[activeTab] || ""}
+        onChange={(e) => setLguRemarks(prev => ({ 
+          ...prev, 
+          [activeTab]: e.target.value 
+        }))}
+        style={{
+          width: "100%",
+          padding: "8px 10px",
+          border: "1px solid #ccc",
+          borderRadius: "4px",
+          fontSize: "12px",
+          resize: "vertical",
+          fontFamily: "inherit"
+        }}
+      />
+    </div>
+  )}
+</div>
+
+                  {/* Flag as Verified Button - Outside the box */}
+<div style={{
+  display: "flex",
+  justifyContent: "flex-end",
+  alignItems: "center",
+  marginTop: "15px"
+}}>
+  <div style={{ position: "relative", display: "inline-block" }}>
+    <button
+      onClick={toggleFlag}
+      disabled={location.state?.isVerified === true || isReturnedToLGU === true || isForwarded === true}
+      style={{
+        backgroundColor: (location.state?.isVerified === true || isReturnedToLGU === true || isForwarded === true) 
+          ? (verifiedFlag[activeTab] ? "#8b5a5a" : "#5a7a5a")
+          : (verifiedFlag[activeTab] ? "#dc3545" : "#28a745"),
+        color: "white",
+        border: "none",
+        padding: "10px 30px",
+        borderRadius: "5px",
+        fontSize: "14px",
+        cursor: (location.state?.isVerified === true || isReturnedToLGU === true || isForwarded === true) ? "not-allowed" : "pointer",
+        fontWeight: "600",
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        opacity: (location.state?.isVerified === true || isReturnedToLGU === true || isForwarded === true) ? 0.7 : 1
+      }}
+    >
+      <span>⚐</span>
+      {verifiedFlag[activeTab] ? `Remove Flag` : `Flag as Verified`}
+    </button>
+
                           
-                          <div style={{
-                            backgroundColor: "#fff3cd",
-                            border: "1px solid #ffeeba",
-                            borderRadius: "8px",
-                            padding: "15px",
-                            color: "#856404",
-                            fontSize: "14px",
-                            minHeight: "60px",
-                            whiteSpace: "pre-wrap",
-                            wordBreak: "break-word"
-                          }}>
-                            {remarks && typeof remarks === 'object' && activeTab && remarks[activeTab] ? (
-                              <div>
-                                <strong>Remark:</strong> {remarks[activeTab]}
-                              </div>
-                            ) : remarks && typeof remarks === 'string' ? (
-                              <div>
-                                <strong>Remark:</strong> {remarks}
-                              </div>
-                            ) : (
-                              <div style={{ fontStyle: "italic", color: "#999" }}>
-                                No remark from PO for this tab
-                              </div>
-                            )}
-                          </div>
-                        </div>
-  
-                        {/* Add Remarks for LGU - only show if not verified and not returned from PO (can still add remarks) */}
-                        {!location.state?.isVerified && (
-                          <div style={{ marginBottom: "20px" }}>
-                            <h4 style={{ 
-                              margin: "0 0 10px 0", 
-                              color: "#333", 
-                              fontSize: "16px",
-                              fontWeight: "600"
+                          <div 
+                            className="flag-tooltip"
+                            style={{
+                              position: "absolute",
+                              bottom: "100%",
+                              left: "0",
+                              marginBottom: "5px",
+                              backgroundColor: "#2d2d2d",
+                              color: "#e0e0e0",
+                              padding: "8px 12px",
+                              borderRadius: "4px",
+                              fontSize: "12px",
+                              whiteSpace: "normal",
+                              display: "none",
+                              zIndex: 1000,
+                              boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+                              pointerEvents: "none",
+                              width: "200px",
+                              fontFamily: "Arial, sans-serif",
+                              border: "1px solid #444"
+                            }}
+                          >
+                            <div style={{ 
+                              display: "flex", 
+                              flexDirection: "column", 
+                              gap: "2px",
+                              lineHeight: "1.4"
                             }}>
-                              Add Remarks for LGU ({activeTab ? tabs.find(t => t.id === activeTab)?.name || 'Current' : 'Current'}):
-                            </h4>
-                            <textarea
-                              placeholder="Type your remarks for the LGU here..."
-                              rows="4"
-                              value={lguRemarks[activeTab] || ""}
-                              onChange={(e) => setLguRemarks(prev => ({ 
-                                ...prev, 
-                                [activeTab]: e.target.value 
-                              }))}
-                              style={{
-                                width: "100%",
-                                padding: "12px",
-                                border: "1px solid #ccc",
-                                borderRadius: "8px",
-                                fontSize: "14px",
-                                resize: "vertical",
-                                fontFamily: "inherit"
-                              }}
-                            />
-                          </div>
-                        )}
-  
-                        {/* Flag as Verified Button */}
-                        <div style={{
-                          display: "flex",
-                          justifyContent: "flex-end",
-                          alignItems: "center",
-                          gap: "15px"
-                        }}>
-                          <div style={{ position: "relative", display: "inline-block" }}>
-                            <button
-                              onClick={toggleFlag}
-                              style={{
-                                backgroundColor: verifiedFlag[activeTab] ? "#dc3545" : "#28a745",
-                                color: "white",
-                                border: "none",
-                                padding: "10px 30px",
-                                borderRadius: "5px",
-                                fontSize: "14px",
-                                cursor: "pointer",
-                                fontWeight: "600",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "8px"
-                              }}
-                              onMouseOver={(e) => {
-                                const tooltip = e.currentTarget.parentElement.querySelector('.flag-tooltip');
-                                if (tooltip) tooltip.style.display = 'block';
-                              }}
-                              onMouseOut={(e) => {
-                                const tooltip = e.currentTarget.parentElement.querySelector('.flag-tooltip');
-                                if (tooltip) tooltip.style.display = 'none';
-                              }}
-                            >
-                              <span>⚐</span>
-                              {verifiedFlag[activeTab] ? `Remove Flag` : `Flag as Verified`}
-                            </button>
-                            
-                            <div 
-                              className="flag-tooltip"
-                              style={{
-                                position: "absolute",
-                                bottom: "100%",
-                                left: "0",
-                                marginBottom: "5px",
-                                backgroundColor: "#2d2d2d",
-                                color: "#e0e0e0",
-                                padding: "8px 12px",
-                                borderRadius: "4px",
-                                fontSize: "12px",
-                                whiteSpace: "normal",
-                                display: "none",
-                                zIndex: 1000,
-                                boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
-                                pointerEvents: "none",
-                                width: "200px",
-                                fontFamily: "Arial, sans-serif",
-                                border: "1px solid #444"
-                              }}
-                            >
-                              <div style={{ 
-                                display: "flex", 
-                                flexDirection: "column", 
-                                gap: "2px",
-                                lineHeight: "1.4"
-                              }}>
-                                <span style={{ color: "#aaa", fontSize: "11px" }}>Mark as verified to track reviewed sections.</span>
-                              </div>
+                              <span style={{ color: "#aaa", fontSize: "11px" }}>Mark as verified to track reviewed sections.</span>
                             </div>
                           </div>
                         </div>

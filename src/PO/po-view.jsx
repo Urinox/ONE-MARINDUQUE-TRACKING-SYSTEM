@@ -1454,7 +1454,9 @@ if (returnedSnapshot.exists()) {
     
     alert("Assessment verified successfully!");
     setIsVerified(true);
-    setRemarks(prev => ({ ...prev, [activeTab]: "" }));
+    // DO NOT clear remarks - keep them for when assessment is re-forwarded
+// setRemarks(prev => ({ ...prev, [activeTab]: "" }));
+console.log("📝 Keeping remarks for future reference:", remarks[activeTab]);
     
     // Navigate back to dashboard after successful verification
     navigate("/dashboard");
@@ -1627,36 +1629,42 @@ useEffect(() => {
         return;
       }
       
-      // Check if this is a returned assessment (from state)
-      if (location.state?.isReturned || location.state?.wasReturned) {
-        console.log("Loading RETURNED assessment from state");
-        
-        lguData = {
-          id: 1,
-          lguName: lguName,
-          year: selectedYear,
-          assessmentId: selectedAssessmentId,
-          assessment: selectedAssessment,
-          status: "Returned",
-          submission: location.state.submission || new Date().toLocaleDateString(),
-          deadline: location.state.deadline || "Not set",
-          data: location.state.data || {},
-          municipality: municipality,
-          lguUid: location.state.lguUid,
-          isReturned: true,
-          returnedBy: location.state.returnedBy,
-          returnedAt: location.state.returnedAt,
-          poRemarks: location.state.poRemarks,
-          attachmentsByIndicator: attachmentsByIndicator
-        };
-        
-        setLguAnswers([lguData]);
-        setForwardedAssessment(lguData);
-        setIsVerified(false);
-        setIsReturned(true);
-        setLoading(false);
-        return;
-      }
+   // Check if this is a returned assessment (from state)
+if (location.state?.isReturned || location.state?.wasReturned) {
+  console.log("Loading RETURNED assessment from state");
+  
+  // Load the saved remarks back into state
+  if (location.state.poRemarks) {
+    setRemarks(location.state.poRemarks);
+    console.log("📝 Loaded PO remarks from returned assessment:", location.state.poRemarks);
+  }
+  
+  lguData = {
+    id: 1,
+    lguName: lguName,
+    year: selectedYear,
+    assessmentId: selectedAssessmentId,
+    assessment: selectedAssessment,
+    status: "Returned",
+    submission: location.state.submission || new Date().toLocaleDateString(),
+    deadline: location.state.deadline || "Not set",
+    data: location.state.data || {},
+    municipality: municipality,
+    lguUid: location.state.lguUid,
+    isReturned: true,
+    returnedBy: location.state.returnedBy,
+    returnedAt: location.state.returnedAt,
+    poRemarks: location.state.poRemarks,
+    attachmentsByIndicator: attachmentsByIndicator
+  };
+  
+  setLguAnswers([lguData]);
+  setForwardedAssessment(lguData);
+  setIsVerified(false);
+  setIsReturned(true);
+  setLoading(false);
+  return;
+}
       
       // If not verified or returned, load from forwarded node
       console.log("Loading FORWARDED assessment from Firebase");
@@ -1677,7 +1685,16 @@ useEffect(() => {
           }
         });
         
-        if (foundAssessment) {
+         if (foundAssessment) {
+          // Load PO remarks from the forwarded data (preserved from previous cycles)
+          if (foundAssessment.poRemarks) {
+            setRemarks(foundAssessment.poRemarks);
+            console.log("📝 Loaded PO remarks from forwarded assessment:", foundAssessment.poRemarks);
+          } else if (foundAssessment.originalData?._metadata?.poRemarks) {
+            setRemarks(foundAssessment.originalData._metadata.poRemarks);
+            console.log("📝 Loaded PO remarks from originalData metadata:", foundAssessment.originalData._metadata.poRemarks);
+          }
+          
           lguData = {
             id: 1,
             lguName: foundAssessment.lguName || municipality,
@@ -1693,7 +1710,8 @@ useEffect(() => {
             forwardedBy: foundAssessment.forwardedBy,
             forwardedAt: foundAssessment.forwardedAt,
             lguUid: foundAssessment.lguUid,
-            attachmentsByIndicator: attachmentsByIndicator  // <-- CRITICAL: Use the loaded attachments
+            attachmentsByIndicator: attachmentsByIndicator,
+            poRemarks: foundAssessment.poRemarks || foundAssessment.originalData?._metadata?.poRemarks || null
           };
           
           console.log("Forwarded assessment attachments loaded:", Object.keys(attachmentsByIndicator).length);
@@ -1895,10 +1913,11 @@ if (forwardedSnapshot.exists()) {
     await set(ref(db, `notifications/${selectedYear}/MLGO/${mlgoUid}/${notificationReturnId}`), notificationReturnData);
     console.log("✅ Notification created for MLGO");
     
-    setIsReturned(true);
+       setIsReturned(true);
     alert("Assessment returned to MLGO successfully.");
     
-    setRemarks(prev => ({ ...prev, [activeTab]: "" }));
+    // DO NOT clear remarks - keep them for when assessment is re-forwarded
+    // setRemarks(prev => ({ ...prev, [activeTab]: "" }));
     
     // Navigate back to dashboard with refresh flag
     navigate("/dashboard", { 
@@ -2380,20 +2399,21 @@ useEffect(() => {
                   gap: "15px", 
                   flexWrap: "wrap" 
                 }}>
-                  {/* Status Badge */}
-                  <div style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    padding: "4px 12px",
-                    backgroundColor: location.state?.isVerified ? "#28a745" : "#ffb775",
-                    borderRadius: "20px",
-                    fontSize: "14px",
-                    fontWeight: "600"
-                  }}>
-                    <span>{location.state?.isVerified ? "✓" : "ⓘ"}</span>
-                    <span>{location.state?.isVerified ? "Assessment Verified" : "Assessment Not Yet Verified"}</span>
-                  </div>
+         {/* Status Badge */}
+<div style={{
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  padding: "4px 12px",
+  backgroundColor: location.state?.isVerified ? "#28a745" : "#ffb775",
+  borderRadius: "20px",
+  fontSize: "14px",
+  fontWeight: "600",
+  color: location.state?.isVerified ? "white" : "black"
+}}>
+  <span>{location.state?.isVerified ? "✓" : "ⓘ"}</span>
+  <span>{location.state?.isVerified ? "Assessment Verified" : "Assessment Not Yet Verified"}</span>
+</div>
 
                   {/* Submission Deadline Badge */}
                   <div style={{
@@ -2420,65 +2440,69 @@ useEffect(() => {
                   </div>
                 </div>
 
-                {/* Right side - Action Buttons */}
-                <div style={{ 
-                  display: "flex", 
-                  alignItems: "center", 
-                  gap: "10px"
-                }}>
-{/* Return Assessment Button */}
-<div style={{ position: "relative", display: "inline-block" }}>
-  <button
-    onClick={handleReturnAssessment}
-    disabled={isVerified || loading || isReturned}
-    style={{
-      backgroundColor: (isVerified || isReturned) ? "#6c757d" : "#990202",
-      color: "white",
-      border: "none",
-      padding: "8px 20px",
-      borderRadius: "5px",
-      fontSize: "14px",
-      cursor: (isVerified || isReturned) ? "not-allowed" : "pointer",
-      fontWeight: "600",
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-      whiteSpace: "nowrap",
-      opacity: (isVerified || isReturned) ? 0.6 : 1
-    }}
-  >
-    <span>↩</span>
-    {isVerified ? "Verified (Cannot Return)" : 
-     isReturned ? "Returned to MLGO" : "Return to MLGO"}
-  </button>
-</div>
+             {/* Right side - Action Buttons */}
+<div style={{ 
+  display: "flex", 
+  alignItems: "center", 
+  gap: "10px"
+}}>
+{/* Only show buttons if NOT verified */}
+{!isVerified && (
+  <>
+    {/* Return Assessment Button */}
+    <div style={{ position: "relative", display: "inline-block" }}>
+      <button
+        onClick={handleReturnAssessment}
+        disabled={loading || isReturned}
+        style={{
+          backgroundColor: isReturned ? "#8b5a5a" : "#990202",
+          color: "white",
+          border: "none",
+          padding: "8px 20px",
+          borderRadius: "5px",
+          fontSize: "14px",
+          cursor: isReturned ? "not-allowed" : "pointer",
+          fontWeight: "600",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          whiteSpace: "nowrap",
+          opacity: isReturned ? 0.6 : 1
+        }}
+      >
+        <span>↩</span>
+        {isReturned ? "Returned to MLGO" : "Return to MLGO"}
+      </button>
+    </div>
 
-{/* Verify Assessment Button */}
-<div style={{ position: "relative", display: "inline-block" }}>
-  <button
-    onClick={handleVerifyAssessment}
-    disabled={isVerified || loading || isReturned}
-    style={{
-      backgroundColor: (isVerified || isReturned) ? "#28a745" : "#006736",
-      color: "white",
-      border: "none",
-      padding: "8px 20px",
-      borderRadius: "5px",
-      fontSize: "14px",
-      cursor: (isVerified || isReturned) ? "not-allowed" : "pointer",
-      fontWeight: "600",
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-      whiteSpace: "nowrap",
-      opacity: (isVerified || isReturned) ? 0.8 : 1
-    }}
-  >
-    <span>✔</span>
-    {isVerified ? "Verified" : isReturned ? "Returned (Cannot Verify)" : "Verify Assessment"}
-  </button>
+    {/* Verify Assessment Button */}
+    <div style={{ position: "relative", display: "inline-block" }}>
+      <button
+        onClick={handleVerifyAssessment}
+        disabled={loading || isReturned}
+        style={{
+          backgroundColor: isReturned ? "#5a7a5a" : "#006736",
+          color: "white",
+          border: "none",
+          padding: "8px 20px",
+          borderRadius: "5px",
+          fontSize: "14px",
+          cursor: isReturned ? "not-allowed" : "pointer",
+          fontWeight: "600",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          whiteSpace: "nowrap",
+          opacity: isReturned ? 0.6 : 1
+        }}
+      >
+        <span>✔</span>
+        {isReturned ? "Returned (Cannot Verify)" : "Verify Assessment"}
+      </button>
+    </div>
+  </>
+)}
 </div>
-                </div>
               </div>
             </div>
 
@@ -3369,68 +3393,62 @@ if (subIndicatorAttachments.length === 0) {
                       </div>
                     )}
 
-                    {/* Remarks and Flag Section - PER TAB */}
-                    <div style={{
-                      marginTop: "30px",
-                      padding: "20px",
-                      backgroundColor: "#f9f9f9",
-                      borderRadius: "8px",
-                      border: "1px solid #e0e0e0"
-                    }}>
-                      {/* Add Remarks for Current Tab */}
-                      <div style={{ marginBottom: "20px" }}>
-                        <h4 style={{ 
-                          margin: "0 0 10px 0", 
-                          color: "#333", 
-                          fontSize: "16px",
-                          fontWeight: "600"
-                        }}>
-                          Add Remarks for {activeTab ? tabs.find(t => t.id === activeTab)?.name || 'Current' : 'Current'}:
-                        </h4>
-                        <textarea
-                          placeholder="Type here..."
-                          rows="4"
-                          value={remarks[activeTab] || ""}
-                          onChange={(e) => setRemarks(prev => ({ 
-                            ...prev, 
-                            [activeTab]: e.target.value 
-                          }))}
-                          style={{
-                            width: "100%",
-                            padding: "12px",
-                            border: "1px solid #ccc",
-                            borderRadius: "8px",
-                            fontSize: "14px",
-                            resize: "vertical",
-                            fontFamily: "inherit"
-                          }}
-                        />
-                      </div>
-
-{/* Flag as Verified Button - PER TAB (TOGGLEABLE) */}
+       {/* Remarks Section */}
+<div style={{
+  marginTop: "20px",
+  padding: "12px 15px",
+  backgroundColor: "#f9f9f9",
+  borderRadius: "6px",
+  border: "1px solid #e0e0e0"
+}}>
+  {/* Add Remarks for Current Tab - Compact */}
+  <div style={{ marginBottom: "10px" }}>
+    <textarea
+      placeholder="Add remarks for LGU..."
+      rows="2"
+      value={remarks[activeTab] || ""}
+      onChange={(e) => setRemarks(prev => ({ 
+        ...prev, 
+        [activeTab]: e.target.value 
+      }))}
+      style={{
+        width: "100%",
+        padding: "8px 10px",
+        border: "1px solid #ccc",
+        borderRadius: "4px",
+        fontSize: "12px",
+        resize: "vertical",
+        fontFamily: "inherit"
+      }}
+    />
+  </div>
+</div>
+{/* Flag as Verified Button - Outside the box */}
 <div style={{
   display: "flex",
   justifyContent: "flex-end",
   alignItems: "center",
-  gap: "15px"
+  marginTop: "15px"
 }}>
   <div style={{ position: "relative", display: "inline-block" }}>
     <button
       onClick={toggleFlag}
-      disabled={isVerified} // Add this line to disable when verified
+      disabled={isVerified || isReturned}
       style={{
-        backgroundColor: verifiedFlag[activeTab] ? "#dc3545" : "#28a745",
+        backgroundColor: (isVerified || isReturned) 
+          ? (verifiedFlag[activeTab] ? "#8b5a5a" : "#5a7a5a")
+          : (verifiedFlag[activeTab] ? "#dc3545" : "#28a745"),
         color: "white",
         border: "none",
         padding: "10px 30px",
         borderRadius: "5px",
         fontSize: "14px",
-        cursor: isVerified ? "not-allowed" : "pointer", // Change cursor based on isVerified
+        cursor: (isVerified || isReturned) ? "not-allowed" : "pointer",
         fontWeight: "600",
         display: "flex",
         alignItems: "center",
         gap: "8px",
-        opacity: isVerified ? 0.5 : 1 // Add opacity when disabled
+        opacity: (isVerified || isReturned) ? 0.7 : 1
       }}
     >
       <span>⚐</span>
@@ -3438,7 +3456,6 @@ if (subIndicatorAttachments.length === 0) {
     </button>
   </div>
 </div>
-                    </div>
                   </>
                 )}
               </div>
