@@ -354,7 +354,7 @@ export default function App() {
   
       if (!userData) {
         console.log("No user found with email:", email);
-        setLoginError("No account found with this email.zz");
+        setLoginError("No account found with this email");
         alert("No account found with this email.");
         return;
       }
@@ -468,7 +468,7 @@ if (!userData.verifiedAt || userData.verifiedAt < tenDaysAgo) {
         errorMessage = 'Incorrect password. Please try again.';
         console.log("Incorrect password provided");
       } else if (error.code === 'auth/user-not-found') {
-        errorMessage = 'No account found with this email address in Firebase.';
+        errorMessage = 'No account found with this email.';
         console.log("User not found in Firebase Auth");
       } else if (error.code === 'auth/invalid-email') {
         errorMessage = 'Invalid email address format.';
